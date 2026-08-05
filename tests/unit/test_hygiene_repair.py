@@ -1,10 +1,11 @@
 """Tests for hygiene --repair mode (harden.R4-repair)."""
+
 from __future__ import annotations
 
 import subprocess
 import sys
 from pathlib import Path
-from tests.helpers import seed_sqlite_from_yaml, get_task_from_sqlite
+from tests.helpers import seed_sqlite_from_yaml
 
 import pytest
 
@@ -22,6 +23,7 @@ PYTHON = sys.executable
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _write_project(
     tmp_path: Path,
     *,
@@ -36,9 +38,7 @@ def _write_project(
     harness.mkdir()
     (harness / "handoffs").mkdir()
     (harness / "contract.yaml").write_text(
-        f"id: test\ntasks:\n{tasks}"
-        f"decisions: {decisions}\n"
-        f"failures: {failures}\n"
+        f"id: test\ntasks:\n{tasks}decisions: {decisions}\nfailures: {failures}\n"
     )
     (harness / "ledger.md").write_text(ledger)
     (harness / "decisions.yaml").write_text("decisions: []\n")
@@ -47,11 +47,13 @@ def _write_project(
     return project
 
 
-def _done_task_yaml(task_id: str = "task-a", verified: bool = True, status: str = "done") -> str:
+def _done_task_yaml(
+    task_id: str = "task-a", verified: bool = True, status: str = "done"
+) -> str:
     lines = [
         f"  - id: {task_id}",
         f"    status: {status}",
-        f"    owner: claude-code",
+        "    owner: claude-code",
     ]
     if verified:
         lines.append("    verified: true")
@@ -71,6 +73,7 @@ def _run_validate_cli(args: list[str]) -> subprocess.CompletedProcess:
 # Help text
 # ---------------------------------------------------------------------------
 
+
 def test_repair_flag_in_help() -> None:
     """--repair must appear in help text."""
     assert "--repair" in HELP_TEXT
@@ -89,6 +92,7 @@ def test_repair_flag_in_cli_help() -> None:
 # ---------------------------------------------------------------------------
 # Missing handoff — repair
 # ---------------------------------------------------------------------------
+
 
 def test_repair_creates_skeleton_handoff(tmp_path: Path) -> None:
     """--repair creates a handoff YAML for a done task that has none."""
@@ -161,6 +165,7 @@ def test_repair_appends_ledger_after_creating_handoff(tmp_path: Path) -> None:
 # Missing ledger entry — repair
 # ---------------------------------------------------------------------------
 
+
 def test_repair_appends_ledger_for_missing_entry(tmp_path: Path) -> None:
     """--repair adds a ledger line when done task is absent from ledger."""
     project = _write_project(tmp_path, tasks=_done_task_yaml("delta-task"))
@@ -193,6 +198,7 @@ def test_repair_ledger_entry_has_iso_timestamp(tmp_path: Path) -> None:
 # Read-only without --repair
 # ---------------------------------------------------------------------------
 
+
 def test_no_repair_does_not_create_handoff(tmp_path: Path) -> None:
     """Without --repair, no handoff file is created for a done task."""
     project = _write_project(
@@ -211,7 +217,9 @@ def test_no_repair_does_not_create_handoff(tmp_path: Path) -> None:
 def test_no_repair_does_not_modify_ledger(tmp_path: Path) -> None:
     """Without --repair, ledger is not modified for a missing entry."""
     original_ledger = "# Ledger\n"
-    project = _write_project(tmp_path, tasks=_done_task_yaml("theta-task"), ledger=original_ledger)
+    project = _write_project(
+        tmp_path, tasks=_done_task_yaml("theta-task"), ledger=original_ledger
+    )
     (project / ".superharness" / "handoffs" / "h.yaml").write_text("task: theta-task\n")
 
     run_validate(str(project), repair=False)
@@ -223,6 +231,7 @@ def test_no_repair_does_not_modify_ledger(tmp_path: Path) -> None:
 # No duplicates
 # ---------------------------------------------------------------------------
 
+
 def test_repair_no_duplicate_handoff_if_exists(tmp_path: Path) -> None:
     """--repair must not create a second handoff when one already exists."""
     project = _write_project(
@@ -233,8 +242,10 @@ def test_repair_no_duplicate_handoff_if_exists(tmp_path: Path) -> None:
     handoff_dir = project / ".superharness" / "handoffs"
     (handoff_dir / "existing.yaml").write_text("task: iota-task\n")
     from tests.helpers import seed_sqlite_handoff, seed_sqlite_ledger
-    seed_sqlite_handoff(project, "iota-task", phase="report", status="done",
-                        content="task: iota-task\n")
+
+    seed_sqlite_handoff(
+        project, "iota-task", phase="report", status="done", content="task: iota-task\n"
+    )
     seed_sqlite_ledger(project, action="iota-task done", task_id="iota-task")
 
     run_validate(str(project), repair=True)
@@ -252,8 +263,14 @@ def test_repair_no_duplicate_ledger_entry_if_exists(tmp_path: Path) -> None:
     )
     (project / ".superharness" / "handoffs" / "h.yaml").write_text("task: kappa-task\n")
     from tests.helpers import seed_sqlite_handoff, seed_sqlite_ledger
-    seed_sqlite_handoff(project, "kappa-task", phase="report", status="done",
-                        content="task: kappa-task\n")
+
+    seed_sqlite_handoff(
+        project,
+        "kappa-task",
+        phase="report",
+        status="done",
+        content="task: kappa-task\n",
+    )
     seed_sqlite_ledger(project, action="kappa-task done", task_id="kappa-task")
 
     before = (project / ".superharness" / "ledger.md").read_text()
@@ -267,6 +284,7 @@ def test_repair_no_duplicate_ledger_entry_if_exists(tmp_path: Path) -> None:
 # Clean project — no-op
 # ---------------------------------------------------------------------------
 
+
 def test_repair_noop_on_clean_project(tmp_path: Path) -> None:
     """--repair on a fully compliant project changes nothing and returns 0."""
     project = _write_project(
@@ -274,10 +292,18 @@ def test_repair_noop_on_clean_project(tmp_path: Path) -> None:
         tasks=_done_task_yaml("lambda-task"),
         ledger="# Ledger\nlambda-task done\n",
     )
-    (project / ".superharness" / "handoffs" / "h.yaml").write_text("task: lambda-task\n")
+    (project / ".superharness" / "handoffs" / "h.yaml").write_text(
+        "task: lambda-task\n"
+    )
     from tests.helpers import seed_sqlite_handoff, seed_sqlite_ledger
-    seed_sqlite_handoff(project, "lambda-task", phase="report", status="done",
-                        content="task: lambda-task\n")
+
+    seed_sqlite_handoff(
+        project,
+        "lambda-task",
+        phase="report",
+        status="done",
+        content="task: lambda-task\n",
+    )
     seed_sqlite_ledger(project, action="lambda-task done", task_id="lambda-task")
 
     ledger_before = (project / ".superharness" / "ledger.md").read_text()
@@ -290,6 +316,7 @@ def test_repair_noop_on_clean_project(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 # Stuck status
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
 def test_repair_fixes_stuck_status(tmp_path: Path) -> None:
@@ -365,6 +392,7 @@ def test_no_repair_reports_stuck_status_as_issue(tmp_path: Path) -> None:
 # Multiple tasks
 # ---------------------------------------------------------------------------
 
+
 def test_repair_handles_multiple_tasks(tmp_path: Path) -> None:
     """--repair creates handoffs and ledger entries for multiple tasks at once."""
     import yaml as _yaml
@@ -393,6 +421,7 @@ def test_repair_handles_multiple_tasks(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 # Unit-level helpers
 # ---------------------------------------------------------------------------
+
 
 def test_repair_append_ledger_writes_repair_prefix(tmp_path: Path) -> None:
     """_repair_append_ledger writes a line containing [repair]."""

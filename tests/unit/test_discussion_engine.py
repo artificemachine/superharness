@@ -12,7 +12,10 @@ pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="requires bash")
 
 def _run_engine(repo_root: Path, args: list[str]):
     import sys
-    return run_cmd([sys.executable, "-m", "superharness.engine.discussion"] + args, cwd=repo_root)
+
+    return run_cmd(
+        [sys.executable, "-m", "superharness.engine.discussion"] + args, cwd=repo_root
+    )
 
 
 def _start_discussion(repo_root: Path, tmp_path: Path, *, max_rounds: int = 2):
@@ -83,7 +86,9 @@ def test_discussion_engine_closes_on_consensus(repo_root, tmp_path) -> None:
     )
     assert s2.returncode == 0, s2.stderr
 
-    advanced = _run_engine(repo_root, ["advance", "--discussion-dir", str(discussion_dir)])
+    advanced = _run_engine(
+        repo_root, ["advance", "--discussion-dir", str(discussion_dir)]
+    )
     assert advanced.returncode == 0, advanced.stderr
     advanced_json = json.loads(advanced.stdout)
     assert advanced_json["action"] == "closed"
@@ -98,7 +103,9 @@ def test_discussion_engine_closes_on_consensus(repo_root, tmp_path) -> None:
 
 
 @pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-def test_discussion_engine_closes_without_consensus_at_max_rounds(repo_root, tmp_path) -> None:
+def test_discussion_engine_closes_without_consensus_at_max_rounds(
+    repo_root, tmp_path
+) -> None:
     _, discussion_dir = _start_discussion(repo_root, tmp_path, max_rounds=1)
 
     s1 = _run_engine(
@@ -137,7 +144,9 @@ def test_discussion_engine_closes_without_consensus_at_max_rounds(repo_root, tmp
     )
     assert s2.returncode == 0, s2.stderr
 
-    advanced = _run_engine(repo_root, ["advance", "--discussion-dir", str(discussion_dir)])
+    advanced = _run_engine(
+        repo_root, ["advance", "--discussion-dir", str(discussion_dir)]
+    )
     assert advanced.returncode == 0, advanced.stderr
     advanced_json = json.loads(advanced.stdout)
     assert advanced_json["action"] == "closed"
@@ -150,7 +159,9 @@ def test_discussion_engine_closes_without_consensus_at_max_rounds(repo_root, tmp
     assert status_json["closed_at"]
 
 
-def test_discussion_engine_rejects_duplicate_round_submission(repo_root, tmp_path) -> None:
+def test_discussion_engine_rejects_duplicate_round_submission(
+    repo_root, tmp_path
+) -> None:
     _, discussion_dir = _start_discussion(repo_root, tmp_path)
 
     first = _run_engine(
@@ -191,7 +202,9 @@ def test_discussion_engine_rejects_duplicate_round_submission(repo_root, tmp_pat
     assert "already submitted" in second.stderr
 
 
-def test_discussion_engine_round_context_supports_utf8_content(repo_root, tmp_path) -> None:
+def test_discussion_engine_round_context_supports_utf8_content(
+    repo_root, tmp_path
+) -> None:
     _, discussion_dir = _start_discussion(repo_root, tmp_path, max_rounds=2)
 
     s1 = _run_engine(

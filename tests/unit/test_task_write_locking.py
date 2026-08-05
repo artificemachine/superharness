@@ -8,13 +8,13 @@ at all, and `ConcurrencyError` (defined in engine/state_errors.py) was
 caught nowhere in the codebase. A concurrent writer could silently clobber
 another agent's change.
 """
+
 from __future__ import annotations
 
 import logging
 import os
 import re
 from pathlib import Path
-from typing import Iterator
 from unittest.mock import patch
 
 import pytest
@@ -26,7 +26,10 @@ from superharness.commands import inbox_watch
 
 _INBOX_WATCH_SRC = (
     Path(__file__).resolve().parents[2]
-    / "src" / "superharness" / "commands" / "inbox_watch.py"
+    / "src"
+    / "superharness"
+    / "commands"
+    / "inbox_watch.py"
 )
 
 
@@ -36,6 +39,7 @@ def db_conn(tmp_path: Path):
     scoped to tests/unit/db/ only, and this file lives one level up."""
     from superharness.engine.db import get_connection, init_db
     from superharness.utils.paths import resolve_xdg_state_db_path
+
     project = tmp_path
     (project / ".superharness").mkdir()
     conn = get_connection(str(project))
@@ -86,11 +90,16 @@ class TestWatcherTaskLockRetry:
             calls["n"] += 1
             if calls["n"] == 1:
                 raise ConcurrencyError("simulated conflict on first attempt")
-            return real_set_status(conn, task_id, new_status, expected_version, **fields)
+            return real_set_status(
+                conn, task_id, new_status, expected_version, **fields
+            )
 
         with patch.object(tasks_dao, "set_status", side_effect=flaky_set_status):
             result = inbox_watch._with_task_lock(
-                db_conn, "t-3", {"status": "plan_proposed"}, context="test",
+                db_conn,
+                "t-3",
+                {"status": "plan_proposed"},
+                context="test",
             )
 
         assert calls["n"] == 2, "must retry exactly once after a single conflict"
@@ -105,14 +114,21 @@ class TestWatcherTaskLockRetry:
             raise ConcurrencyError("simulated persistent conflict")
 
         with patch.object(tasks_dao, "set_status", side_effect=always_conflict):
-            with caplog.at_level(logging.WARNING, logger="superharness.commands.inbox_watch"):
+            with caplog.at_level(
+                logging.WARNING, logger="superharness.commands.inbox_watch"
+            ):
                 result = inbox_watch._with_task_lock(
-                    db_conn, "t-4", {"status": "plan_proposed"}, context="test",
+                    db_conn,
+                    "t-4",
+                    {"status": "plan_proposed"},
+                    context="test",
                 )
 
         assert result is None, "a repeated conflict must be skipped, not raised"
         row = tasks_dao.get(db_conn, "t-4")
-        assert row.status == "todo", "the task must be left untouched, not silently overwritten"
+        assert row.status == "todo", (
+            "the task must be left untouched, not silently overwritten"
+        )
         assert any("conflict" in r.message.lower() for r in caplog.records), (
             "a repeated conflict must be logged"
         )
@@ -141,14 +157,15 @@ def test_telegram_reset_targets_todo_not_pending():
     status no lifecycle rule advances, which is exactly the invisible-stuck
     task the constraint exists to prevent. "todo" is the correct target.
     """
-    import re
     from pathlib import Path
 
     # Anchor to repo root, not CWD: an earlier test that chdir's into a tmp
     # dir without restoring would otherwise make this relative read raise
     # FileNotFoundError depending on test ordering.
     _repo_root = Path(__file__).resolve().parents[2]
-    src = (_repo_root / "src/superharness/modules/gateway/telegram_gateway.py").read_text()
+    src = (
+        _repo_root / "src/superharness/modules/gateway/telegram_gateway.py"
+    ).read_text()
     mapping = re.search(r'"reset":\s*\(\s*"([a-z_]+)"', src)
     assert mapping is not None, "could not find the /reset status mapping"
     assert mapping.group(1) == "todo", (

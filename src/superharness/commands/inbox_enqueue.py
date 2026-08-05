@@ -2,6 +2,7 @@
 
 Enqueue an inbox item, with optional contract validation.
 """
+
 from __future__ import annotations
 
 import os
@@ -13,6 +14,7 @@ import sys
 from datetime import datetime, timezone
 
 import logging
+
 logger = logging.getLogger(__name__)
 
 TOKEN_RE = re.compile(r"^[A-Za-z0-9._/-]+$")
@@ -36,6 +38,7 @@ def _sqlite_enqueue(
     """Write inbox item to SQLite. Raises on failure — caller decides how to handle."""
     from superharness.engine.db import get_connection, init_db, transaction
     from superharness.engine import inbox_dao, ledger_dao
+
     conn = get_connection(project_dir)
     try:
         init_db(conn)
@@ -52,8 +55,11 @@ def _sqlite_enqueue(
                 now=created_at,
             )
             ledger_dao.record(
-                conn, agent="inbox_enqueue", action="enqueued",
-                task_id=task_id, now=created_at,
+                conn,
+                agent="inbox_enqueue",
+                action="enqueued",
+                task_id=task_id,
+                now=created_at,
             )
     finally:
         conn.close()
@@ -62,6 +68,7 @@ def _sqlite_enqueue(
 def _abort(msg: str, code: int = 1) -> None:
     if _JSON_MODE:
         from superharness.utils.json_output import emit_error
+
         emit_error(msg, exit_code=code, **_JSON_CTX)
     print(msg, file=sys.stderr)
     sys.exit(code)
@@ -92,6 +99,7 @@ def _validate_contract_sqlite(
     try:
         from superharness.engine.db import get_connection, init_db
         from superharness.engine import tasks_dao
+
         conn = get_connection(project_dir)
         try:
             init_db(conn)
@@ -152,7 +160,10 @@ def _validate_contract_sqlite(
             plan_only_allowed_statuses,
             infer_workflow,
         )
-        workflow = infer_workflow(task_id, {"workflow": task.workflow} if task.workflow else {})
+
+        workflow = infer_workflow(
+            task_id, {"workflow": task.workflow} if task.workflow else {}
+        )
         if plan_only:
             allowed = plan_only_allowed_statuses(workflow)
         else:
@@ -161,11 +172,9 @@ def _validate_contract_sqlite(
         if status not in allowed and status not in passthrough and status != "done":
             hint = ""
             if workflow == "implementation" and status == "todo":
-                hint = (
-                    f"\n  hint: use --plan-only to enqueue for planning instead of implementation."
-                )
+                hint = "\n  hint: use --plan-only to enqueue for planning instead of implementation."
             elif status == "plan_proposed":
-                hint = f"\n  plan_proposed: approve the plan first."
+                hint = "\n  plan_proposed: approve the plan first."
             _abort(
                 f"blocked: task '{task_id}' has status '{status}' which is not dispatchable "
                 f"for workflow '{workflow}'."
@@ -182,7 +191,10 @@ def _check_watcher_health(project_dir: str) -> bool:
     label = f"com.superharness.inbox.{slug}"
     try:
         r = subprocess.run(
-            ["launchctl", "list"], capture_output=True, text=True, check=False,
+            ["launchctl", "list"],
+            capture_output=True,
+            text=True,
+            check=False,
         )
         return label in r.stdout
     except (FileNotFoundError, OSError):
@@ -212,7 +224,6 @@ def enqueue_cmd(
 
     if target not in VALID_TARGETS:
         _abort(f"--to must be one of: {', '.join(sorted(VALID_TARGETS))}", 2)
-
 
     if priority not in (1, 2, 3):
         _abort("--priority must be 1, 2, or 3", 2)
@@ -268,7 +279,7 @@ def enqueue_cmd(
     print(f"  task: {task_id}")
     print(f"  priority: {priority}")
     if plan_only:
-        print(f"  mode: plan-only (agent proposes plan, does not implement)")
+        print("  mode: plan-only (agent proposes plan, does not implement)")
     if model_override:
         print(f"  model override: {model_override}")
     if effort_override:
@@ -286,23 +297,65 @@ def main(argv: list[str] | None = None) -> None:
         prog="inbox_enqueue",
         description="Enqueue a task to the superharness inbox",
     )
-    parser.add_argument("--project", "-p", required=True, help="Project directory containing .superharness/")
-    parser.add_argument("--to", required=True, dest="target", help=f"Target agent ({'|'.join(sorted(VALID_TARGETS))})")
-    parser.add_argument("--task", "-t", required=True, dest="task_id", help="Task id from contract/handoff")
-    parser.add_argument("--priority", type=int, default=2, help="Priority 1-3 (1 highest, default: 2)")
-    parser.add_argument("--id", default=None, dest="item_id", help="Optional inbox item id")
-    parser.add_argument("--require-watcher", action="store_true", default=False,
-                        help="Block enqueue if watcher is not loaded (default: warn only)")
-    parser.add_argument("--plan-only", action="store_true", default=False, dest="plan_only",
-                        help="Agent proposes a plan and stops; relaxes the enqueue gate for "
-                             "todo+implementation tasks")
-    parser.add_argument("--force-reassign", action="store_true", default=False, dest="force_reassign",
-                        help="Allow --to to differ from the contract 'owner' field (one-shot override, "
-                             "does not rewrite the contract)")
-    parser.add_argument("--model", default="", help="Override model/tier for this dispatch")
-    parser.add_argument("--effort", default="", help="Override effort for this dispatch")
-    parser.add_argument("--json", action="store_true", default=False,
-                        help="Emit machine-readable JSON on stdout instead of human text.")
+    parser.add_argument(
+        "--project",
+        "-p",
+        required=True,
+        help="Project directory containing .superharness/",
+    )
+    parser.add_argument(
+        "--to",
+        required=True,
+        dest="target",
+        help=f"Target agent ({'|'.join(sorted(VALID_TARGETS))})",
+    )
+    parser.add_argument(
+        "--task",
+        "-t",
+        required=True,
+        dest="task_id",
+        help="Task id from contract/handoff",
+    )
+    parser.add_argument(
+        "--priority", type=int, default=2, help="Priority 1-3 (1 highest, default: 2)"
+    )
+    parser.add_argument(
+        "--id", default=None, dest="item_id", help="Optional inbox item id"
+    )
+    parser.add_argument(
+        "--require-watcher",
+        action="store_true",
+        default=False,
+        help="Block enqueue if watcher is not loaded (default: warn only)",
+    )
+    parser.add_argument(
+        "--plan-only",
+        action="store_true",
+        default=False,
+        dest="plan_only",
+        help="Agent proposes a plan and stops; relaxes the enqueue gate for "
+        "todo+implementation tasks",
+    )
+    parser.add_argument(
+        "--force-reassign",
+        action="store_true",
+        default=False,
+        dest="force_reassign",
+        help="Allow --to to differ from the contract 'owner' field (one-shot override, "
+        "does not rewrite the contract)",
+    )
+    parser.add_argument(
+        "--model", default="", help="Override model/tier for this dispatch"
+    )
+    parser.add_argument(
+        "--effort", default="", help="Override effort for this dispatch"
+    )
+    parser.add_argument(
+        "--json",
+        action="store_true",
+        default=False,
+        help="Emit machine-readable JSON on stdout instead of human text.",
+    )
 
     opts = parser.parse_args(argv)
 
@@ -313,6 +366,7 @@ def main(argv: list[str] | None = None) -> None:
 
     if _JSON_MODE:
         import io
+
         _orig_stdout = sys.stdout
         sys.stdout = io.StringIO()
         try:
@@ -339,15 +393,20 @@ def main(argv: list[str] | None = None) -> None:
                 item_id_resolved = line.split(":", 1)[1].strip()
                 break
         from superharness.utils.json_output import emit_json
-        emit_json({
-            "task_id": opts.task_id,
-            "to": opts.target,
-            "item_id": item_id_resolved,
-            "priority": opts.priority,
-            "plan_only": opts.plan_only,
-            "model_override": opts.model,
-            "effort_override": opts.effort,
-        }, ok=(rc == 0), exit_code=rc)
+
+        emit_json(
+            {
+                "task_id": opts.task_id,
+                "to": opts.target,
+                "item_id": item_id_resolved,
+                "priority": opts.priority,
+                "plan_only": opts.plan_only,
+                "model_override": opts.model,
+                "effort_override": opts.effort,
+            },
+            ok=(rc == 0),
+            exit_code=rc,
+        )
 
     rc = enqueue_cmd(
         project_dir=opts.project,

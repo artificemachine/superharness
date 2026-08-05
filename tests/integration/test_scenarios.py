@@ -2,12 +2,12 @@
 
 Target: 100+ tests through parametrization of real scenarios.
 """
+
 from __future__ import annotations
 
 import json
 import sqlite3
 from pathlib import Path
-from unittest.mock import patch
 
 import pytest
 import yaml
@@ -17,6 +17,7 @@ from superharness.engine.next_action import _MAPPING
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
+
 def _setup_db(tmp_path: Path) -> sqlite3.Connection:
     harness = tmp_path / ".superharness"
     harness.mkdir()
@@ -24,6 +25,7 @@ def _setup_db(tmp_path: Path) -> sqlite3.Connection:
     conn = sqlite3.connect(str(db_path))
     conn.row_factory = sqlite3.Row
     from superharness.engine.db import init_db
+
     init_db(conn)
     conn.commit()
     (harness / "profile.yaml").write_text(yaml.dump({"autonomy": "autonomous"}))
@@ -35,10 +37,14 @@ def _seed(conn, **kwargs):
     table = kwargs.pop("_table", "tasks")
     cols = ", ".join(kwargs.keys())
     placeholders = ", ".join("?" for _ in kwargs)
-    conn.execute(f"INSERT OR REPLACE INTO {table} ({cols}) VALUES ({placeholders})", tuple(kwargs.values()))
+    conn.execute(
+        f"INSERT OR REPLACE INTO {table} ({cols}) VALUES ({placeholders})",
+        tuple(kwargs.values()),
+    )
 
 
 # ── Status transition scenarios (expect ~50 tests) ────────────────────────────
+
 
 def _transition_scenarios():
     """Generate test scenarios for each status transition."""
@@ -56,11 +62,19 @@ class TestTransitionScenarios:
     def test_transition_persists_in_db(self, tmp_path, from_s, to_s, label):
         """Status transition updates the tasks table."""
         conn = _setup_db(tmp_path)
-        _seed(conn, _table="tasks", id="t1", title=label, status=from_s,
-              project_path=str(tmp_path), created_at="2026-01-01T00:00:00Z")
+        _seed(
+            conn,
+            _table="tasks",
+            id="t1",
+            title=label,
+            status=from_s,
+            project_path=str(tmp_path),
+            created_at="2026-01-01T00:00:00Z",
+        )
         conn.commit()
 
-        from superharness.engine.db import get_connection, init_db, now_iso
+        from superharness.engine.db import get_connection, init_db
+
         conn2 = get_connection(str(tmp_path))
         try:
             init_db(conn2)
@@ -76,27 +90,44 @@ class TestTransitionScenarios:
     def test_transition_is_legal(self, from_s, to_s, label):
         """Every transition in the graph passes validate_status_transition."""
         from superharness.engine.next_action import validate_status_transition
+
         validate_status_transition(from_s, to_s)  # should not raise
 
 
 # ── Inbox interaction scenarios (expect ~30 tests) ────────────────────────────
+
 
 class TestInboxInteraction:
     """Inbox status transitions must stay in sync with task status."""
 
     def test_enqueue_creates_pending(self, tmp_path):
         conn = _setup_db(tmp_path)
-        _seed(conn, _table="tasks", id="t1", title="Test", status="plan_approved",
-              project_path=str(tmp_path), created_at="2026-01-01T00:00:00Z")
+        _seed(
+            conn,
+            _table="tasks",
+            id="t1",
+            title="Test",
+            status="plan_approved",
+            project_path=str(tmp_path),
+            created_at="2026-01-01T00:00:00Z",
+        )
         conn.commit()
 
         from superharness.engine.db import get_connection, init_db
         from superharness.engine import inbox_dao
+
         conn2 = get_connection(str(tmp_path))
         try:
             init_db(conn2)
-            inbox_dao.enqueue(conn2, id="i1", task_id="t1", target_agent="claude-code",
-                             priority=1, project_path=str(tmp_path), now="2026-01-01T00:00:00Z")
+            inbox_dao.enqueue(
+                conn2,
+                id="i1",
+                task_id="t1",
+                target_agent="claude-code",
+                priority=1,
+                project_path=str(tmp_path),
+                now="2026-01-01T00:00:00Z",
+            )
             conn2.commit()
             row = conn2.execute("SELECT status FROM inbox WHERE id='i1'").fetchone()
             assert row["status"] == "pending"
@@ -106,21 +137,45 @@ class TestInboxInteraction:
 
     def test_launch_transitions_to_launched(self, tmp_path):
         conn = _setup_db(tmp_path)
-        _seed(conn, _table="tasks", id="t1", title="Test", status="in_progress",
-              project_path=str(tmp_path), created_at="2026-01-01T00:00:00Z")
-        _seed(conn, _table="inbox", id="i1", task_id="t1", target_agent="claude-code",
-              status="pending", retry_count=0, max_retries=3, created_at="2026-01-01T00:00:00Z")
+        _seed(
+            conn,
+            _table="tasks",
+            id="t1",
+            title="Test",
+            status="in_progress",
+            project_path=str(tmp_path),
+            created_at="2026-01-01T00:00:00Z",
+        )
+        _seed(
+            conn,
+            _table="inbox",
+            id="i1",
+            task_id="t1",
+            target_agent="claude-code",
+            status="pending",
+            retry_count=0,
+            max_retries=3,
+            created_at="2026-01-01T00:00:00Z",
+        )
         conn.commit()
 
         from superharness.engine.db import get_connection, init_db
         from superharness.engine import inbox_dao
+
         conn2 = get_connection(str(tmp_path))
         try:
             init_db(conn2)
-            inbox_dao.update_status(conn2, "i1", from_status="pending", to_status="launched",
-                                    now="2026-01-01T00:01:00Z")
+            inbox_dao.update_status(
+                conn2,
+                "i1",
+                from_status="pending",
+                to_status="launched",
+                now="2026-01-01T00:01:00Z",
+            )
             conn2.commit()
-            row = conn2.execute("SELECT status, launched_at FROM inbox WHERE id='i1'").fetchone()
+            row = conn2.execute(
+                "SELECT status, launched_at FROM inbox WHERE id='i1'"
+            ).fetchone()
             assert row["status"] == "launched"
             assert row["launched_at"] is not None
         finally:
@@ -129,21 +184,46 @@ class TestInboxInteraction:
 
     def test_failure_preserves_reason(self, tmp_path):
         conn = _setup_db(tmp_path)
-        _seed(conn, _table="tasks", id="t1", title="Test", status="in_progress",
-              project_path=str(tmp_path), created_at="2026-01-01T00:00:00Z")
-        _seed(conn, _table="inbox", id="i1", task_id="t1", target_agent="claude-code",
-              status="launched", retry_count=0, max_retries=3, created_at="2026-01-01T00:00:00Z")
+        _seed(
+            conn,
+            _table="tasks",
+            id="t1",
+            title="Test",
+            status="in_progress",
+            project_path=str(tmp_path),
+            created_at="2026-01-01T00:00:00Z",
+        )
+        _seed(
+            conn,
+            _table="inbox",
+            id="i1",
+            task_id="t1",
+            target_agent="claude-code",
+            status="launched",
+            retry_count=0,
+            max_retries=3,
+            created_at="2026-01-01T00:00:00Z",
+        )
         conn.commit()
 
         from superharness.engine.db import get_connection, init_db
         from superharness.engine import inbox_dao
+
         conn2 = get_connection(str(tmp_path))
         try:
             init_db(conn2)
-            inbox_dao.update_status(conn2, "i1", from_status="launched", to_status="failed",
-                                    now="2026-01-01T00:05:00Z", reason="test timeout")
+            inbox_dao.update_status(
+                conn2,
+                "i1",
+                from_status="launched",
+                to_status="failed",
+                now="2026-01-01T00:05:00Z",
+                reason="test timeout",
+            )
             conn2.commit()
-            row = conn2.execute("SELECT status, failed_reason, failed_at FROM inbox WHERE id='i1'").fetchone()
+            row = conn2.execute(
+                "SELECT status, failed_reason, failed_at FROM inbox WHERE id='i1'"
+            ).fetchone()
             assert row["status"] == "failed"
             assert "timeout" in (row["failed_reason"] or "")
             assert row["failed_at"] is not None
@@ -154,10 +234,13 @@ class TestInboxInteraction:
 
 # ── Discussion integration scenarios (expect ~35 tests) ───────────────────────
 
+
 class TestDiscussionIntegration:
     """Discussion lifecycle test scenarios."""
 
-    def _create_discussion(self, conn, disc_id: str, owners: list[str], status: str = "active"):
+    def _create_discussion(
+        self, conn, disc_id: str, owners: list[str], status: str = "active"
+    ):
         conn.execute(
             "INSERT INTO discussions (id, topic, owners, status, created_at) "
             "VALUES (?, ?, ?, ?, '2026-01-01T00:00:00Z')",
@@ -167,18 +250,32 @@ class TestDiscussionIntegration:
     def test_discussion_start_to_first_round(self, tmp_path):
         conn = _setup_db(tmp_path)
         self._create_discussion(conn, "d1", ["claude-code", "codex-cli"])
-        _seed(conn, _table="tasks", id="d1/round-1", title="Round 1", status="in_progress",
-              project_path=str(tmp_path), created_at="2026-01-01T00:00:00Z")
+        _seed(
+            conn,
+            _table="tasks",
+            id="d1/round-1",
+            title="Round 1",
+            status="in_progress",
+            project_path=str(tmp_path),
+            created_at="2026-01-01T00:00:00Z",
+        )
         conn.commit()
 
         from superharness.engine.db import get_connection, init_db
         from superharness.engine import discussions_dao
+
         conn2 = get_connection(str(tmp_path))
         try:
             init_db(conn2)
-            discussions_dao.add_round(conn2, discussion_id="d1", round_number=1,
-                                      agent="claude-code", verdict="agree",
-                                      content="OK", now="2026-01-01T01:00:00Z")
+            discussions_dao.add_round(
+                conn2,
+                discussion_id="d1",
+                round_number=1,
+                agent="claude-code",
+                verdict="agree",
+                content="OK",
+                now="2026-01-01T01:00:00Z",
+            )
             conn2.commit()
             rounds = discussions_dao.get_rounds(conn2, "d1")
             assert len(rounds) == 1
@@ -194,12 +291,15 @@ class TestDiscussionIntegration:
 
         from superharness.engine.db import get_connection, init_db, now_iso
         from superharness.engine import discussions_dao
+
         conn2 = get_connection(str(tmp_path))
         try:
             init_db(conn2)
             discussions_dao.close(conn2, "d2", consensus="agree", now=now_iso())
             conn2.commit()
-            row = conn2.execute("SELECT status, closed_at FROM discussions WHERE id='d2'").fetchone()
+            row = conn2.execute(
+                "SELECT status, closed_at FROM discussions WHERE id='d2'"
+            ).fetchone()
             assert row["status"] == "closed"
             assert row["closed_at"] is not None
         finally:
@@ -209,18 +309,32 @@ class TestDiscussionIntegration:
     def test_is_submitted_db_only(self, tmp_path):
         conn = _setup_db(tmp_path)
         self._create_discussion(conn, "d3", ["claude-code", "codex-cli"])
-        _seed(conn, _table="tasks", id="d3/round-1", title="R1", status="in_progress",
-              project_path=str(tmp_path), created_at="2026-01-01T00:00:00Z")
+        _seed(
+            conn,
+            _table="tasks",
+            id="d3/round-1",
+            title="R1",
+            status="in_progress",
+            project_path=str(tmp_path),
+            created_at="2026-01-01T00:00:00Z",
+        )
         conn.commit()
 
         from superharness.engine.db import get_connection, init_db
         from superharness.engine import discussions_dao
+
         conn2 = get_connection(str(tmp_path))
         try:
             init_db(conn2)
-            discussions_dao.add_round(conn2, discussion_id="d3", round_number=1,
-                                      agent="claude-code", verdict="agree",
-                                      content="Y", now="2026-01-01T01:00:00Z")
+            discussions_dao.add_round(
+                conn2,
+                discussion_id="d3",
+                round_number=1,
+                agent="claude-code",
+                verdict="agree",
+                content="Y",
+                now="2026-01-01T01:00:00Z",
+            )
             conn2.commit()
             assert discussions_dao.is_submitted(conn2, "d3", 1, "claude-code")
             assert not discussions_dao.is_submitted(conn2, "d3", 1, "codex-cli")
@@ -231,21 +345,31 @@ class TestDiscussionIntegration:
 
 # ── Orchestrator integration (expect ~15 tests) ───────────────────────────────
 
+
 class TestOrchestratorIntegration:
     """Orchestrator interaction with DB and routing."""
 
     def test_fallback_routing_not_decompose(self, tmp_path):
         from superharness.engine.orchestrator import Orchestrator
+
         orch = Orchestrator(project_dir=str(tmp_path))
-        plan = orch._fallback_routing({"id": "t1", "title": "Test", "owner": "claude-code"})
+        plan = orch._fallback_routing(
+            {"id": "t1", "title": "Test", "owner": "claude-code"}
+        )
         assert plan.owner == "claude-code"
         assert plan.decompose is False
         assert len(plan.subtasks) == 0
 
     def test_routing_plan_fields(self):
         from superharness.engine.orchestrator import RoutingPlan
-        plan = RoutingPlan(owner="codex-cli", tier="standard", effort="medium",
-                          decompose=False, rationale="simple fix")
+
+        plan = RoutingPlan(
+            owner="codex-cli",
+            tier="standard",
+            effort="medium",
+            decompose=False,
+            rationale="simple fix",
+        )
         assert plan.owner == "codex-cli"
         assert plan.tier == "standard"
         assert plan.effort == "medium"
@@ -253,11 +377,28 @@ class TestOrchestratorIntegration:
 
     def test_routing_plan_with_subtasks(self):
         from superharness.engine.orchestrator import RoutingPlan
+
         plan = RoutingPlan(
-            owner="claude-code", tier="max", effort="high", decompose=True,
-            rationale="complex", subtasks=[
-                {"id": "t.st1", "title": "Part 1", "owner": "codex-cli", "model_tier": "standard", "effort": "medium"},
-                {"id": "t.st2", "title": "Part 2", "owner": "claude-code", "model_tier": "max", "effort": "high"},
+            owner="claude-code",
+            tier="max",
+            effort="high",
+            decompose=True,
+            rationale="complex",
+            subtasks=[
+                {
+                    "id": "t.st1",
+                    "title": "Part 1",
+                    "owner": "codex-cli",
+                    "model_tier": "standard",
+                    "effort": "medium",
+                },
+                {
+                    "id": "t.st2",
+                    "title": "Part 2",
+                    "owner": "claude-code",
+                    "model_tier": "max",
+                    "effort": "high",
+                },
             ],
             total_estimated_cost_usd=5.50,
         )
@@ -266,31 +407,53 @@ class TestOrchestratorIntegration:
 
     def test_orchestrator_chain_all_valid(self):
         from superharness.engine.orchestrator import _ORCHESTRATOR_CHAIN
+
         for binary, model_id, label in _ORCHESTRATOR_CHAIN:
             assert binary
             assert model_id
             assert label
 
+
 # ── Inbox interaction edge cases (additional tests) ───────────────────────────
+
 
 class TestInboxEdgeCases:
     """Inbox edge case scenarios."""
 
     def test_mark_done_removes_from_active(self, tmp_path):
         conn = _setup_db(tmp_path)
-        _seed(conn, _table="tasks", id="t1", title="T", status="in_progress",
-              project_path=str(tmp_path), created_at="2026-01-01T00:00:00Z")
-        _seed(conn, _table="inbox", id="i1", task_id="t1", target_agent="claude-code",
-              status="launched", retry_count=0, max_retries=3, created_at="2026-01-01T00:00:00Z")
+        _seed(
+            conn,
+            _table="tasks",
+            id="t1",
+            title="T",
+            status="in_progress",
+            project_path=str(tmp_path),
+            created_at="2026-01-01T00:00:00Z",
+        )
+        _seed(
+            conn,
+            _table="inbox",
+            id="i1",
+            task_id="t1",
+            target_agent="claude-code",
+            status="launched",
+            retry_count=0,
+            max_retries=3,
+            created_at="2026-01-01T00:00:00Z",
+        )
         conn.commit()
         from superharness.engine.db import get_connection, init_db
         from superharness.engine import inbox_dao
+
         conn2 = get_connection(str(tmp_path))
         try:
             init_db(conn2)
             inbox_dao.mark_done(conn2, "i1", now="2026-01-01T01:00:00Z")
             conn2.commit()
-            row = conn2.execute("SELECT status, done_at FROM inbox WHERE id='i1'").fetchone()
+            row = conn2.execute(
+                "SELECT status, done_at FROM inbox WHERE id='i1'"
+            ).fetchone()
             assert row["status"] == "done"
             assert row["done_at"] is not None
         finally:
@@ -299,18 +462,37 @@ class TestInboxEdgeCases:
 
     def test_get_stale_returns_old_items(self, tmp_path):
         conn = _setup_db(tmp_path)
-        _seed(conn, _table="tasks", id="t1", title="T", status="in_progress",
-              project_path=str(tmp_path), created_at="2026-01-01T00:00:00Z")
-        _seed(conn, _table="inbox", id="i1", task_id="t1", target_agent="claude-code",
-              status="launched", retry_count=0, max_retries=3, created_at="2020-01-01T00:00:00Z",
-              last_heartbeat="2020-01-01T00:00:00Z")
+        _seed(
+            conn,
+            _table="tasks",
+            id="t1",
+            title="T",
+            status="in_progress",
+            project_path=str(tmp_path),
+            created_at="2026-01-01T00:00:00Z",
+        )
+        _seed(
+            conn,
+            _table="inbox",
+            id="i1",
+            task_id="t1",
+            target_agent="claude-code",
+            status="launched",
+            retry_count=0,
+            max_retries=3,
+            created_at="2020-01-01T00:00:00Z",
+            last_heartbeat="2020-01-01T00:00:00Z",
+        )
         conn.commit()
         from superharness.engine.db import get_connection, init_db
         from superharness.engine import inbox_dao
+
         conn2 = get_connection(str(tmp_path))
         try:
             init_db(conn2)
-            stale = inbox_dao.get_stale(conn2, timeout_seconds=300, now="2026-01-01T00:10:00Z")
+            stale = inbox_dao.get_stale(
+                conn2, timeout_seconds=300, now="2026-01-01T00:10:00Z"
+            )
             assert len(stale) >= 1, "Old item should be stale"
         finally:
             conn2.close()
@@ -318,15 +500,41 @@ class TestInboxEdgeCases:
 
     def test_get_all_by_status(self, tmp_path):
         conn = _setup_db(tmp_path)
-        _seed(conn, _table="tasks", id="t1", title="T", status="in_progress",
-              project_path=str(tmp_path), created_at="2026-01-01T00:00:00Z")
-        _seed(conn, _table="inbox", id="i1", task_id="t1", target_agent="claude-code",
-              status="failed", retry_count=0, max_retries=3, created_at="2026-01-01T00:00:00Z")
-        _seed(conn, _table="inbox", id="i2", task_id="t1", target_agent="codex-cli",
-              status="pending", retry_count=0, max_retries=3, created_at="2026-01-01T00:00:00Z")
+        _seed(
+            conn,
+            _table="tasks",
+            id="t1",
+            title="T",
+            status="in_progress",
+            project_path=str(tmp_path),
+            created_at="2026-01-01T00:00:00Z",
+        )
+        _seed(
+            conn,
+            _table="inbox",
+            id="i1",
+            task_id="t1",
+            target_agent="claude-code",
+            status="failed",
+            retry_count=0,
+            max_retries=3,
+            created_at="2026-01-01T00:00:00Z",
+        )
+        _seed(
+            conn,
+            _table="inbox",
+            id="i2",
+            task_id="t1",
+            target_agent="codex-cli",
+            status="pending",
+            retry_count=0,
+            max_retries=3,
+            created_at="2026-01-01T00:00:00Z",
+        )
         conn.commit()
         from superharness.engine.db import get_connection, init_db
         from superharness.engine import inbox_dao
+
         conn2 = get_connection(str(tmp_path))
         try:
             init_db(conn2)
@@ -340,19 +548,38 @@ class TestInboxEdgeCases:
 
     def test_retry_increments_count_in_db(self, tmp_path):
         conn = _setup_db(tmp_path)
-        _seed(conn, _table="tasks", id="t1", title="T", status="in_progress",
-              project_path=str(tmp_path), created_at="2026-01-01T00:00:00Z")
-        _seed(conn, _table="inbox", id="i1", task_id="t1", target_agent="claude-code",
-              status="failed", retry_count=1, max_retries=3, created_at="2026-01-01T00:00:00Z")
+        _seed(
+            conn,
+            _table="tasks",
+            id="t1",
+            title="T",
+            status="in_progress",
+            project_path=str(tmp_path),
+            created_at="2026-01-01T00:00:00Z",
+        )
+        _seed(
+            conn,
+            _table="inbox",
+            id="i1",
+            task_id="t1",
+            target_agent="claude-code",
+            status="failed",
+            retry_count=1,
+            max_retries=3,
+            created_at="2026-01-01T00:00:00Z",
+        )
         conn.commit()
         from superharness.engine.db import get_connection, init_db
         from superharness.engine import inbox_dao
+
         conn2 = get_connection(str(tmp_path))
         try:
             init_db(conn2)
             inbox_dao.set_retry(conn2, "i1", 2, "test", "2026-01-01T01:00:00Z")
             conn2.commit()
-            row = conn2.execute("SELECT retry_count, status FROM inbox WHERE id='i1'").fetchone()
+            row = conn2.execute(
+                "SELECT retry_count, status FROM inbox WHERE id='i1'"
+            ).fetchone()
             assert row["retry_count"] == 2
             assert row["status"] == "pending"
         finally:
@@ -361,25 +588,50 @@ class TestInboxEdgeCases:
 
     def test_done_transitions_correctly(self, tmp_path):
         conn = _setup_db(tmp_path)
-        _seed(conn, _table="tasks", id="t1", title="T", status="done",
-              project_path=str(tmp_path), created_at="2026-01-01T00:00:00Z")
-        _seed(conn, _table="inbox", id="i1", task_id="t1", target_agent="claude-code",
-              status="launched", retry_count=0, max_retries=3, created_at="2026-01-01T00:00:00Z")
+        _seed(
+            conn,
+            _table="tasks",
+            id="t1",
+            title="T",
+            status="done",
+            project_path=str(tmp_path),
+            created_at="2026-01-01T00:00:00Z",
+        )
+        _seed(
+            conn,
+            _table="inbox",
+            id="i1",
+            task_id="t1",
+            target_agent="claude-code",
+            status="launched",
+            retry_count=0,
+            max_retries=3,
+            created_at="2026-01-01T00:00:00Z",
+        )
         conn.commit()
         from superharness.engine.db import get_connection, init_db
         from superharness.engine import inbox_dao
+
         conn2 = get_connection(str(tmp_path))
         try:
             init_db(conn2)
-            inbox_dao.update_status(conn2, "i1", from_status="launched", to_status="done",
-                                    now="2026-01-01T01:00:00Z")
+            inbox_dao.update_status(
+                conn2,
+                "i1",
+                from_status="launched",
+                to_status="done",
+                now="2026-01-01T01:00:00Z",
+            )
             conn2.commit()
-            row = conn2.execute("SELECT status, done_at FROM inbox WHERE id='i1'").fetchone()
+            row = conn2.execute(
+                "SELECT status, done_at FROM inbox WHERE id='i1'"
+            ).fetchone()
             assert row["status"] == "done"
             assert row["done_at"] is not None
         finally:
             conn2.close()
         conn.close()
+
 
 class TestFinalEdgeCases:
     """Final edge cases to push integration past 100."""
@@ -387,44 +639,91 @@ class TestFinalEdgeCases:
     def test_task_creation_with_acceptance_criteria(self, tmp_path):
         conn = _setup_db(tmp_path)
         ac = ["Must work", "Must be fast", "Must be tested"]
-        _seed(conn, _table="tasks", id="t-ac", title="AC Task", status="todo",
-              project_path=str(tmp_path), created_at="2026-01-01T00:00:00Z",
-              acceptance_criteria=json.dumps(ac))
+        _seed(
+            conn,
+            _table="tasks",
+            id="t-ac",
+            title="AC Task",
+            status="todo",
+            project_path=str(tmp_path),
+            created_at="2026-01-01T00:00:00Z",
+            acceptance_criteria=json.dumps(ac),
+        )
         conn.commit()
-        row = conn.execute("SELECT acceptance_criteria FROM tasks WHERE id='t-ac'").fetchone()
+        row = conn.execute(
+            "SELECT acceptance_criteria FROM tasks WHERE id='t-ac'"
+        ).fetchone()
         parsed = json.loads(row["acceptance_criteria"] or "[]")
         assert len(parsed) == 3
         conn.close()
 
     def test_empty_acceptance_criteria(self, tmp_path):
         conn = _setup_db(tmp_path)
-        _seed(conn, _table="tasks", id="t-noac", title="No AC", status="todo",
-              project_path=str(tmp_path), created_at="2026-01-01T00:00:00Z",
-              acceptance_criteria="[]")
+        _seed(
+            conn,
+            _table="tasks",
+            id="t-noac",
+            title="No AC",
+            status="todo",
+            project_path=str(tmp_path),
+            created_at="2026-01-01T00:00:00Z",
+            acceptance_criteria="[]",
+        )
         conn.commit()
-        row = conn.execute("SELECT acceptance_criteria FROM tasks WHERE id='t-noac'").fetchone()
+        row = conn.execute(
+            "SELECT acceptance_criteria FROM tasks WHERE id='t-noac'"
+        ).fetchone()
         assert row["acceptance_criteria"] == "[]"
         conn.close()
 
     def test_task_with_blocked_by(self, tmp_path):
         conn = _setup_db(tmp_path)
-        _seed(conn, _table="tasks", id="t-parent", title="Parent", status="done",
-              project_path=str(tmp_path), created_at="2026-01-01T00:00:00Z")
-        _seed(conn, _table="tasks", id="t-child", title="Child", status="todo",
-              project_path=str(tmp_path), created_at="2026-01-01T00:00:00Z",
-              blocked_by_raw='["t-parent"]')
+        _seed(
+            conn,
+            _table="tasks",
+            id="t-parent",
+            title="Parent",
+            status="done",
+            project_path=str(tmp_path),
+            created_at="2026-01-01T00:00:00Z",
+        )
+        _seed(
+            conn,
+            _table="tasks",
+            id="t-child",
+            title="Child",
+            status="todo",
+            project_path=str(tmp_path),
+            created_at="2026-01-01T00:00:00Z",
+            blocked_by_raw='["t-parent"]',
+        )
         conn.commit()
-        row = conn.execute("SELECT blocked_by_raw FROM tasks WHERE id='t-child'").fetchone()
+        row = conn.execute(
+            "SELECT blocked_by_raw FROM tasks WHERE id='t-child'"
+        ).fetchone()
         assert row["blocked_by_raw"] is not None
         conn.close()
 
     def test_quick_status_transition_chain(self, tmp_path):
         """Full status chain: todo → plan_proposed → plan_approved → in_progress → report_ready → done."""
         conn = _setup_db(tmp_path)
-        _seed(conn, _table="tasks", id="chain", title="Chain", status="todo",
-              project_path=str(tmp_path), created_at="2026-01-01T00:00:00Z")
+        _seed(
+            conn,
+            _table="tasks",
+            id="chain",
+            title="Chain",
+            status="todo",
+            project_path=str(tmp_path),
+            created_at="2026-01-01T00:00:00Z",
+        )
         conn.commit()
-        chain = ["plan_proposed", "plan_approved", "in_progress", "report_ready", "done"]
+        chain = [
+            "plan_proposed",
+            "plan_approved",
+            "in_progress",
+            "report_ready",
+            "done",
+        ]
         for status in chain:
             conn.execute("UPDATE tasks SET status=? WHERE id='chain'", (status,))
             conn.commit()
@@ -432,26 +731,27 @@ class TestFinalEdgeCases:
             assert row["status"] == status
         conn.close()
 
+
 class TestDiscussionRoundPrompt:
     """Discussion round prompts instruct agents to write their own files."""
 
     def test_prompt_round_1_structure(self):
         """Round 1 prompt includes the agent-specific submit path and required fields."""
         from superharness.commands.delegate import build_discussion_prompt
-        
+
         target = "codex-cli"
         disc_id = "disc-123"
         submit_path = f".superharness/discussions/{disc_id}/round-1-{target}.yaml"
-        
+
         prompt = build_discussion_prompt(
             target=target,
             discussion_id=disc_id,
             discussion_round=1,
             disc_topic="Test Topic",
             disc_max="3",
-            submit_path=submit_path
+            submit_path=submit_path,
         )
-        
+
         assert "Topic: Test Topic" in prompt
         assert "You are: codex-cli" in prompt
         assert f"write a YAML file to: {submit_path}" in prompt
@@ -464,12 +764,14 @@ class TestDiscussionRoundPrompt:
     def test_prompt_round_2_includes_prior_context(self):
         """Round 2+ prompt includes prior context and different instructions."""
         from superharness.commands.delegate import build_discussion_prompt
-        
+
         target = "claude-code"
         disc_id = "disc-456"
         submit_path = f".superharness/discussions/{disc_id}/round-2-{target}.yaml"
-        prior = "--- Round 1 ---\nAgent: gemini-cli\nVerdict: partial\nPosition: I think X."
-        
+        prior = (
+            "--- Round 1 ---\nAgent: gemini-cli\nVerdict: partial\nPosition: I think X."
+        )
+
         prompt = build_discussion_prompt(
             target=target,
             discussion_id=disc_id,
@@ -477,9 +779,9 @@ class TestDiscussionRoundPrompt:
             disc_topic="Deep Tech",
             disc_max="3",
             submit_path=submit_path,
-            prior_context=prior
+            prior_context=prior,
         )
-        
+
         assert "Topic: Deep Tech" in prompt
         assert "This is round 2 of 3" in prompt
         assert "Here are the positions from prior rounds:" in prompt
@@ -490,12 +792,15 @@ class TestDiscussionRoundPrompt:
     def test_prompt_includes_auto_directive(self):
         """Prompt includes non-interactive directive when provided."""
         from superharness.commands.delegate import build_discussion_prompt
-        
+
         directive = "\nApply all changes immediately."
         prompt = build_discussion_prompt(
-            target="agent", discussion_id="d", discussion_round=1,
-            disc_topic="T", disc_max="2", submit_path="p",
-            auto_directive=directive
+            target="agent",
+            discussion_id="d",
+            discussion_round=1,
+            disc_topic="T",
+            disc_max="2",
+            submit_path="p",
+            auto_directive=directive,
         )
         assert directive in prompt
-

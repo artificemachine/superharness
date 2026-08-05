@@ -3,6 +3,7 @@ to the central rotating file handler — no per-module migration needed.
 
 This is the cheap way to get every `superharness.*` module logging
 without touching 44 files."""
+
 from __future__ import annotations
 
 import logging
@@ -41,6 +42,7 @@ def test_submodule_log_flows_to_central_file_after_bootstrap():
     `logging.getLogger(__name__)` writes to the central log file via
     propagation up the logger hierarchy."""
     from superharness.logging_utils import get_logger
+
     get_logger("superharness")  # bootstrap
 
     submod_log = logging.getLogger("superharness.commands.somefoo")
@@ -57,15 +59,22 @@ def test_submodule_log_flows_to_central_file_after_bootstrap():
 def test_audit_logger_does_not_flood_main_log():
     """Audit messages must remain on the audit channel only."""
     from superharness.logging_utils import get_logger, get_audit_logger
+
     get_logger("superharness")  # bootstrap main
     audit = get_audit_logger()
     audit.info("sensitive op: launchctl load com.test.plist")
 
-    for h in logging.getLogger("superharness").handlers + logging.getLogger("superharness.audit").handlers:
+    for h in (
+        logging.getLogger("superharness").handlers
+        + logging.getLogger("superharness.audit").handlers
+    ):
         h.flush()
 
-    main_content = Path(os.environ["SUPERHARNESS_LOG_FILE"]).read_text() \
-        if Path(os.environ["SUPERHARNESS_LOG_FILE"]).is_file() else ""
+    main_content = (
+        Path(os.environ["SUPERHARNESS_LOG_FILE"]).read_text()
+        if Path(os.environ["SUPERHARNESS_LOG_FILE"]).is_file()
+        else ""
+    )
     audit_content = Path(os.environ["SUPERHARNESS_AUDIT_LOG_FILE"]).read_text()
 
     assert "sensitive op" in audit_content

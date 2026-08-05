@@ -2,6 +2,7 @@
 
 Cherry-picked from hermes-agent/tools/checkpoint_manager.py.
 """
+
 import subprocess
 
 
@@ -10,7 +11,10 @@ def snapshot(project_dir: str, task_id: str) -> bool:
     safe_id = task_id.replace("/", "-").replace(".", "-")
     result = subprocess.run(
         ["git", "stash", "push", "-m", f"shux-checkpoint:{safe_id}"],
-        cwd=project_dir, capture_output=True, text=True, check=False
+        cwd=project_dir,
+        capture_output=True,
+        text=True,
+        check=False,
     )
     return result.returncode == 0 and "No local changes" not in result.stdout
 
@@ -26,7 +30,9 @@ def rollback(project_dir: str, task_id: str) -> bool:
             stash_ref = line.split(":")[0]
             subprocess.run(
                 ["git", "stash", "pop", stash_ref],
-                cwd=project_dir, capture_output=True, check=False
+                cwd=project_dir,
+                capture_output=True,
+                check=False,
             )
             return True
     return False
@@ -43,7 +49,9 @@ def prune_old(project_dir: str, max_age_hours: int = 24) -> int:
             stash_ref = line.split(":")[0]
             subprocess.run(
                 ["git", "stash", "drop", stash_ref],
-                cwd=project_dir, capture_output=True, check=False
+                cwd=project_dir,
+                capture_output=True,
+                check=False,
             )
             removed += 1
     return removed

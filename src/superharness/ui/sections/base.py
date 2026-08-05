@@ -15,6 +15,7 @@ Usage:
             non_interactive=non_interactive,
         )
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -61,15 +62,21 @@ def run_section(
     # Interactive path
     if choices:
         from superharness.ui.prompts import prompt_choice
+
         # Find default index
         try:
             default_idx = choices.index(effective_default)
         except ValueError:
             default_idx = 0
-        idx = prompt_choice(f"{label} (current: {effective_default or 'unset'})", choices, default=default_idx)
+        idx = prompt_choice(
+            f"{label} (current: {effective_default or 'unset'})",
+            choices,
+            default=default_idx,
+        )
         new_value = choices[idx]
     else:
         from superharness.ui.prompts import prompt
+
         new_value = prompt(label, default=effective_default or "")
 
     write_field(project_dir, field, new_value)

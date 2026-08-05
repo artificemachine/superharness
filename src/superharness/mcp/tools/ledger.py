@@ -1,4 +1,5 @@
 """MCP ledger tools — Iteration 7."""
+
 from __future__ import annotations
 
 import os
@@ -17,6 +18,7 @@ def get_ledger(project_path: str, n: int = 50) -> list[str]:
     """Return the last *n* ledger entries from SQLite, oldest-first (matches ledger.md layout)."""
     try:
         from superharness.engine import state_reader as _sr
+
         entries = _sr.get_ledger_entries(project_path, limit=n)
         # get_ledger_entries returns newest-first; reverse so callers get oldest-first.
         return [
@@ -38,7 +40,10 @@ def append_ledger(project_path: str, entry: str) -> None:
     try:
         from superharness.engine.db import managed_connection, now_iso
         from superharness.engine import ledger_dao
+
         with managed_connection(project_path) as conn:
-            ledger_dao.record(conn, action=entry.lstrip("- "), agent="mcp", now=now_iso())
+            ledger_dao.record(
+                conn, action=entry.lstrip("- "), agent="mcp", now=now_iso()
+            )
     except Exception:
         pass  # best-effort; ledger.md write already succeeded

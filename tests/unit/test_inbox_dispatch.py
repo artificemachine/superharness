@@ -8,7 +8,9 @@ from pathlib import Path
 from tests.helpers import run_bash, REPO_ROOT
 import pytest
 
-pytestmark = pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
+pytestmark = pytest.mark.skip(
+    reason="legacy YAML fixture — pending SQLite migration (see PR #208)"
+)
 
 
 def _run_normalize(args: list[str]) -> subprocess.CompletedProcess:
@@ -35,7 +37,7 @@ def _write_contract(project: Path, *, status: str = "plan_approved") -> None:
                 "  - id: mcp-docs",
                 "    owner: codex-cli",
                 f"    status: {status}",
-                f"    project_path: '{project.as_posix()}'" ,
+                f"    project_path: '{project.as_posix()}'",
             ]
         )
         + "\n"
@@ -58,7 +60,9 @@ def _fake_bin(tmp_path: Path) -> Path:
 
 
 @pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-def test_dispatch_picks_highest_priority_and_sets_launched_in_print_only_mode(repo_root, tmp_path) -> None:
+def test_dispatch_picks_highest_priority_and_sets_launched_in_print_only_mode(
+    repo_root, tmp_path
+) -> None:
     project = tmp_path / "proj"
     project.mkdir()
     _write_contract(project)
@@ -156,7 +160,9 @@ def test_dispatch_marks_failed_when_retry_limit_reached(repo_root, tmp_path) -> 
 
 
 @pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-def test_dispatch_allows_review_requested_items_for_review_launch(repo_root, tmp_path) -> None:
+def test_dispatch_allows_review_requested_items_for_review_launch(
+    repo_root, tmp_path
+) -> None:
     project = tmp_path / "proj_review"
     project.mkdir()
     _write_contract(project, status="review_requested")
@@ -221,7 +227,9 @@ def test_normalize_archives_only_dropped_rows(repo_root, tmp_path) -> None:
         ],
     )
 
-    result = _run_normalize(["--project", str(project), "--archive", "--drop-status", "prepared"])
+    result = _run_normalize(
+        ["--project", str(project), "--archive", "--drop-status", "prepared"]
+    )
     assert result.returncode == 0, result.stderr
 
     inbox_text = (project / ".superharness" / "inbox.yaml").read_text()
@@ -297,7 +305,9 @@ def test_normalize_drops_rows_by_id_prefix(repo_root, tmp_path) -> None:
         ],
     )
 
-    result = _run_normalize(["--project", str(project), "--drop-id-prefix", "20260312T"])
+    result = _run_normalize(
+        ["--project", str(project), "--drop-id-prefix", "20260312T"]
+    )
     assert result.returncode == 0, result.stderr
 
     inbox_text = (project / ".superharness" / "inbox.yaml").read_text()
@@ -327,7 +337,9 @@ def test_dispatch_fails_on_malformed_inbox_yaml(repo_root, tmp_path) -> None:
 
 
 @pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-def test_dispatch_non_interactive_reconciles_stuck_launched_to_failed(repo_root, tmp_path) -> None:
+def test_dispatch_non_interactive_reconciles_stuck_launched_to_failed(
+    repo_root, tmp_path
+) -> None:
     project = tmp_path / "proj5"
     project.mkdir()
     _write_contract(project)
@@ -379,7 +391,9 @@ def test_dispatch_non_interactive_reconciles_stuck_launched_to_failed(repo_root,
     ),
     strict=False,
 )
-def test_dispatch_non_interactive_codex_pauses_when_worktree_dirty(repo_root, tmp_path) -> None:
+def test_dispatch_non_interactive_codex_pauses_when_worktree_dirty(
+    repo_root, tmp_path
+) -> None:
     project = tmp_path / "proj_dirty"
     project.mkdir()
     _write_contract(project)
@@ -403,13 +417,43 @@ def test_dispatch_non_interactive_codex_pauses_when_worktree_dirty(repo_root, tm
 
     run_cmd = subprocess.run
     run_cmd(["git", "init"], cwd=project, check=True, capture_output=True, text=True)
-    run_cmd(["git", "config", "user.email", "test@example.com"], cwd=project, check=True, capture_output=True, text=True)
-    run_cmd(["git", "config", "user.name", "tester"], cwd=project, check=True, capture_output=True, text=True)
-    run_cmd(["git", "config", "core.hooksPath", "/dev/null"], cwd=project, check=True, capture_output=True, text=True)
+    run_cmd(
+        ["git", "config", "user.email", "test@example.com"],
+        cwd=project,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    run_cmd(
+        ["git", "config", "user.name", "tester"],
+        cwd=project,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    run_cmd(
+        ["git", "config", "core.hooksPath", "/dev/null"],
+        cwd=project,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
     tracked = project / "tracked.txt"
     tracked.write_text("base\n")
-    run_cmd(["git", "add", "tracked.txt"], cwd=project, check=True, capture_output=True, text=True)
-    run_cmd(["git", "commit", "-m", "init"], cwd=project, check=True, capture_output=True, text=True)
+    run_cmd(
+        ["git", "add", "tracked.txt"],
+        cwd=project,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    run_cmd(
+        ["git", "commit", "-m", "init"],
+        cwd=project,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
     tracked.write_text("changed\n")
 
     bin_dir = _fake_bin(tmp_path)
@@ -435,7 +479,9 @@ def test_dispatch_non_interactive_codex_pauses_when_worktree_dirty(repo_root, tm
 
 
 @pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-def test_dispatch_non_interactive_reconciles_to_done_from_contract(repo_root, tmp_path) -> None:
+def test_dispatch_non_interactive_reconciles_to_done_from_contract(
+    repo_root, tmp_path
+) -> None:
     project = tmp_path / "proj6"
     project.mkdir()
     _write_contract(project)
@@ -466,14 +512,14 @@ def test_dispatch_non_interactive_reconciles_to_done_from_contract(repo_root, tm
                 "set -euo pipefail",
                 'proj=""',
                 "while [ $# -gt 0 ]; do",
-                '  if [ \"$1\" = \"-C\" ] && [ $# -ge 2 ]; then',
-                '    proj=\"$2\"',
+                '  if [ "$1" = "-C" ] && [ $# -ge 2 ]; then',
+                '    proj="$2"',
                 "    shift 2",
                 "    continue",
                 "  fi",
                 "  shift",
                 "done",
-                'if [ -n \"$proj\" ] && [ -f \"$proj/.superharness/contract.yaml\" ]; then',
+                'if [ -n "$proj" ] && [ -f "$proj/.superharness/contract.yaml" ]; then',
                 "  perl -0pi -e 's/(id:\\s*mcp-docs\\s*\\n(?:[^\\n]*\\n)*?\\s*status:\\s*)(?:todo|plan_approved|in_progress|running|failed|done)/${1}done/s' \"$proj/.superharness/contract.yaml\"",
                 "fi",
                 "echo fake-codex",
@@ -492,8 +538,6 @@ def test_dispatch_non_interactive_reconciles_to_done_from_contract(repo_root, tm
             "PATH": f"{bin_dir}:{os.environ.get('PATH', '')}",
             "SUPERHARNESS_CONFIRM_NON_INTERACTIVE": "YES",
             "SUPERHARNESS_NO_PTY_WRAP": "1",
-            # Skip the `script` PTY wrapper — no controlling terminal in test subprocess
-            "SUPERHARNESS_NO_PTY_WRAP": "1",
         },
     )
 
@@ -506,7 +550,9 @@ def test_dispatch_non_interactive_reconciles_to_done_from_contract(repo_root, tm
 
 
 @pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-def test_dispatch_non_interactive_pauses_when_contract_waits_user_approval(repo_root, tmp_path) -> None:
+def test_dispatch_non_interactive_pauses_when_contract_waits_user_approval(
+    repo_root, tmp_path
+) -> None:
     project = tmp_path / "proj6b"
     project.mkdir()
     _write_contract(project)
@@ -537,14 +583,14 @@ def test_dispatch_non_interactive_pauses_when_contract_waits_user_approval(repo_
                 "set -euo pipefail",
                 'proj=""',
                 "while [ $# -gt 0 ]; do",
-                '  if [ \"$1\" = \"-C\" ] && [ $# -ge 2 ]; then',
-                '    proj=\"$2\"',
+                '  if [ "$1" = "-C" ] && [ $# -ge 2 ]; then',
+                '    proj="$2"',
                 "    shift 2",
                 "    continue",
                 "  fi",
                 "  shift",
                 "done",
-                'if [ -n \"$proj\" ] && [ -f \"$proj/.superharness/contract.yaml\" ]; then',
+                'if [ -n "$proj" ] && [ -f "$proj/.superharness/contract.yaml" ]; then',
                 "  perl -0pi -e 's/(id:\\s*mcp-docs\\s*\\n(?:[^\\n]*\\n)*?\\s*status:\\s*)(?:todo|plan_approved|in_progress|running|failed|done|pending_user_approval)/${1}pending_user_approval/s' \"$proj/.superharness/contract.yaml\"",
                 "fi",
                 "echo fake-codex",
@@ -576,7 +622,9 @@ def test_dispatch_non_interactive_pauses_when_contract_waits_user_approval(repo_
 
 
 @pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-def test_dispatch_worker_mode_uses_dispatch_project_for_execution(repo_root, tmp_path) -> None:
+def test_dispatch_worker_mode_uses_dispatch_project_for_execution(
+    repo_root, tmp_path
+) -> None:
     source = tmp_path / "source_proj"
     source.mkdir()
     _write_contract(source)
@@ -599,7 +647,9 @@ def test_dispatch_worker_mode_uses_dispatch_project_for_execution(repo_root, tmp
     )
     worker = tmp_path / "worker_proj"
     worker.mkdir()
-    (worker / ".superharness").symlink_to(source / ".superharness", target_is_directory=True)
+    (worker / ".superharness").symlink_to(
+        source / ".superharness", target_is_directory=True
+    )
 
     bin_dir = _fake_bin(tmp_path)
     codex_path = bin_dir / "codex"
@@ -611,15 +661,15 @@ def test_dispatch_worker_mode_uses_dispatch_project_for_execution(repo_root, tmp
                 "set -euo pipefail",
                 'proj=""',
                 "while [ $# -gt 0 ]; do",
-                '  if [ \"$1\" = \"-C\" ] && [ $# -ge 2 ]; then',
-                '    proj=\"$2\"',
+                '  if [ "$1" = "-C" ] && [ $# -ge 2 ]; then',
+                '    proj="$2"',
                 "    shift 2",
                 "    continue",
                 "  fi",
                 "  shift",
                 "done",
-                f'printf \"%s\" \"$proj\" > "{capture_path}"',
-                'if [ -n \"$proj\" ] && [ -f \"$proj/.superharness/contract.yaml\" ]; then',
+                f'printf "%s" "$proj" > "{capture_path}"',
+                'if [ -n "$proj" ] && [ -f "$proj/.superharness/contract.yaml" ]; then',
                 "  perl -0pi -e 's/(id:\\s*mcp-docs\\s*\\n(?:[^\\n]*\\n)*?\\s*status:\\s*)(?:todo|plan_approved|in_progress|running|failed|done)/${1}done/s' \"$proj/.superharness/contract.yaml\"",
                 "fi",
                 "echo fake-codex",
@@ -688,7 +738,9 @@ def test_dispatch_handles_pipe_character_in_item_id(repo_root, tmp_path) -> None
 
 
 @pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-def test_dispatch_marks_failed_after_transient_lock_contention(repo_root, tmp_path) -> None:
+def test_dispatch_marks_failed_after_transient_lock_contention(
+    repo_root, tmp_path
+) -> None:
     project = tmp_path / "proj8"
     project.mkdir()
     _write_contract(project)
@@ -726,9 +778,9 @@ def test_dispatch_marks_failed_after_transient_lock_contention(repo_root, tmp_pa
                 f'inbox="{inbox_path}"',
                 f'lock_dir="{lock_dir}"',
                 "while ! grep -q 'status: launched' \"$inbox\"; do sleep 0.02; done",
-                "mkdir \"$lock_dir\"",
+                'mkdir "$lock_dir"',
                 "sleep 0.5",
-                "rmdir \"$lock_dir\"",
+                'rmdir "$lock_dir"',
             ]
         )
         + "\n"
@@ -745,7 +797,7 @@ def test_dispatch_marks_failed_after_transient_lock_contention(repo_root, tmp_pa
             env={
                 "PATH": f"{bin_dir}:{os.environ.get('PATH', '')}",
                 "SUPERHARNESS_CONFIRM_NON_INTERACTIVE": "YES",
-            "SUPERHARNESS_NO_PTY_WRAP": "1",
+                "SUPERHARNESS_NO_PTY_WRAP": "1",
             },
         )
     finally:
@@ -792,10 +844,13 @@ def test_dispatch_launcher_timeout_kills_hung_process(repo_root, tmp_path) -> No
         script,
         cwd=repo_root,
         args=[
-            "--project", str(project),
-            "--to", "codex-cli",
+            "--project",
+            str(project),
+            "--to",
+            "codex-cli",
             "--non-interactive",
-            "--launcher-timeout", "2",
+            "--launcher-timeout",
+            "2",
         ],
         env={
             "PATH": f"{bin_dir}:{os.environ.get('PATH', '')}",
@@ -841,10 +896,13 @@ def test_dispatch_launcher_timeout_zero_means_no_timeout(repo_root, tmp_path) ->
         script,
         cwd=repo_root,
         args=[
-            "--project", str(project),
-            "--to", "codex-cli",
+            "--project",
+            str(project),
+            "--to",
+            "codex-cli",
             "--print-only",
-            "--launcher-timeout", "0",
+            "--launcher-timeout",
+            "0",
         ],
         env={"PATH": f"{bin_dir}:{os.environ.get('PATH', '')}"},
     )
@@ -857,7 +915,9 @@ def test_dispatch_rejects_invalid_launcher_timeout(repo_root, tmp_path) -> None:
     project = tmp_path / "proj_bad_timeout"
     project.mkdir()
     (project / ".superharness").mkdir(parents=True)
-    (project / ".superharness" / "inbox.yaml").write_text("- id: x\n  status: pending\n")
+    (project / ".superharness" / "inbox.yaml").write_text(
+        "- id: x\n  status: pending\n"
+    )
 
     script = repo_root / "src" / "superharness" / "scripts" / "inbox-dispatch.sh"
     result = run_bash(
@@ -873,6 +933,7 @@ def test_dispatch_rejects_invalid_launcher_timeout(repo_root, tmp_path) -> None:
 # ---------------------------------------------------------------------------
 # _MkdirLock PID-based orphan detection tests
 # ---------------------------------------------------------------------------
+
 
 def test_dispatch_lock_writes_owner_pid(tmp_path) -> None:
     from superharness.commands.inbox_dispatch import _MkdirLock

@@ -1,7 +1,7 @@
 """Unit tests for Iter 4: ReviewFanout — parallel code-review subagents."""
+
 from __future__ import annotations
 
-import pytest
 
 from superharness.engine.review_fanout import (
     ReviewFanout,

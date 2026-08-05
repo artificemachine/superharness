@@ -1,4 +1,5 @@
 """Tests for module registry (enable, disable, list modules)."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -52,6 +53,7 @@ class TestModuleRegistry:
         """shux enhance enable <module> → copies template to modules/."""
         # Create a fake template directory
         from superharness.modules import registry
+
         original_template_dir = registry.TEMPLATE_DIR
 
         # Use tmp_path as template dir for this test
@@ -90,6 +92,7 @@ class TestModuleRegistry:
     def test_enable_already_enabled_is_noop(self, tmp_path: Path):
         """Enabling an already-enabled module → no-op, idempotent."""
         from superharness.modules import registry
+
         original_template_dir = registry.TEMPLATE_DIR
 
         # Use tmp_path as template dir for this test
@@ -123,6 +126,7 @@ class TestModuleRegistry:
     def test_disable_sets_enabled_false(self, tmp_path: Path):
         """shux enhance disable <module> → sets enabled: false in YAML."""
         from superharness.modules import registry
+
         original_template_dir = registry.TEMPLATE_DIR
 
         # Use tmp_path as template dir for this test
@@ -168,6 +172,7 @@ class TestModuleRegistry:
     def test_disable_already_disabled_is_noop(self, tmp_path: Path):
         """Disabling already-disabled → no-op, idempotent."""
         from superharness.modules import registry
+
         original_template_dir = registry.TEMPLATE_DIR
 
         # Use tmp_path as template dir for this test
@@ -201,6 +206,7 @@ class TestModuleRegistry:
     def test_enable_unknown_module_fails(self, tmp_path: Path):
         """shux enhance enable nonexistent → error."""
         from superharness.modules import registry
+
         original_template_dir = registry.TEMPLATE_DIR
 
         # Use tmp_path as template dir for this test
@@ -224,6 +230,7 @@ class TestModuleRegistry:
     def test_info_shows_module_details(self, tmp_path: Path):
         """shux enhance info <module> → shows description, detection, settings."""
         from superharness.modules import registry
+
         original_template_dir = registry.TEMPLATE_DIR
 
         # Use tmp_path as template dir for this test

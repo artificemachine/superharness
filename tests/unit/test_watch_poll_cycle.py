@@ -2,6 +2,7 @@
 
 Tests via subprocess: python3 -m superharness.commands.inbox_watch
 """
+
 from __future__ import annotations
 import pytest
 
@@ -10,7 +11,7 @@ import subprocess
 import sys
 import time
 from pathlib import Path
-from tests.helpers import seed_sqlite_from_yaml, get_task_from_sqlite
+from tests.helpers import seed_sqlite_from_yaml
 from unittest.mock import MagicMock
 
 from superharness.engine.platform_runtime import watcher_lock_path
@@ -19,8 +20,7 @@ from superharness.engine.platform_runtime import watcher_lock_path
 PYTHON = sys.executable
 
 INBOX_HEADER = (
-    "# Delegation inbox\n"
-    "# status: pending|launched|running|done|failed|stale\n"
+    "# Delegation inbox\n# status: pending|launched|running|done|failed|stale\n"
 )
 
 
@@ -28,7 +28,10 @@ INBOX_HEADER = (
 # Helpers
 # ---------------------------------------------------------------------------
 
-pytestmark = pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
+pytestmark = pytest.mark.skip(
+    reason="legacy YAML fixture — pending SQLite migration (see PR #208)"
+)
+
 
 def _make_project(tmp_path: Path) -> Path:
     project = tmp_path / "proj"
@@ -50,15 +53,17 @@ def _lock_dir(project: Path) -> Path:
     return Path(watcher_lock_path(str(project)))
 
 
-def _run_watch(project: Path, args: list[str] | None = None) -> subprocess.CompletedProcess:
+def _run_watch(
+    project: Path, args: list[str] | None = None
+) -> subprocess.CompletedProcess:
     env = os.environ.copy()
     env["SUPERHARNESS_CONFIRM_NON_INTERACTIVE"] = "YES"
     # Skip PTY wrapping — CI runners have no TTY and `script` sometimes
     # fails opaquely, turning the launched item into "status: failed".
     env["SUPERHARNESS_NO_PTY_WRAP"] = "1"
     return subprocess.run(
-        [PYTHON, "-m", "superharness.commands.inbox_watch",
-         "--project", str(project)] + (args or []),
+        [PYTHON, "-m", "superharness.commands.inbox_watch", "--project", str(project)]
+        + (args or []),
         capture_output=True,
         text=True,
         check=False,
@@ -69,6 +74,7 @@ def _run_watch(project: Path, args: list[str] | None = None) -> subprocess.Compl
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
+
 
 def test_watch_single_cycle_exits_zero(tmp_path: Path) -> None:
     """--once flag runs one cycle and exits."""
@@ -101,7 +107,9 @@ def test_watch_stale_lock_auto_broken(tmp_path: Path) -> None:
     os.utime(str(lock_dir), (stale_time, stale_time))
 
     try:
-        r = _run_watch(project, ["--once", "--print-only", "--lock-stale-minutes", "30"])
+        r = _run_watch(
+            project, ["--once", "--print-only", "--lock-stale-minutes", "30"]
+        )
         assert r.returncode == 0, r.stderr
         assert "Auto-breaking stale watcher lock" in r.stdout
     finally:
@@ -119,12 +127,15 @@ def test_acquire_lock_writes_owner_pid(tmp_path: Path) -> None:
     assert not lock_dir.exists()
 
     from superharness.commands.inbox_watch import _acquire_watcher_lock
+
     assert _acquire_watcher_lock(str(lock_dir)) is True
 
     pid_file = lock_dir / "owner.pid"
     assert pid_file.exists(), "owner.pid was not created"
     recorded_pid = int(pid_file.read_text().strip())
-    assert recorded_pid == os.getpid(), f"expected PID {os.getpid()}, got {recorded_pid}"
+    assert recorded_pid == os.getpid(), (
+        f"expected PID {os.getpid()}, got {recorded_pid}"
+    )
 
     # cleanup
     pid_file.unlink()
@@ -185,13 +196,17 @@ def test_watch_calls_dispatch_for_pending_items(tmp_path: Path) -> None:
     assert "status: launched" in text
 
 
-def test_run_dispatch_cmd_uses_background_process_for_python_dispatch(monkeypatch, tmp_path: Path) -> None:
+def test_run_dispatch_cmd_uses_background_process_for_python_dispatch(
+    monkeypatch, tmp_path: Path
+) -> None:
     from superharness.commands import inbox_watch
 
     popen = MagicMock(return_value=MagicMock(pid=1234))
 
     def fail_run(*args, **kwargs):  # noqa: ANN001, ANN202
-        raise AssertionError("default python dispatch path must not block via subprocess.run")
+        raise AssertionError(
+            "default python dispatch path must not block via subprocess.run"
+        )
 
     monkeypatch.delenv("DISPATCH", raising=False)
     monkeypatch.setattr(inbox_watch.subprocess, "Popen", popen)

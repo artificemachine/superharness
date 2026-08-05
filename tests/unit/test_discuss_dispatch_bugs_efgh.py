@@ -14,14 +14,10 @@ E — _handle_failure must promote a non-zero launcher exit to "done"
 H — SUPERHARNESS_DISCUSSION_ROUND_TIMEOUT_SECONDS overrides the
     bundled 900s discussion-round cap when set.
 """
+
 from __future__ import annotations
 
-import os
-import sqlite3
 from pathlib import Path
-from unittest import mock
-
-import pytest
 
 
 DISC_ID = "discuss-20260511T120000Z-test"
@@ -43,6 +39,7 @@ def _seed_minimal_project(tmp_path: Path) -> Path:
 def _seed_task_row(project: Path, task_id: str) -> None:
     """Insert a tasks row so the inbox FK on task_id is satisfied."""
     from superharness.engine.db import get_connection, init_db
+
     conn = get_connection(str(project))
     init_db(conn)
     conn.execute(
@@ -93,6 +90,7 @@ class TestCheckRoundCountsFileOnDisk:
         with contextlib.redirect_stdout(buf):
             cmd_check_round(str(disc_dir), 1)
         import json
+
         result = json.loads(buf.getvalue())
 
         assert "claude-code" in result["agents_done"], (
@@ -143,7 +141,17 @@ class TestDispatcherIdempotence:
             "INSERT INTO inbox "
             "(id, task_id, target_agent, status, priority, retry_count, max_retries, project_path, created_at) "
             "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            ("item-1", ROUND_TASK, "codex-cli", "failed", 1, 3, 3, str(project), "2026-05-11T12:00:00Z"),
+            (
+                "item-1",
+                ROUND_TASK,
+                "codex-cli",
+                "failed",
+                1,
+                3,
+                3,
+                str(project),
+                "2026-05-11T12:00:00Z",
+            ),
         )
         conn.commit()
         conn.close()
@@ -162,7 +170,17 @@ class TestDispatcherIdempotence:
             "INSERT INTO inbox "
             "(id, task_id, target_agent, status, priority, retry_count, max_retries, project_path, created_at) "
             "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            ("item-1", ROUND_TASK, "codex-cli", "failed", 1, 1, 3, str(project), "2026-05-11T12:00:00Z"),
+            (
+                "item-1",
+                ROUND_TASK,
+                "codex-cli",
+                "failed",
+                1,
+                1,
+                3,
+                str(project),
+                "2026-05-11T12:00:00Z",
+            ),
         )
         conn.commit()
         conn.close()
@@ -171,6 +189,7 @@ class TestDispatcherIdempotence:
 
     def test_retry_exhausted_helper_returns_false_when_no_row(self, tmp_path):
         from superharness.commands.discussion_dispatch import _retry_exhausted
+
         project = _seed_minimal_project(tmp_path)
         # No inbox row exists yet
         assert _retry_exhausted(str(project), "codex-cli", ROUND_TASK) is False
@@ -187,7 +206,8 @@ class TestHandleFailureRespectsYamlArtifact:
         disk, _handle_failure must mark the inbox item 'done', not
         'failed'. This guards Bug E (terminal-escape false fail)."""
         from superharness.commands.inbox_dispatch import (
-            DispatchContext, _handle_failure
+            DispatchContext,
+            _handle_failure,
         )
 
         project = _seed_minimal_project(tmp_path)
@@ -198,14 +218,25 @@ class TestHandleFailureRespectsYamlArtifact:
 
         # Seed an inbox row in 'launched' state
         from superharness.engine.db import get_connection, init_db
+
         conn = get_connection(str(project))
         init_db(conn)
         conn.execute(
             "INSERT INTO inbox "
             "(id, task_id, target_agent, status, priority, retry_count, max_retries, project_path, created_at, launched_at) "
             "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            ("item-1", ROUND_TASK, "claude-code", "launched", 1, 0, 3,
-             str(project), "2026-05-11T12:00:00Z", "2026-05-11T12:00:01Z"),
+            (
+                "item-1",
+                ROUND_TASK,
+                "claude-code",
+                "launched",
+                1,
+                0,
+                3,
+                str(project),
+                "2026-05-11T12:00:00Z",
+                "2026-05-11T12:00:01Z",
+            ),
         )
         conn.commit()
         conn.close()
@@ -221,7 +252,11 @@ class TestHandleFailureRespectsYamlArtifact:
             sqlite_primary=True,
             print_only=False,
         )
-        ctx.item = {"id": "item-1", "task_id": ROUND_TASK, "target_agent": "claude-code"}
+        ctx.item = {
+            "id": "item-1",
+            "task_id": ROUND_TASK,
+            "target_agent": "claude-code",
+        }
         ctx.item_id = "item-1"
         ctx.item_to = "claude-code"
         ctx.item_task = ROUND_TASK
@@ -250,7 +285,8 @@ class TestHandleFailureRespectsYamlArtifact:
         """Exit code 2 means lifecycle-gate permanent block. The YAML
         promotion must NOT override that signal."""
         from superharness.commands.inbox_dispatch import (
-            DispatchContext, _handle_failure
+            DispatchContext,
+            _handle_failure,
         )
 
         project = _seed_minimal_project(tmp_path)
@@ -260,14 +296,25 @@ class TestHandleFailureRespectsYamlArtifact:
         (disc_dir / "round-1-claude-code.yaml").write_text("verdict: partial\n")
 
         from superharness.engine.db import get_connection, init_db
+
         conn = get_connection(str(project))
         init_db(conn)
         conn.execute(
             "INSERT INTO inbox "
             "(id, task_id, target_agent, status, priority, retry_count, max_retries, project_path, created_at, launched_at) "
             "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            ("item-2", ROUND_TASK, "claude-code", "launched", 1, 0, 3,
-             str(project), "2026-05-11T12:00:00Z", "2026-05-11T12:00:01Z"),
+            (
+                "item-2",
+                ROUND_TASK,
+                "claude-code",
+                "launched",
+                1,
+                0,
+                3,
+                str(project),
+                "2026-05-11T12:00:00Z",
+                "2026-05-11T12:00:01Z",
+            ),
         )
         conn.commit()
         conn.close()
@@ -283,7 +330,12 @@ class TestHandleFailureRespectsYamlArtifact:
             sqlite_primary=True,
             print_only=False,
         )
-        ctx.item = {"id": "item-2", "task_id": ROUND_TASK, "target_agent": "claude-code", "max_retries": 3}
+        ctx.item = {
+            "id": "item-2",
+            "task_id": ROUND_TASK,
+            "target_agent": "claude-code",
+            "max_retries": 3,
+        }
         ctx.item_id = "item-2"
         ctx.item_to = "claude-code"
         ctx.item_task = ROUND_TASK
@@ -307,7 +359,8 @@ class TestHandleFailureRespectsYamlArtifact:
 class TestDiscussionRoundTimeoutEnvOverride:
     def test_env_var_overrides_default_timeout(self, tmp_path, monkeypatch):
         from superharness.commands.inbox_dispatch import (
-            DispatchContext, _prepare_launch_context,
+            DispatchContext,
+            _prepare_launch_context,
             DISCUSSION_ROUND_TIMEOUT_SECONDS,
         )
 
@@ -324,7 +377,12 @@ class TestDiscussionRoundTimeoutEnvOverride:
             sqlite_primary=True,
             print_only=True,
         )
-        ctx.item = {"id": "i-1", "task_id": ROUND_TASK, "target_agent": "claude-code", "plan_only": False}
+        ctx.item = {
+            "id": "i-1",
+            "task_id": ROUND_TASK,
+            "target_agent": "claude-code",
+            "plan_only": False,
+        }
         ctx.item_id = "i-1"
         ctx.item_to = "claude-code"
         ctx.item_task = ROUND_TASK
@@ -342,11 +400,14 @@ class TestDiscussionRoundTimeoutEnvOverride:
 
     def test_unset_env_falls_back_to_bundled_default(self, tmp_path, monkeypatch):
         from superharness.commands.inbox_dispatch import (
-            DispatchContext, _prepare_launch_context,
+            DispatchContext,
+            _prepare_launch_context,
             DISCUSSION_TIMEOUT_MEDIUM,
         )
 
-        monkeypatch.delenv("SUPERHARNESS_DISCUSSION_ROUND_TIMEOUT_SECONDS", raising=False)
+        monkeypatch.delenv(
+            "SUPERHARNESS_DISCUSSION_ROUND_TIMEOUT_SECONDS", raising=False
+        )
 
         ctx = DispatchContext(
             project_dir=str(tmp_path),
@@ -359,7 +420,12 @@ class TestDiscussionRoundTimeoutEnvOverride:
             sqlite_primary=True,
             print_only=True,
         )
-        ctx.item = {"id": "i-2", "task_id": ROUND_TASK, "target_agent": "claude-code", "plan_only": False}
+        ctx.item = {
+            "id": "i-2",
+            "task_id": ROUND_TASK,
+            "target_agent": "claude-code",
+            "plan_only": False,
+        }
         ctx.item_id = "i-2"
         ctx.item_to = "claude-code"
         ctx.item_task = ROUND_TASK
@@ -374,11 +440,14 @@ class TestDiscussionRoundTimeoutEnvOverride:
 
     def test_invalid_env_value_falls_back_to_default(self, tmp_path, monkeypatch):
         from superharness.commands.inbox_dispatch import (
-            DispatchContext, _prepare_launch_context,
+            DispatchContext,
+            _prepare_launch_context,
             DISCUSSION_ROUND_TIMEOUT_SECONDS,
         )
 
-        monkeypatch.setenv("SUPERHARNESS_DISCUSSION_ROUND_TIMEOUT_SECONDS", "not-an-int")
+        monkeypatch.setenv(
+            "SUPERHARNESS_DISCUSSION_ROUND_TIMEOUT_SECONDS", "not-an-int"
+        )
 
         ctx = DispatchContext(
             project_dir=str(tmp_path),
@@ -391,7 +460,12 @@ class TestDiscussionRoundTimeoutEnvOverride:
             sqlite_primary=True,
             print_only=True,
         )
-        ctx.item = {"id": "i-3", "task_id": ROUND_TASK, "target_agent": "claude-code", "plan_only": False}
+        ctx.item = {
+            "id": "i-3",
+            "task_id": ROUND_TASK,
+            "target_agent": "claude-code",
+            "plan_only": False,
+        }
         ctx.item_id = "i-3"
         ctx.item_to = "claude-code"
         ctx.item_task = ROUND_TASK

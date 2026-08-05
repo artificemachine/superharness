@@ -3,16 +3,16 @@
 After the SQLite migration (v1.44+), contract.yaml, inbox.yaml, failures.yaml,
 and decisions.yaml are deleted. All state lives in state.sqlite3.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
-
-import pytest
 
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _bootstrap_sqlite_only(project_dir: Path) -> None:
     """Set up a minimal project with SQLite only — NO protocol YAML files."""
@@ -28,6 +28,7 @@ def _bootstrap_sqlite_only(project_dir: Path) -> None:
     )
 
     from superharness.engine.db import get_connection, init_db
+
     conn = get_connection(str(project_dir))
     init_db(conn)
     conn.close()
@@ -56,14 +57,28 @@ def _create_task(project_dir: str, title: str, owner: str = "claude-code") -> st
     conn = get_connection(project_dir)
     try:
         init_db(conn)
-        tasks_dao.upsert(conn, tasks_dao.TaskRow(
-            id=task_id, title=title, owner=owner, status="todo",
-            effort="medium", project_path=project_dir,
-            development_method=None, acceptance_criteria=[],
-            test_types=[], out_of_scope=[], definition_of_done=[],
-            context=None, tdd=None, version=1, created_at=now,
-            blocked_by=[], parent_id=None,
-        ))
+        tasks_dao.upsert(
+            conn,
+            tasks_dao.TaskRow(
+                id=task_id,
+                title=title,
+                owner=owner,
+                status="todo",
+                effort="medium",
+                project_path=project_dir,
+                development_method=None,
+                acceptance_criteria=[],
+                test_types=[],
+                out_of_scope=[],
+                definition_of_done=[],
+                context=None,
+                tdd=None,
+                version=1,
+                created_at=now,
+                blocked_by=[],
+                parent_id=None,
+            ),
+        )
         conn.commit()
     finally:
         conn.close()
@@ -72,10 +87,15 @@ def _create_task(project_dir: str, title: str, owner: str = "claude-code") -> st
 
 
 def _create_rich_task(
-    project_dir: str, title: str, owner: str = "claude-code",
-    workflow: str = "implementation", acceptance_criteria: list[str] | None = None,
-    test_types: list[str] | None = None, blocked_by: list[str] | None = None,
-    tdd: dict | None = None, parent_id: str | None = None,
+    project_dir: str,
+    title: str,
+    owner: str = "claude-code",
+    workflow: str = "implementation",
+    acceptance_criteria: list[str] | None = None,
+    test_types: list[str] | None = None,
+    blocked_by: list[str] | None = None,
+    tdd: dict | None = None,
+    parent_id: str | None = None,
     out_of_scope: list[str] | None = None,
     definition_of_done: list[str] | None = None,
 ) -> str:
@@ -91,22 +111,30 @@ def _create_rich_task(
     conn = get_connection(project_dir)
     try:
         init_db(conn)
-        tasks_dao.upsert(conn, tasks_dao.TaskRow(
-            id=task_id, title=title, owner=owner, status="todo",
-            effort="medium", project_path=project_dir,
-            development_method=workflow,
-            acceptance_criteria=acceptance_criteria or [],
-            test_types=test_types or [],
-            out_of_scope=out_of_scope or [],
-            definition_of_done=definition_of_done or [],
-            context=None,
-            tdd=tdd or {},
-            version=1, created_at=now,
-            blocked_by=[],  # dependencies go in task_dependencies table
-            parent_id=parent_id,
-        ))
+        tasks_dao.upsert(
+            conn,
+            tasks_dao.TaskRow(
+                id=task_id,
+                title=title,
+                owner=owner,
+                status="todo",
+                effort="medium",
+                project_path=project_dir,
+                development_method=workflow,
+                acceptance_criteria=acceptance_criteria or [],
+                test_types=test_types or [],
+                out_of_scope=out_of_scope or [],
+                definition_of_done=definition_of_done or [],
+                context=None,
+                tdd=tdd or {},
+                version=1,
+                created_at=now,
+                blocked_by=[],  # dependencies go in task_dependencies table
+                parent_id=parent_id,
+            ),
+        )
         # Insert dependencies separately (blocked_by lives in task_dependencies table)
-        for dep_id in (blocked_by or []):
+        for dep_id in blocked_by or []:
             conn.execute(
                 "INSERT OR IGNORE INTO task_dependencies (dependent_task_id, prerequisite_task_id) VALUES (?, ?)",
                 (task_id, dep_id),
@@ -147,21 +175,33 @@ def _advance_task(project_dir: str, task_id: str, status: str) -> None:
             raise ValueError(f"Task {task_id} not found")
         now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
         ts_map = {
-            "plan_proposed": "plan_proposed_at", "plan_approved": "plan_approved_at",
-            "in_progress": "in_progress_at", "report_ready": "report_ready_at",
-            "done": "done_at", "failed": "failed_at", "stopped": "stopped_at",
+            "plan_proposed": "plan_proposed_at",
+            "plan_approved": "plan_approved_at",
+            "in_progress": "in_progress_at",
+            "report_ready": "report_ready_at",
+            "done": "done_at",
+            "failed": "failed_at",
+            "stopped": "stopped_at",
         }
         kwargs = {ts_map[status]: now} if status in ts_map else {}
         updated = tasks_dao.TaskRow(
-            id=row.id, title=row.title, owner=row.owner, status=status,
-            effort=row.effort, project_path=row.project_path,
+            id=row.id,
+            title=row.title,
+            owner=row.owner,
+            status=status,
+            effort=row.effort,
+            project_path=row.project_path,
             development_method=row.development_method,
             acceptance_criteria=row.acceptance_criteria,
-            test_types=row.test_types, out_of_scope=row.out_of_scope,
+            test_types=row.test_types,
+            out_of_scope=row.out_of_scope,
             definition_of_done=row.definition_of_done,
-            context=row.context, tdd=row.tdd,
-            version=row.version + 1, created_at=row.created_at,
-            blocked_by=row.blocked_by, parent_id=row.parent_id,
+            context=row.context,
+            tdd=row.tdd,
+            version=row.version + 1,
+            created_at=row.created_at,
+            blocked_by=row.blocked_by,
+            parent_id=row.parent_id,
             **kwargs,
         )
         tasks_dao.upsert(conn, updated)
@@ -173,6 +213,7 @@ def _advance_task(project_dir: str, task_id: str, status: str) -> None:
 # ---------------------------------------------------------------------------
 # contract.yaml replacement tests
 # ---------------------------------------------------------------------------
+
 
 def test_tasks_persist_in_sqlite_without_contract_yaml(tmp_path: Path) -> None:
     """Task creation, status advance, and retrieval all work without contract.yaml."""
@@ -190,7 +231,9 @@ def test_tasks_persist_in_sqlite_without_contract_yaml(tmp_path: Path) -> None:
 
     tasks = _get_tasks(str(tmp_path))
     task = next(t for t in tasks if t.get("id") == task_id)
-    assert task.get("status") == "report_ready", f"Expected report_ready, got {task.get('status')}"
+    assert task.get("status") == "report_ready", (
+        f"Expected report_ready, got {task.get('status')}"
+    )
 
     _assert_no_yaml_files(tmp_path)
 
@@ -212,6 +255,7 @@ def test_contract_doc_reconstructed_from_sqlite(tmp_path: Path) -> None:
 # inbox.yaml replacement tests
 # ---------------------------------------------------------------------------
 
+
 def test_inbox_enqueue_persists_in_sqlite(tmp_path: Path) -> None:
     """Inbox enqueue writes to SQLite inbox table, not inbox.yaml."""
     _bootstrap_sqlite_only(tmp_path)
@@ -227,10 +271,18 @@ def test_inbox_enqueue_persists_in_sqlite(tmp_path: Path) -> None:
     conn = get_connection(str(tmp_path))
     try:
         init_db(conn)
-        inbox_dao.enqueue(conn, id=f"auto-test-{task_id}", task_id=task_id,
-                         target_agent="claude-code", priority=2,
-                         max_retries=3, project_path=str(tmp_path),
-                         plan_only=False, now=now, model_override="")
+        inbox_dao.enqueue(
+            conn,
+            id=f"auto-test-{task_id}",
+            task_id=task_id,
+            target_agent="claude-code",
+            priority=2,
+            max_retries=3,
+            project_path=str(tmp_path),
+            plan_only=False,
+            now=now,
+            model_override="",
+        )
         conn.commit()
 
         items = inbox_dao.get_all(conn)
@@ -260,18 +312,28 @@ def test_inbox_status_transitions_in_sqlite(tmp_path: Path) -> None:
     conn = get_connection(str(tmp_path))
     try:
         init_db(conn)
-        inbox_dao.enqueue(conn, id=item_id, task_id=task_id,
-                         target_agent="claude-code", priority=2,
-                         max_retries=3, project_path=str(tmp_path),
-                         plan_only=False, now=now, model_override="")
+        inbox_dao.enqueue(
+            conn,
+            id=item_id,
+            task_id=task_id,
+            target_agent="claude-code",
+            priority=2,
+            max_retries=3,
+            project_path=str(tmp_path),
+            plan_only=False,
+            now=now,
+            model_override="",
+        )
 
-        claimed = inbox_dao.claim_next(conn, target_agent="claude-code",
-                                       pid=12345, now=now)
+        claimed = inbox_dao.claim_next(
+            conn, target_agent="claude-code", pid=12345, now=now
+        )
         assert claimed is not None, "claim_next returned None"
         assert claimed.status == "launched"
 
-        ok = inbox_dao.update_status(conn, item_id, from_status="launched",
-                                     to_status="done", now=now)
+        ok = inbox_dao.update_status(
+            conn, item_id, from_status="launched", to_status="done", now=now
+        )
         assert ok, "update_status failed"
 
         item = inbox_dao.get(conn, item_id)
@@ -288,6 +350,7 @@ def test_inbox_status_transitions_in_sqlite(tmp_path: Path) -> None:
 # failures.yaml replacement tests
 # ---------------------------------------------------------------------------
 
+
 def test_failure_record_in_sqlite(tmp_path: Path) -> None:
     """Failure recording and retrieval works without failures.yaml."""
     _bootstrap_sqlite_only(tmp_path)
@@ -295,7 +358,8 @@ def test_failure_record_in_sqlite(tmp_path: Path) -> None:
     from superharness.engine.failure_patterns import record_failure, get_failure_hints
 
     patterns = record_failure(
-        str(tmp_path), task_id="test-task-1",
+        str(tmp_path),
+        task_id="test-task-1",
         error_text="ImportError: No module named 'nonexistent'",
         agent="claude-code",
     )
@@ -311,6 +375,7 @@ def test_failure_record_in_sqlite(tmp_path: Path) -> None:
 # decisions.yaml replacement tests
 # ---------------------------------------------------------------------------
 
+
 def test_decisions_record_in_sqlite(tmp_path: Path) -> None:
     """Decision recording via DAO works without decisions.yaml."""
     _bootstrap_sqlite_only(tmp_path)
@@ -323,9 +388,15 @@ def test_decisions_record_in_sqlite(tmp_path: Path) -> None:
     try:
         init_db(conn)
         now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-        decisions_dao.record(conn, task_id="test-task", agent="claude-code",
-                            decision="Use SQLite", reason="YAML is dead",
-                            alternatives="YAML", now=now)
+        decisions_dao.record(
+            conn,
+            task_id="test-task",
+            agent="claude-code",
+            decision="Use SQLite",
+            reason="YAML is dead",
+            alternatives="YAML",
+            now=now,
+        )
         conn.commit()
     finally:
         conn.close()
@@ -336,6 +407,7 @@ def test_decisions_record_in_sqlite(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 # Agent hook simulation
 # ---------------------------------------------------------------------------
+
 
 def test_session_stop_via_state_writer(tmp_path: Path) -> None:
     """Session stop writes via state_writer, not contract.yaml."""
@@ -348,7 +420,9 @@ def test_session_stop_via_state_writer(tmp_path: Path) -> None:
 
     tasks = _get_tasks(str(tmp_path))
     task = next(t for t in tasks if t.get("id") == task_id)
-    assert task.get("status") == "stopped", f"Expected stopped, got {task.get('status')}"
+    assert task.get("status") == "stopped", (
+        f"Expected stopped, got {task.get('status')}"
+    )
 
     _assert_no_yaml_files(tmp_path)
 
@@ -361,9 +435,12 @@ def test_session_start_reads_from_state_reader(tmp_path: Path) -> None:
     _advance_task(str(tmp_path), task_id, "plan_approved")
 
     tasks = _get_tasks(str(tmp_path))
-    active = [t for t in tasks
-              if t.get("status") in ("in_progress", "plan_proposed",
-                                     "plan_approved", "report_ready")]
+    active = [
+        t
+        for t in tasks
+        if t.get("status")
+        in ("in_progress", "plan_proposed", "plan_approved", "report_ready")
+    ]
     assert len(active) > 0, "Should find active task"
 
     _assert_no_yaml_files(tmp_path)
@@ -372,6 +449,7 @@ def test_session_start_reads_from_state_reader(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 # Side-effect guards
 # ---------------------------------------------------------------------------
+
 
 def test_no_yaml_created_by_task_operations(tmp_path: Path) -> None:
     """Task create/status operations don't recreate YAML files."""
@@ -401,10 +479,18 @@ def test_no_yaml_created_by_inbox_operations(tmp_path: Path) -> None:
     conn = get_connection(str(tmp_path))
     try:
         init_db(conn)
-        inbox_dao.enqueue(conn, id=f"side-{task_id}", task_id=task_id,
-                         target_agent="claude-code", priority=2,
-                         max_retries=3, project_path=str(tmp_path),
-                         plan_only=False, now=now, model_override="")
+        inbox_dao.enqueue(
+            conn,
+            id=f"side-{task_id}",
+            task_id=task_id,
+            target_agent="claude-code",
+            priority=2,
+            max_retries=3,
+            project_path=str(tmp_path),
+            plan_only=False,
+            now=now,
+            model_override="",
+        )
         conn.commit()
     finally:
         conn.close()
@@ -416,12 +502,14 @@ def test_no_yaml_created_by_inbox_operations(tmp_path: Path) -> None:
 # Different task types — verify all metadata fields survive SQLite round-trip
 # ---------------------------------------------------------------------------
 
+
 def test_implementation_workflow_with_tdd(tmp_path: Path) -> None:
     """Implementation task with TDD, acceptance criteria, test types, DoD."""
     _bootstrap_sqlite_only(tmp_path)
 
     task_id = _create_rich_task(
-        str(tmp_path), "Implement Login",
+        str(tmp_path),
+        "Implement Login",
         workflow="implementation",
         acceptance_criteria=[
             "User can log in with email and password",
@@ -454,7 +542,8 @@ def test_quick_workflow_task(tmp_path: Path) -> None:
     _bootstrap_sqlite_only(tmp_path)
 
     task_id = _create_rich_task(
-        str(tmp_path), "Fix Typo in README",
+        str(tmp_path),
+        "Fix Typo in README",
         workflow="quick",
         acceptance_criteria=["Typo recieve → receive"],
         out_of_scope=["Rewriting entire README"],
@@ -476,7 +565,8 @@ def test_discussion_task_type(tmp_path: Path) -> None:
     _bootstrap_sqlite_only(tmp_path)
 
     task_id = _create_rich_task(
-        str(tmp_path), "Discussion: SQLite vs PostgreSQL for state backend",
+        str(tmp_path),
+        "Discussion: SQLite vs PostgreSQL for state backend",
         workflow="discussion",
         acceptance_criteria=[
             "Evaluate migration complexity",
@@ -497,7 +587,8 @@ def test_review_workflow_task(tmp_path: Path) -> None:
     _bootstrap_sqlite_only(tmp_path)
 
     task_id = _create_rich_task(
-        str(tmp_path), "Review: PR #200 security audit",
+        str(tmp_path),
+        "Review: PR #200 security audit",
         workflow="review",
         acceptance_criteria=[
             "No SQL injection vectors",
@@ -519,7 +610,8 @@ def test_tasks_with_dependencies(tmp_path: Path) -> None:
 
     dep_id = _create_task(str(tmp_path), "Database Schema")
     task_id = _create_rich_task(
-        str(tmp_path), "API Endpoint",
+        str(tmp_path),
+        "API Endpoint",
         blocked_by=[dep_id],
     )
 
@@ -553,7 +645,8 @@ def test_subtasks_persist(tmp_path: Path) -> None:
 
     parent_id = _create_task(str(tmp_path), "Orchestrator Decomposition")
     sub_id = _create_rich_task(
-        str(tmp_path), "Subtask: Parse input",
+        str(tmp_path),
+        "Subtask: Parse input",
         parent_id=parent_id,
     )
 
@@ -589,7 +682,8 @@ def test_task_with_all_metadata_fields(tmp_path: Path) -> None:
 
     dep_id = _create_task(str(tmp_path), "Pretend Dependency")
     task_id = _create_rich_task(
-        str(tmp_path), "Full Metadata Task",
+        str(tmp_path),
+        "Full Metadata Task",
         workflow="review",
         acceptance_criteria=["AC1", "AC2", "AC3", "AC4", "AC5"],
         test_types=["unit", "integration", "e2e"],
@@ -624,10 +718,14 @@ def test_multiple_tasks_mixed_workflows(tmp_path: Path) -> None:
     _bootstrap_sqlite_only(tmp_path)
 
     _create_rich_task(str(tmp_path), "Quick Fix", workflow="quick")
-    _create_rich_task(str(tmp_path), "Full Feature", workflow="implementation",
-                      acceptance_criteria=["AC1", "AC2"],
-                      test_types=["unit"],
-                      tdd={"red": "test", "green": "impl", "refactor": "clean"})
+    _create_rich_task(
+        str(tmp_path),
+        "Full Feature",
+        workflow="implementation",
+        acceptance_criteria=["AC1", "AC2"],
+        test_types=["unit"],
+        tdd={"red": "test", "green": "impl", "refactor": "clean"},
+    )
     _create_rich_task(str(tmp_path), "Design Discussion", workflow="discussion")
     _create_rich_task(str(tmp_path), "Code Review", workflow="review")
 
@@ -647,7 +745,8 @@ def test_task_advance_preserves_metadata(tmp_path: Path) -> None:
     _bootstrap_sqlite_only(tmp_path)
 
     task_id = _create_rich_task(
-        str(tmp_path), "Preserve Metadata",
+        str(tmp_path),
+        "Preserve Metadata",
         workflow="implementation",
         acceptance_criteria=["AC1", "AC2"],
         test_types=["unit"],

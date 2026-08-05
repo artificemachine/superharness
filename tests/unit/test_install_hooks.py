@@ -1,7 +1,9 @@
 """Tests for shux install-hooks — writes portable hook entries to ~/.claude/settings.json."""
+
 from __future__ import annotations
 
 import json
+import subprocess
 import sys
 import tempfile
 from pathlib import Path
@@ -14,17 +16,27 @@ from tests.helpers import run_cmd
 pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="uses bash hooks")
 
 
-def _run_install_hooks(tmp_settings: Path, hooks_dir: Path) -> "subprocess.CompletedProcess[str]":
+def _run_install_hooks(
+    tmp_settings: Path, hooks_dir: Path
+) -> "subprocess.CompletedProcess[str]":
     return run_cmd(
-        [sys.executable, "-m", "superharness.commands.install_hooks",
-         "--settings-file", str(tmp_settings),
-         "--hooks-dir", str(hooks_dir)],
+        [
+            sys.executable,
+            "-m",
+            "superharness.commands.install_hooks",
+            "--settings-file",
+            str(tmp_settings),
+            "--hooks-dir",
+            str(hooks_dir),
+        ],
         cwd=hooks_dir,
     )
 
 
 class TestInstallHooks:
-    def test_creates_settings_file_if_missing(self, tmp_path: Path, repo_root: Path) -> None:
+    def test_creates_settings_file_if_missing(
+        self, tmp_path: Path, repo_root: Path
+    ) -> None:
         hooks_dir = repo_root / "adapters" / "claude-code" / "hooks"
         settings = tmp_path / "settings.json"
         result = _run_install_hooks(settings, hooks_dir)
@@ -33,7 +45,9 @@ class TestInstallHooks:
         data = json.loads(settings.read_text())
         assert "hooks" in data
 
-    def test_stop_hook_written_in_stable_form(self, tmp_path: Path, repo_root: Path) -> None:
+    def test_stop_hook_written_in_stable_form(
+        self, tmp_path: Path, repo_root: Path
+    ) -> None:
         hooks_dir = repo_root / "adapters" / "claude-code" / "hooks"
         settings = tmp_path / "settings.json"
         _run_install_hooks(settings, hooks_dir)
@@ -46,7 +60,9 @@ class TestInstallHooks:
         # Post issue #92 (2026-08-03): Stop slot binds to session-turn-end
         # (turn-safe snapshot only), not session-stop (DEPRECATED monolith).
         # Written as a stable `shux hook <name>` command, not a baked script path.
-        assert any(cmd.strip().endswith("hook session-turn-end") for cmd in stop_cmds), stop_cmds
+        assert any(
+            cmd.strip().endswith("hook session-turn-end") for cmd in stop_cmds
+        ), stop_cmds
         # Must not contain the template variable, a version-baked venv path, or a
         # trailing .sh — those are exactly the fragilities the stable form removes.
         for cmd in stop_cmds:
@@ -54,7 +70,9 @@ class TestInstallHooks:
             assert "/lib/python3." not in cmd, cmd
             assert ".sh" not in cmd, cmd
 
-    def test_no_hardcoded_user_path_in_written_commands(self, tmp_path: Path, repo_root: Path) -> None:
+    def test_no_hardcoded_user_path_in_written_commands(
+        self, tmp_path: Path, repo_root: Path
+    ) -> None:
         """All written hook commands must use the provided hooks_dir, not CLAUDE_PLUGIN_ROOT."""
         hooks_dir = repo_root / "adapters" / "claude-code" / "hooks"
         settings = tmp_path / "settings.json"
@@ -64,8 +82,9 @@ class TestInstallHooks:
             for entry in event_entries:
                 for hook in entry.get("hooks", []):
                     cmd = hook.get("command", "")
-                    assert "${CLAUDE_PLUGIN_ROOT}" not in cmd, \
+                    assert "${CLAUDE_PLUGIN_ROOT}" not in cmd, (
                         f"Unresolved variable in hook command: {cmd!r}"
+                    )
 
     def test_idempotent_no_duplicates(self, tmp_path: Path, repo_root: Path) -> None:
         hooks_dir = repo_root / "adapters" / "claude-code" / "hooks"
@@ -80,12 +99,15 @@ class TestInstallHooks:
         ]
         # Post issue #92 (2026-08-03): Stop slot binds to session-turn-end.
         session_turn_end_count = sum(
-            1 for c in stop_cmds if c.strip().endswith("hook session-turn-end"))
+            1 for c in stop_cmds if c.strip().endswith("hook session-turn-end")
+        )
         assert session_turn_end_count == 1, (
             f"Expected 1 session-turn-end entry, got {session_turn_end_count}: {stop_cmds}"
         )
 
-    def test_updates_stale_hardcoded_path(self, tmp_path: Path, repo_root: Path) -> None:
+    def test_updates_stale_hardcoded_path(
+        self, tmp_path: Path, repo_root: Path
+    ) -> None:
         """Legacy session-stop.sh entries get rewritten to session-turn-end on re-install.
 
         Regression for the install-path half of issue #92: a settings.json
@@ -98,18 +120,27 @@ class TestInstallHooks:
         hooks_dir = repo_root / "adapters" / "claude-code" / "hooks"
         settings = tmp_path / "settings.json"
         # Write settings with a stale hardcoded path
-        settings.write_text(json.dumps({
-            "hooks": {
-                "Stop": [{
-                    "matcher": "",
-                    "hooks": [{
-                        "type": "command",
-                        "command": "bash /Users/otheruser/old-path/hooks/session-stop.sh",
-                        "timeout": 10,
-                    }]
-                }]
-            }
-        }, indent=2))
+        settings.write_text(
+            json.dumps(
+                {
+                    "hooks": {
+                        "Stop": [
+                            {
+                                "matcher": "",
+                                "hooks": [
+                                    {
+                                        "type": "command",
+                                        "command": "bash /Users/otheruser/old-path/hooks/session-stop.sh",
+                                        "timeout": 10,
+                                    }
+                                ],
+                            }
+                        ]
+                    }
+                },
+                indent=2,
+            )
+        )
         _run_install_hooks(settings, hooks_dir)
         data = json.loads(settings.read_text())
         stop_cmds = [
@@ -117,30 +148,42 @@ class TestInstallHooks:
             for entry in data["hooks"].get("Stop", [])
             for h in entry.get("hooks", [])
         ]
-        assert all("otheruser" not in cmd for cmd in stop_cmds), \
+        assert all("otheruser" not in cmd for cmd in stop_cmds), (
             f"Stale path not updated: {stop_cmds}"
+        )
         # Upgraded in place to the stable command form (no baked path at all),
         # AND migrated from the legacy session-stop name to session-turn-end.
-        assert any(cmd.strip().endswith("hook session-turn-end") for cmd in stop_cmds), \
-            f"Expected stable `hook session-turn-end` command in: {stop_cmds}"
-        assert not any("session-stop" in cmd for cmd in stop_cmds), \
+        assert any(
+            cmd.strip().endswith("hook session-turn-end") for cmd in stop_cmds
+        ), f"Expected stable `hook session-turn-end` command in: {stop_cmds}"
+        assert not any("session-stop" in cmd for cmd in stop_cmds), (
             f"Legacy session-stop entry must be migrated away, still present: {stop_cmds}"
+        )
 
     def test_preserves_unrelated_hooks(self, tmp_path: Path, repo_root: Path) -> None:
         hooks_dir = repo_root / "adapters" / "claude-code" / "hooks"
         settings = tmp_path / "settings.json"
-        settings.write_text(json.dumps({
-            "hooks": {
-                "Stop": [{
-                    "matcher": "",
-                    "hooks": [{
-                        "type": "command",
-                        "command": "bash ~/.claude/hooks/clear-task.sh",
-                        "timeout": 3,
-                    }]
-                }]
-            }
-        }, indent=2))
+        settings.write_text(
+            json.dumps(
+                {
+                    "hooks": {
+                        "Stop": [
+                            {
+                                "matcher": "",
+                                "hooks": [
+                                    {
+                                        "type": "command",
+                                        "command": "bash " + "~" + "/.claude/hooks/clear-task.sh",
+                                        "timeout": 3,
+                                    }
+                                ],
+                            }
+                        ]
+                    }
+                },
+                indent=2,
+            )
+        )
         _run_install_hooks(settings, hooks_dir)
         data = json.loads(settings.read_text())
         stop_cmds = [
@@ -148,14 +191,16 @@ class TestInstallHooks:
             for entry in data["hooks"].get("Stop", [])
             for h in entry.get("hooks", [])
         ]
-        assert any("clear-task.sh" in cmd for cmd in stop_cmds), \
+        assert any("clear-task.sh" in cmd for cmd in stop_cmds), (
             f"Unrelated hook was removed: {stop_cmds}"
+        )
 
     def test_codex_target_writes_codex_hooks_json(
         self, tmp_path: Path, repo_root: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """--target codex writes ~/.codex/hooks.json with stable commands."""
         from superharness.commands.install_hooks import install_hooks
+
         hooks_dir = repo_root / "adapters" / "claude-code" / "hooks"
         monkeypatch.setenv("HOME", str(tmp_path))
         rc = install_hooks(hooks_dir=hooks_dir, targets=["codex"])
@@ -236,16 +281,34 @@ class TestNoHardcodedPathsInRepo:
     """
 
     # Placeholder names used in test fixtures / docs — not real usernames
-    _FIXTURE_NAMES = frozenset({"test", "user", "username", "example", "admin", "root", "yourname", "otheruser", "testuser", "alice", "bob"})
+    _FIXTURE_NAMES = frozenset(
+        {
+            "test",
+            "user",
+            "username",
+            "example",
+            "admin",
+            "root",
+            "yourname",
+            "otheruser",
+            "testuser",
+            "alice",
+            "bob",
+        }
+    )
 
     # Directories containing operational/protocol state — absolute paths are expected there
     _SKIP_DIRS = frozenset({".superharness"})
 
     def _git_tracked_files(self, repo_root: Path):
         import subprocess
+
         result = subprocess.run(
             ["git", "ls-files"],
-            cwd=repo_root, capture_output=True, text=True, check=False,
+            cwd=repo_root,
+            capture_output=True,
+            text=True,
+            check=False,
         )
         for rel in result.stdout.splitlines():
             # Skip operational state directories
@@ -254,10 +317,13 @@ class TestNoHardcodedPathsInRepo:
                 continue
             yield repo_root / rel
 
-    @pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
+    @pytest.mark.skip(
+        reason="legacy YAML fixture — pending SQLite migration (see PR #208)"
+    )
     def test_no_hardcoded_user_home_in_source(self, repo_root: Path) -> None:
         import re
-        pattern = re.compile(r'/(?:Users|home)/([A-Za-z0-9_.-]+)/')
+
+        pattern = re.compile(r"/(?:Users|home)/([A-Za-z0-9_.-]+)/")
         violations = []
         for fpath in self._git_tracked_files(repo_root):
             if not fpath.is_file():

@@ -6,6 +6,7 @@ the target settings file (default: ~/.claude/settings.json).
 
 Safe to run multiple times — idempotent.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -43,6 +44,7 @@ def _find_installed_hooks_dir() -> Path | None:
     Returns None if no installed binary is found.
     """
     import shutil
+
     for binary in ("shux", "superharness"):
         bin_path = shutil.which(binary)
         if not bin_path:
@@ -51,7 +53,9 @@ def _find_installed_hooks_dir() -> Path | None:
         # pipx layout: …/venvs/<pkg>/bin/<binary>  → venv root is parent of bin/
         venv_root = real_bin.parent.parent
         for candidate in sorted(
-            venv_root.glob("lib/*/site-packages/superharness/adapters/claude-code/hooks")
+            venv_root.glob(
+                "lib/*/site-packages/superharness/adapters/claude-code/hooks"
+            )
         ):
             if candidate.is_dir() and not _is_ephemeral(candidate):
                 return candidate
@@ -77,17 +81,21 @@ def _find_hooks_dir() -> Path:
         return installed
 
     # 2. In-package location: __file__ is at <package>/commands/install_hooks.py
-    in_package = Path(__file__).resolve().parent.parent / "adapters" / "claude-code" / "hooks"
+    in_package = (
+        Path(__file__).resolve().parent.parent / "adapters" / "claude-code" / "hooks"
+    )
     if in_package.is_dir() and not _is_ephemeral(in_package):
         return in_package
 
     # 3. Editable install: repo root is 3 levels up from src/superharness/commands/
-    editable = Path(__file__).resolve().parents[3] / "adapters" / "claude-code" / "hooks"
+    editable = (
+        Path(__file__).resolve().parents[3] / "adapters" / "claude-code" / "hooks"
+    )
     if editable.is_dir() and not _is_ephemeral(editable):
         return editable
 
     raise FileNotFoundError(
-        f"Adapter hooks directory not found. "
+        "Adapter hooks directory not found. "
         "Ensure superharness is installed with 'pip install superharness' or 'pip install -e .' from the repo root."
     )
 
@@ -166,10 +174,13 @@ def _shux_invocation() -> str:
     on Linux). Falls back to the bare name ``shux`` if not resolvable on PATH.
     """
     import shutil
+
     return shutil.which("shux") or "shux"
 
 
-def merge_hooks(settings: dict, hook_defs: dict, hooks_dir: str) -> tuple[dict, list[str]]:
+def merge_hooks(
+    settings: dict, hook_defs: dict, hooks_dir: str
+) -> tuple[dict, list[str]]:
     """Upsert hook entries from hook_defs into settings.
 
     Emits version-independent ``shux hook <name>`` commands rather than baking an
@@ -207,23 +218,31 @@ def merge_hooks(settings: dict, hook_defs: dict, hooks_dir: str) -> tuple[dict, 
                         if _hook_name(existing_hook.get("command", "")) in identities:
                             old_cmd = existing_hook["command"]
                             existing_hook["command"] = resolved_cmd
-                            existing_hook["timeout"] = template_hook.get("timeout", existing_hook.get("timeout", 5))
+                            existing_hook["timeout"] = template_hook.get(
+                                "timeout", existing_hook.get("timeout", 5)
+                            )
                             found = True
                             if old_cmd != resolved_cmd:
-                                changes.append(f"  updated {event}/{name}: {old_cmd!r} → {resolved_cmd!r}")
+                                changes.append(
+                                    f"  updated {event}/{name}: {old_cmd!r} → {resolved_cmd!r}"
+                                )
                             break
                     if found:
                         break
 
                 if not found:
-                    settings["hooks"][event].append({
-                        "matcher": template_entry.get("matcher", ""),
-                        "hooks": [{
-                            "type": template_hook.get("type", "command"),
-                            "command": resolved_cmd,
-                            "timeout": template_hook.get("timeout", 5),
-                        }],
-                    })
+                    settings["hooks"][event].append(
+                        {
+                            "matcher": template_entry.get("matcher", ""),
+                            "hooks": [
+                                {
+                                    "type": template_hook.get("type", "command"),
+                                    "command": resolved_cmd,
+                                    "timeout": template_hook.get("timeout", 5),
+                                }
+                            ],
+                        }
+                    )
                     changes.append(f"  added {event}/{name}: {resolved_cmd!r}")
 
     return settings, changes
@@ -267,7 +286,9 @@ def install_hooks(
     if settings_file is not None:
         files = [settings_file]
     else:
-        files = [_home_dir().joinpath(*_TARGET_FILES[t]) for t in (targets or ["claude"])]
+        files = [
+            _home_dir().joinpath(*_TARGET_FILES[t]) for t in (targets or ["claude"])
+        ]
 
     for target_file in files:
         settings = _load_settings(target_file)

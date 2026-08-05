@@ -1,4 +1,5 @@
 """handoff generate — create a structured handoff from task state."""
+
 from __future__ import annotations
 
 import os
@@ -8,14 +9,23 @@ import yaml
 
 def main(argv: list[str] | None = None) -> None:
     import argparse
-    p = argparse.ArgumentParser(prog="handoff-generate", description="Generate a structured handoff from task state")
+
+    p = argparse.ArgumentParser(
+        prog="handoff-generate",
+        description="Generate a structured handoff from task state",
+    )
     p.add_argument("--project", "-p", default=os.getcwd())
     p.add_argument("--task", "-t", required=True, help="Task ID")
-    p.add_argument("--output", "-o", help="Output file path (default: .superharness/handoffs/<task-id>-auto.yaml)")
+    p.add_argument(
+        "--output",
+        "-o",
+        help="Output file path (default: .superharness/handoffs/<task-id>-auto.yaml)",
+    )
     opts = p.parse_args(argv)
 
     project_dir = os.path.realpath(opts.project)
     from superharness.engine.handoff_generator import generate_handoff
+
     handoff = generate_handoff(project_dir, opts.task)
 
     if "error" in handoff:

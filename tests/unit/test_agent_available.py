@@ -1,11 +1,10 @@
 """Tests for _agent_available — agent availability gate."""
+
 from __future__ import annotations
 
 import sqlite3
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
-
-import pytest
 
 
 def _recent_ts(hours_ago: float = 1.0) -> str:
@@ -21,6 +20,7 @@ def _setup_db(tmp_path: Path) -> sqlite3.Connection:
     conn = sqlite3.connect(str(db_path))
     conn.row_factory = sqlite3.Row
     from superharness.engine.db import init_db
+
     init_db(conn)
     conn.commit()
     return conn
@@ -32,6 +32,7 @@ class TestAgentAvailable:
     def test_agent_with_binary_is_available(self, tmp_path):
         """Agent whose binary exists on PATH → available."""
         from superharness.commands.discussion_dispatch import _agent_available
+
         available, reason = _agent_available("claude-code", str(tmp_path))
         # claude binary should exist on most systems with superharness
         assert available or "not installed" in reason
@@ -39,6 +40,7 @@ class TestAgentAvailable:
     def test_rate_limited_agent_is_unavailable(self, tmp_path):
         """Agent with recent rate-limit failure → unavailable."""
         from superharness.commands.discussion_dispatch import _agent_available
+
         conn = _setup_db(tmp_path)
         conn.execute(
             "INSERT INTO inbox (id, task_id, target_agent, status, failed_reason, retry_count, max_retries, created_at) "
@@ -54,6 +56,7 @@ class TestAgentAvailable:
     def test_quota_exhausted_agent_is_unavailable(self, tmp_path):
         """Agent with quota exhaustion → unavailable."""
         from superharness.commands.discussion_dispatch import _agent_available
+
         conn = _setup_db(tmp_path)
         conn.execute(
             "INSERT INTO inbox (id, task_id, target_agent, status, failed_reason, retry_count, max_retries, created_at) "
@@ -69,6 +72,7 @@ class TestAgentAvailable:
     def test_permanent_block_agent_is_unavailable(self, tmp_path):
         """Agent with permanent block → unavailable."""
         from superharness.commands.discussion_dispatch import _agent_available
+
         conn = _setup_db(tmp_path)
         conn.execute(
             "INSERT INTO inbox (id, task_id, target_agent, status, failed_reason, retry_count, max_retries, created_at) "
@@ -84,6 +88,7 @@ class TestAgentAvailable:
     def test_agent_without_recent_failure_is_available(self, tmp_path):
         """Agent with no recent failures → available."""
         from superharness.commands.discussion_dispatch import _agent_available
+
         conn = _setup_db(tmp_path)
         conn.commit()
 
@@ -95,6 +100,7 @@ class TestAgentAvailable:
     def test_unrelated_failure_does_not_block(self, tmp_path):
         """Agent with a non-rate-limit failure → still available."""
         from superharness.commands.discussion_dispatch import _agent_available
+
         conn = _setup_db(tmp_path)
         conn.execute(
             "INSERT INTO inbox (id, task_id, target_agent, status, failed_reason, retry_count, max_retries, created_at) "

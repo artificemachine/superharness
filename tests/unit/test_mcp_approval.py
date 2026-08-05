@@ -1,8 +1,8 @@
 """Tests for MCP ApprovalGate — Iteration 3."""
+
 from __future__ import annotations
 
 import pytest
-from pathlib import Path
 
 from superharness.mcp.approval import ApprovalGate, ApprovalPending, ApprovalRejected
 
@@ -53,6 +53,7 @@ def test_rejection_blocks_retries(tmp_path):
 
 def test_classify_risk_read_tools_are_low():
     from superharness.mcp.approval import classify_risk
+
     assert classify_risk("get_contract") == "low"
     assert classify_risk("get_task") == "low"
     assert classify_risk("get_ledger") == "low"
@@ -61,6 +62,7 @@ def test_classify_risk_read_tools_are_low():
 
 def test_classify_risk_write_tools_are_medium():
     from superharness.mcp.approval import classify_risk
+
     assert classify_risk("create_task") == "medium"
     assert classify_risk("update_status") == "medium"
     assert classify_risk("enqueue") == "medium"
@@ -68,10 +70,12 @@ def test_classify_risk_write_tools_are_medium():
 
 def test_classify_risk_destructive_tools_are_high():
     from superharness.mcp.approval import classify_risk
+
     assert classify_risk("checkpoint_create") == "high"
     assert classify_risk("write_handoff") == "high"
 
 
 def test_unknown_tool_defaults_to_medium():
     from superharness.mcp.approval import classify_risk
+
     assert classify_risk("some_future_tool") == "medium"

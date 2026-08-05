@@ -17,6 +17,7 @@ Categories:
   no_op            - agent ran but produced no artifact. Surface (likely prompt bug).
   unknown          - anything we cannot classify. Default: retry once.
 """
+
 from __future__ import annotations
 
 import re

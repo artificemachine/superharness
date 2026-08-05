@@ -7,6 +7,7 @@ Usage:
     shux approve <task_id> [--project DIR]
     shux reject  <task_id> [--project DIR]   # via --command reject
 """
+
 from __future__ import annotations
 
 import argparse
@@ -16,6 +17,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import logging
+
 logger = logging.getLogger(__name__)
 
 
@@ -25,13 +27,14 @@ logger = logging.getLogger(__name__)
 
 _COMMAND_MAP: dict[str, tuple[str, str | None]] = {
     "approve": ("plan_approved", "plan_approved_at"),
-    "reject":  ("stopped",       "stopped_at"),
+    "reject": ("stopped", "stopped_at"),
 }
 
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _now_utc() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -46,6 +49,7 @@ def _idempotency_key(command: str, task_id: str) -> str:
 # Core logic (importable for tests)
 # ---------------------------------------------------------------------------
 
+
 def run_approve(
     project_dir: Path,
     task_id: str,
@@ -58,7 +62,10 @@ def run_approve(
         1  on error (task not found, unknown command, DB failure)
     """
     if command not in _COMMAND_MAP:
-        print(f"Error: unknown command {command!r}. Valid: {list(_COMMAND_MAP)}", file=sys.stderr)
+        print(
+            f"Error: unknown command {command!r}. Valid: {list(_COMMAND_MAP)}",
+            file=sys.stderr,
+        )
         return 1
 
     target_status, ts_field = _COMMAND_MAP[command]
@@ -96,7 +103,8 @@ def run_approve(
         task = tasks_dao.get(conn, task_id)
         if task is None:
             operator_commands_dao.update_status(
-                conn, row.id,
+                conn,
+                row.id,
                 status="failed",
                 result={"message": f"Task {task_id!r} not found."},
                 now=_now_utc(),
@@ -114,7 +122,8 @@ def run_approve(
 
         # ---- 4. Mark operator_command as executed ----
         operator_commands_dao.update_status(
-            conn, row.id,
+            conn,
+            row.id,
             status="executed",
             result={"message": f"Task {task_id} {command}d."},
             now=_now_utc(),
@@ -139,6 +148,7 @@ def run_approve(
 # CLI entry point
 # ---------------------------------------------------------------------------
 
+
 def main(argv: list[str] | None = None) -> None:
     if argv is None:
         argv = sys.argv[1:]
@@ -151,7 +161,8 @@ def main(argv: list[str] | None = None) -> None:
         ),
     )
     p.add_argument(
-        "-p", "--project",
+        "-p",
+        "--project",
         default=os.getcwd(),
         help="Project directory (default: cwd)",
     )

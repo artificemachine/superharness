@@ -1,10 +1,10 @@
 """Tests for Phase 3 (auto-dispatch), Phase 4 (dry-run recover, SIGALRM fallback),
 and Phase 5 (waiting_input notification, discuss summary)."""
+
 from __future__ import annotations
 
 import json
 import os
-import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -33,6 +33,7 @@ def _make_project(tmp_path: Path, tasks: list[dict] | None = None) -> Path:
     (harness / "inbox.yaml").write_text(yaml.dump({"items": []}))
     (harness / "ledger.md").write_text("# Ledger\n")
     from tests.helpers import seed_sqlite_from_yaml
+
     seed_sqlite_from_yaml(project)
     return project
 
@@ -46,10 +47,18 @@ class TestAutoDispatch:
     def test_no_todo_tasks_returns_0(self, tmp_path):
         from superharness.commands.auto_dispatch import run_auto_dispatch
 
-        project = _make_project(tmp_path, tasks=[
-            {"id": "T-1", "title": "done task", "owner": "claude-code",
-             "status": "done", "effort": "low"},
-        ])
+        project = _make_project(
+            tmp_path,
+            tasks=[
+                {
+                    "id": "T-1",
+                    "title": "done task",
+                    "owner": "claude-code",
+                    "status": "done",
+                    "effort": "low",
+                },
+            ],
+        )
         rc = run_auto_dispatch(str(project), dry_run=True)
         assert rc == 0
 
@@ -62,10 +71,18 @@ class TestAutoDispatch:
     def test_dry_run_does_not_enqueue(self, tmp_path):
         from superharness.commands.auto_dispatch import run_auto_dispatch
 
-        project = _make_project(tmp_path, tasks=[
-            {"id": "T-2", "title": "todo task", "owner": "claude-code",
-             "status": "todo", "effort": "low"},
-        ])
+        project = _make_project(
+            tmp_path,
+            tasks=[
+                {
+                    "id": "T-2",
+                    "title": "todo task",
+                    "owner": "claude-code",
+                    "status": "todo",
+                    "effort": "low",
+                },
+            ],
+        )
         with patch("superharness.commands.auto_dispatch._enqueue") as mock_enqueue:
             rc = run_auto_dispatch(str(project), dry_run=True)
         mock_enqueue.assert_not_called()
@@ -74,49 +91,83 @@ class TestAutoDispatch:
     def test_enqueues_todo_task(self, tmp_path):
         from superharness.commands.auto_dispatch import run_auto_dispatch
 
-        project = _make_project(tmp_path, tasks=[
-            {"id": "T-3", "title": "todo task", "owner": "claude-code",
-             "status": "todo", "effort": "low"},
-        ])
-        with patch("superharness.commands.auto_dispatch._enqueue", return_value=True) as mock_enqueue:
-            with patch("superharness.commands.auto_dispatch._classify_task",
-                       return_value=("claude-code", "standard")):
+        project = _make_project(
+            tmp_path,
+            tasks=[
+                {
+                    "id": "T-3",
+                    "title": "todo task",
+                    "owner": "claude-code",
+                    "status": "todo",
+                    "effort": "low",
+                },
+            ],
+        )
+        with patch(
+            "superharness.commands.auto_dispatch._enqueue", return_value=True
+        ) as mock_enqueue:
+            with patch(
+                "superharness.commands.auto_dispatch._classify_task",
+                return_value=("claude-code", "standard"),
+            ):
                 rc = run_auto_dispatch(str(project), dry_run=False)
-        mock_enqueue.assert_called_once_with(str(project), "T-3", "claude-code", workflow="implementation")
+        mock_enqueue.assert_called_once_with(
+            str(project), "T-3", "claude-code", workflow="implementation"
+        )
         assert rc == 0
 
     def test_skips_blocked_tasks(self, tmp_path):
         from superharness.commands.auto_dispatch import run_auto_dispatch
 
-        project = _make_project(tmp_path, tasks=[
-            {"id": "T-4", "title": "blocked", "owner": "claude-code",
-             "status": "todo", "blocked_by": "T-3"},
-        ])
-        with patch("superharness.commands.auto_dispatch._enqueue", return_value=True) as mock_enqueue:
+        project = _make_project(
+            tmp_path,
+            tasks=[
+                {
+                    "id": "T-4",
+                    "title": "blocked",
+                    "owner": "claude-code",
+                    "status": "todo",
+                    "blocked_by": "T-3",
+                },
+            ],
+        )
+        with patch(
+            "superharness.commands.auto_dispatch._enqueue", return_value=True
+        ) as mock_enqueue:
             rc = run_auto_dispatch(str(project), dry_run=False)
         mock_enqueue.assert_not_called()
         assert rc == 0
 
-    @pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
+    @pytest.mark.skip(
+        reason="legacy YAML fixture — pending SQLite migration (see PR #208)"
+    )
     def test_enqueue_uses_valid_priority(self, tmp_path):
         """Regression: auto_dispatch._enqueue must pass a priority accepted by
         inbox_enqueue (1, 2, or 3). Prior to this test the default was 5, which
         caused `shux auto-dispatch` to fail with '--priority must be 1, 2, or 3'."""
         from superharness.commands.auto_dispatch import _enqueue
 
-        project = _make_project(tmp_path, tasks=[
-            {"id": "T-PRI", "title": "pri task", "owner": "claude-code",
-             "status": "todo", "effort": "low",
-             "project_path": str(tmp_path / "proj")},
-        ])
+        project = _make_project(
+            tmp_path,
+            tasks=[
+                {
+                    "id": "T-PRI",
+                    "title": "pri task",
+                    "owner": "claude-code",
+                    "status": "todo",
+                    "effort": "low",
+                    "project_path": str(tmp_path / "proj"),
+                },
+            ],
+        )
         # The engine inbox expects a YAML list, not a dict. Remove the
         # dict-form inbox the helper writes so enqueue() creates a fresh one.
         (project / ".superharness" / "inbox.yaml").unlink()
         ok = _enqueue(str(project), "T-PRI", "claude-code")
         assert ok is True
-        inbox_items = yaml.safe_load(
-            (project / ".superharness" / "inbox.yaml").read_text()
-        ) or []
+        inbox_items = (
+            yaml.safe_load((project / ".superharness" / "inbox.yaml").read_text()) or []
+        )
         assert len(inbox_items) == 1
         assert inbox_items[0]["priority"] in (1, 2, 3)
         # auto-dispatch picks up todo tasks — plan_only must be set so the
@@ -126,26 +177,52 @@ class TestAutoDispatch:
     def test_agent_override(self, tmp_path):
         from superharness.commands.auto_dispatch import run_auto_dispatch
 
-        project = _make_project(tmp_path, tasks=[
-            {"id": "T-5", "title": "todo", "owner": "claude-code",
-             "status": "todo", "effort": "low"},
-        ])
-        with patch("superharness.commands.auto_dispatch._enqueue", return_value=True) as mock_enqueue:
-            with patch("superharness.commands.auto_dispatch._classify_task",
-                       return_value=("claude-code", "standard")):
-                run_auto_dispatch(str(project), dry_run=False, agent_override="codex-cli")
-        mock_enqueue.assert_called_once_with(str(project), "T-5", "codex-cli", workflow="implementation")
+        project = _make_project(
+            tmp_path,
+            tasks=[
+                {
+                    "id": "T-5",
+                    "title": "todo",
+                    "owner": "claude-code",
+                    "status": "todo",
+                    "effort": "low",
+                },
+            ],
+        )
+        with patch(
+            "superharness.commands.auto_dispatch._enqueue", return_value=True
+        ) as mock_enqueue:
+            with patch(
+                "superharness.commands.auto_dispatch._classify_task",
+                return_value=("claude-code", "standard"),
+            ):
+                run_auto_dispatch(
+                    str(project), dry_run=False, agent_override="codex-cli"
+                )
+        mock_enqueue.assert_called_once_with(
+            str(project), "T-5", "codex-cli", workflow="implementation"
+        )
 
     def test_effort_gate_flags_high_effort(self, tmp_path, capsys):
         from superharness.commands.auto_dispatch import run_auto_dispatch
 
-        project = _make_project(tmp_path, tasks=[
-            {"id": "T-6", "title": "heavy task", "owner": "claude-code",
-             "status": "todo", "effort": "high"},
-        ])
+        project = _make_project(
+            tmp_path,
+            tasks=[
+                {
+                    "id": "T-6",
+                    "title": "heavy task",
+                    "owner": "claude-code",
+                    "status": "todo",
+                    "effort": "high",
+                },
+            ],
+        )
         with patch("superharness.commands.auto_dispatch._enqueue", return_value=True):
-            with patch("superharness.commands.auto_dispatch._classify_task",
-                       return_value=("claude-code", "max")):
+            with patch(
+                "superharness.commands.auto_dispatch._classify_task",
+                return_value=("claude-code", "max"),
+            ):
                 run_auto_dispatch(str(project), dry_run=False, effort_gate="high")
         out = capsys.readouterr().out
         assert "orchestrate" in out.lower()
@@ -175,16 +252,28 @@ class TestInboxRecoverDryRun:
         inbox.write_text(yaml.dump({"items": items}))
         return project
 
-    @pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
+    @pytest.mark.skip(
+        reason="legacy YAML fixture — pending SQLite migration (see PR #208)"
+    )
     def test_dry_run_prints_stale_items(self, tmp_path, capsys):
         from superharness.commands.inbox_recover import _preview_recover
         from datetime import datetime, timezone, timedelta
 
-        old_ts = (datetime.now(timezone.utc) - timedelta(minutes=30)).strftime("%Y-%m-%dT%H:%M:%SZ")
-        project = self._make_inbox(tmp_path, items=[{
-            "id": "I-1", "task": "T-1", "status": "launched",
-            "launched_at": old_ts, "pid": None,
-        }])
+        old_ts = (datetime.now(timezone.utc) - timedelta(minutes=30)).strftime(
+            "%Y-%m-%dT%H:%M:%SZ"
+        )
+        project = self._make_inbox(
+            tmp_path,
+            items=[
+                {
+                    "id": "I-1",
+                    "task": "T-1",
+                    "status": "launched",
+                    "launched_at": old_ts,
+                    "pid": None,
+                }
+            ],
+        )
         inbox_file = str(project / ".superharness" / "inbox.yaml")
         with patch("superharness.engine.inbox._process_alive", return_value=False):
             _preview_recover(inbox_file, timeout_minutes=10)
@@ -192,16 +281,26 @@ class TestInboxRecoverDryRun:
         assert "I-1" in out
         assert "T-1" in out
 
-    @pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
+    @pytest.mark.skip(
+        reason="legacy YAML fixture — pending SQLite migration (see PR #208)"
+    )
     def test_dry_run_no_stale_message(self, tmp_path, capsys):
         from superharness.commands.inbox_recover import _preview_recover
         from datetime import datetime, timezone
 
         recent_ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-        project = self._make_inbox(tmp_path, items=[{
-            "id": "I-2", "task": "T-2", "status": "launched",
-            "launched_at": recent_ts, "pid": None,
-        }])
+        project = self._make_inbox(
+            tmp_path,
+            items=[
+                {
+                    "id": "I-2",
+                    "task": "T-2",
+                    "status": "launched",
+                    "launched_at": recent_ts,
+                    "pid": None,
+                }
+            ],
+        )
         inbox_file = str(project / ".superharness" / "inbox.yaml")
         with patch("superharness.engine.inbox._process_alive", return_value=False):
             _preview_recover(inbox_file, timeout_minutes=60)
@@ -212,16 +311,15 @@ class TestInboxRecoverDryRun:
 class TestSIGALRMFallback:
     def test_has_sigalrm_flag(self):
         import signal
+
         # On macOS/Linux this should be True; on Windows False
         has_it = hasattr(signal, "SIGALRM")
         assert isinstance(has_it, bool)
 
     def test_run_with_timeout_uses_threading_when_no_sigalrm(self, tmp_path):
         """When SIGALRM is unavailable, _run_with_timeout should use threading.Timer."""
-        import signal as signal_mod
         import superharness.commands.inbox_dispatch as disp_mod
 
-        original_hasattr = hasattr
 
         # Patch signal module to simulate no SIGALRM
         with patch.object(disp_mod, "signal") as mock_signal:
@@ -240,8 +338,9 @@ class TestWaitingInputNotification:
     def test_waiting_input_icon_in_notify(self):
         from superharness.commands.notify_desktop import notify_task_event
 
-        with patch("superharness.commands.notify_desktop.send_notification",
-                   return_value=True) as mock_send:
+        with patch(
+            "superharness.commands.notify_desktop.send_notification", return_value=True
+        ) as mock_send:
             notify_task_event("T-1", "waiting_input", "claude-code")
 
         mock_send.assert_called_once()
@@ -253,8 +352,10 @@ class TestWaitingInputNotification:
         from superharness.commands.notify_desktop import notify_task_event
 
         for status in ("waiting_input", "done", "failed", "paused"):
-            with patch("superharness.commands.notify_desktop.send_notification",
-                       return_value=True) as mock_send:
+            with patch(
+                "superharness.commands.notify_desktop.send_notification",
+                return_value=True,
+            ) as mock_send:
                 notify_task_event("T-X", status)
             title = mock_send.call_args[0][0]
             assert status.replace("_", " ") in title.lower() or any(
@@ -263,33 +364,15 @@ class TestWaitingInputNotification:
 
 
 class TestDiscussSummary:
-    def _make_discussion(self, tmp_path: Path, disc_id: str,
-                         topic: str = "test topic") -> tuple[Path, Path]:
+    def _make_discussion(
+        self, tmp_path: Path, disc_id: str, topic: str = "test topic"
+    ) -> tuple[Path, Path]:
         project = tmp_path / "proj"
         disc_dir = project / ".superharness" / "discussions" / disc_id
         disc_dir.mkdir(parents=True)
         handoff_dir = project / ".superharness" / "handoffs"
         handoff_dir.mkdir(parents=True)
 
-        state = {
-            "id": disc_id,
-            "topic": topic,
-            "status": "concluded",
-            "current_round": 2,
-            "max_rounds": 3,
-            "participants": ["claude-code", "codex-cli"],
-            "rounds": [
-                {
-                    "round": 1,
-                    "submissions": [
-                        {"agent": "claude-code", "verdict": "approve",
-                         "note": "looks good", "submitted_at": "2026-04-12T10:00:00Z"},
-                        {"agent": "codex-cli", "verdict": "approve",
-                         "note": "", "submitted_at": "2026-04-12T10:01:00Z"},
-                    ],
-                }
-            ],
-        }
         return project, disc_dir, handoff_dir
 
     def test_summary_writes_handoff(self, tmp_path):
@@ -299,12 +382,20 @@ class TestDiscussSummary:
         discussions_dir = str(disc_dir.parent)
 
         disc_state = {
-            "id": "disc-1", "topic": "schema design", "status": "concluded",
-            "current_round": 1, "max_rounds": 2,
+            "id": "disc-1",
+            "topic": "schema design",
+            "status": "concluded",
+            "current_round": 1,
+            "max_rounds": 2,
             "participants": ["claude-code"],
-            "rounds": [{"round": 1, "submissions": [
-                {"agent": "claude-code", "verdict": "approve", "note": "good"}
-            ]}],
+            "rounds": [
+                {
+                    "round": 1,
+                    "submissions": [
+                        {"agent": "claude-code", "verdict": "approve", "note": "good"}
+                    ],
+                }
+            ],
         }
 
         with patch("superharness.commands.discuss._subprocess_run_capture") as mock_run:
@@ -330,4 +421,8 @@ class TestDiscussSummary:
         os.makedirs(discussions_dir, exist_ok=True)
 
         with pytest.raises(SystemExit):
-            cmd_summary(discussions_dir, "nonexistent-disc", str(project / ".superharness" / "handoffs"))
+            cmd_summary(
+                discussions_dir,
+                "nonexistent-disc",
+                str(project / ".superharness" / "handoffs"),
+            )

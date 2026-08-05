@@ -1,7 +1,7 @@
 """Tests for modules/actions/discord.py — Phase 3 Discord adapter."""
+
 from __future__ import annotations
 
-import os
 import pytest
 from unittest.mock import MagicMock, patch
 
@@ -10,8 +10,10 @@ from unittest.mock import MagicMock, patch
 # discord_send — missing env vars
 # ---------------------------------------------------------------------------
 
+
 def test_discord_send_missing_webhook_skips():
     from superharness.modules.actions.discord import discord_send
+
     result = discord_send(
         context={"task_id": "t1", "event": "on_close", "summary": "done"},
         settings={"webhook_url_env": "DISCORD_WEBHOOK_URL_MISSING_XYZ"},
@@ -22,6 +24,7 @@ def test_discord_send_missing_webhook_skips():
 
 def test_discord_send_no_requests_skips(monkeypatch):
     import superharness.modules.actions.discord as mod
+
     monkeypatch.setattr(mod, "HAS_REQUESTS", False)
     result = mod.discord_send(
         context={"task_id": "t1", "event": "on_close"},
@@ -35,11 +38,15 @@ def test_discord_send_no_requests_skips(monkeypatch):
 # discord_send — successful HTTP call
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
 def test_discord_send_posts_webhook(monkeypatch):
     import superharness.modules.actions.discord as mod
+
     monkeypatch.setattr(mod, "HAS_REQUESTS", True)
-    monkeypatch.setenv("DISCORD_TEST_WEBHOOK", "https://discord.com/api/webhooks/fake/token")
+    monkeypatch.setenv(
+        "DISCORD_TEST_WEBHOOK", "https://discord.com/api/webhooks/fake/token"
+    )
 
     mock_resp = MagicMock()
     mock_resp.status_code = 204
@@ -60,6 +67,7 @@ def test_discord_send_posts_webhook(monkeypatch):
 @pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
 def test_discord_send_on_fail_event(monkeypatch):
     import superharness.modules.actions.discord as mod
+
     monkeypatch.setattr(mod, "HAS_REQUESTS", True)
     monkeypatch.setenv("DISCORD_FAIL_HOOK", "https://discord.com/api/webhooks/fake/x")
 
@@ -82,9 +90,13 @@ def test_discord_send_on_fail_event(monkeypatch):
 # discord_trigger — missing env vars
 # ---------------------------------------------------------------------------
 
+
 def test_discord_trigger_missing_token_skips():
     from superharness.modules.actions.discord import discord_trigger
-    result = discord_trigger(settings={"bot_token_env": "DISCORD_BOT_TOKEN_MISSING_XYZ"})
+
+    result = discord_trigger(
+        settings={"bot_token_env": "DISCORD_BOT_TOKEN_MISSING_XYZ"}
+    )
     assert result["success"] is False
     assert result.get("skipped") is True
     assert result["triggers"] == []
@@ -92,13 +104,16 @@ def test_discord_trigger_missing_token_skips():
 
 def test_discord_trigger_missing_channel_skips(monkeypatch):
     import superharness.modules.actions.discord as mod
+
     monkeypatch.setattr(mod, "HAS_REQUESTS", True)
     monkeypatch.setenv("DISCORD_TEST_BOT_TOKEN", "fake-token")
 
-    result = mod.discord_trigger(settings={
-        "bot_token_env": "DISCORD_TEST_BOT_TOKEN",
-        "channel_id_env": "DISCORD_CHANNEL_MISSING_XYZ",
-    })
+    result = mod.discord_trigger(
+        settings={
+            "bot_token_env": "DISCORD_TEST_BOT_TOKEN",
+            "channel_id_env": "DISCORD_CHANNEL_MISSING_XYZ",
+        }
+    )
     assert result["success"] is False
     assert result.get("skipped") is True
 
@@ -107,9 +122,11 @@ def test_discord_trigger_missing_channel_skips(monkeypatch):
 # discord_trigger — parse dispatch commands
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
 def test_discord_trigger_parses_dispatch_commands(monkeypatch):
     import superharness.modules.actions.discord as mod
+
     monkeypatch.setattr(mod, "HAS_REQUESTS", True)
     monkeypatch.setenv("DISCORD_BOT_TKN", "fake")
     monkeypatch.setenv("DISCORD_CH_ID", "123")
@@ -124,10 +141,12 @@ def test_discord_trigger_parses_dispatch_commands(monkeypatch):
     mock_resp.raise_for_status.return_value = None
 
     with patch.object(mod.requests, "get", return_value=mock_resp):
-        result = mod.discord_trigger(settings={
-            "bot_token_env": "DISCORD_BOT_TKN",
-            "channel_id_env": "DISCORD_CH_ID",
-        })
+        result = mod.discord_trigger(
+            settings={
+                "bot_token_env": "DISCORD_BOT_TKN",
+                "channel_id_env": "DISCORD_CH_ID",
+            }
+        )
 
     assert result["success"] is True
     assert len(result["triggers"]) == 2

@@ -17,6 +17,7 @@ never spawn an emitter thread at all.
 
 See docs/PLAN-steal-omnigent.md iteration 4.
 """
+
 from __future__ import annotations
 
 import json

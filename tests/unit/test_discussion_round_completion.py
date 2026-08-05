@@ -1,11 +1,11 @@
 """Tests for round completion detection — DB + disk file scanning."""
+
 from __future__ import annotations
 
 import os
 import sqlite3
 from pathlib import Path
 
-import pytest
 import yaml
 
 
@@ -16,18 +16,18 @@ def _setup_db(tmp_path: Path) -> sqlite3.Connection:
     conn = sqlite3.connect(str(db_path))
     conn.row_factory = sqlite3.Row
     from superharness.engine.db import init_db
+
     init_db(conn)
     return conn
 
 
 class TestRoundCompletionDetection:
-
     def test_disk_files_counted_as_submitted(self, tmp_path):
         """Round YAML files on disk are counted even without DB submissions."""
         conn = _setup_db(tmp_path)
         disc_dir = tmp_path / ".superharness" / "discussions" / "disc-test"
         disc_dir.mkdir(parents=True)
-        
+
         conn.execute(
             "INSERT INTO discussions (id, topic, owners, status, created_at) "
             "VALUES ('disc-test', 'test', '[\"claude-code\",\"codex-cli\",\"gemini-cli\"]', 'active', '2026-01-01T00:00:00Z')"
@@ -37,11 +37,20 @@ class TestRoundCompletionDetection:
         # Write round files for 2 of 3 agents (enough for n-1=2)
         for agent in ["claude-code", "codex-cli"]:
             path = disc_dir / f"round-1-{agent}.yaml"
-            path.write_text(yaml.dump({"discussion_id": "disc-test", "round": 1,
-                                       "agent": agent, "verdict": "agree"}))
+            path.write_text(
+                yaml.dump(
+                    {
+                        "discussion_id": "disc-test",
+                        "round": 1,
+                        "agent": agent,
+                        "verdict": "agree",
+                    }
+                )
+            )
 
         # Simulate the consensus check logic
         from superharness.engine import discussions_dao
+
         rounds = discussions_dao.get_rounds(conn, "disc-test")
         verdicts = {}
         for r in rounds:
@@ -71,9 +80,16 @@ class TestRoundCompletionDetection:
             "VALUES ('disc-db', 'test', '[\"claude-code\"]', 'active', '2026-01-01T00:00:00Z')"
         )
         from superharness.engine import discussions_dao
-        discussions_dao.add_round(conn, discussion_id="disc-db", round_number=1,
-                                  agent="claude-code", verdict="agree",
-                                  content="DB submission", now="2026-01-01T01:00:00Z")
+
+        discussions_dao.add_round(
+            conn,
+            discussion_id="disc-db",
+            round_number=1,
+            agent="claude-code",
+            verdict="agree",
+            content="DB submission",
+            now="2026-01-01T01:00:00Z",
+        )
         # Also write a disk file with different verdict
         path = disc_dir / "round-1-claude-code.yaml"
         path.write_text(yaml.dump({"verdict": "disagree"}))
@@ -104,6 +120,7 @@ class TestRoundCompletionDetection:
         path.write_text(yaml.dump({"verdict": "agree"}))
 
         from superharness.engine import discussions_dao
+
         disc = discussions_dao.get(conn, "disc-none")
         verdicts = {}
         for agent in disc.owners:

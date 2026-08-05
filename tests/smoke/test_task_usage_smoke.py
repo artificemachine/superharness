@@ -1,4 +1,5 @@
 """Smoke test for the task_usage table introduced for per-task cost accounting."""
+
 from __future__ import annotations
 
 from superharness.engine.db import get_connection, init_db
@@ -12,7 +13,14 @@ def test_task_usage_table_exists_after_init(tmp_path):
     conn.close()
 
     expected = {
-        "id", "task_id", "agent", "source", "model",
-        "input_tokens", "output_tokens", "cost_usd", "recorded_at",
+        "id",
+        "task_id",
+        "agent",
+        "source",
+        "model",
+        "input_tokens",
+        "output_tokens",
+        "cost_usd",
+        "recorded_at",
     }
     assert expected <= columns

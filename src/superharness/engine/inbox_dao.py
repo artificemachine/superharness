@@ -6,6 +6,7 @@ from typing import Any
 
 from superharness.engine.state_errors import StateError
 
+
 @dataclass(frozen=True)
 class InboxRow:
     id: str
@@ -28,6 +29,7 @@ class InboxRow:
     done_at: str | None
     reason: str | None = None
     type: str = "task"
+
 
 _ACTIVE_STATUSES = ("pending", "launched", "running", "paused")
 
@@ -61,11 +63,14 @@ def enqueue(
         # races with discuss start. Downgrade to warning instead of crashing.
         if "/round-" in (task_id or ""):
             import logging
+
             _log = logging.getLogger(__name__)
             _log.warning(
                 "inbox_dao: duplicate suppressed for discussion task '%s' → '%s' "
                 "(watcher already claimed id=%s)",
-                task_id, target_agent, existing["id"],
+                task_id,
+                target_agent,
+                existing["id"],
             )
             return
         raise StateError(
@@ -81,7 +86,17 @@ def enqueue(
             ) VALUES (?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?)
             RETURNING *
             """,
-            (id, task_id, target_agent, priority, max_retries, project_path, 1 if plan_only else 0, type, now)
+            (
+                id,
+                task_id,
+                target_agent,
+                priority,
+                max_retries,
+                project_path,
+                1 if plan_only else 0,
+                type,
+                now,
+            ),
         )
         row = cursor.fetchone()
         if not row:
@@ -92,11 +107,13 @@ def enqueue(
     except sqlite3.Error as e:
         raise StateError(f"Database error during enqueue: {e}") from e
 
+
 def get(conn: sqlite3.Connection, id: str) -> InboxRow | None:
     """Get a single inbox row by ID."""
     cursor = conn.execute("SELECT * FROM inbox WHERE id = ?", (id,))
     row = cursor.fetchone()
     return _row_to_inbox(row) if row else None
+
 
 def get_all(
     conn: sqlite3.Connection,
@@ -114,14 +131,15 @@ def get_all(
     if target_agent:
         query += " AND target_agent = ?"
         params.append(target_agent)
-    
+
     query += " ORDER BY priority DESC, created_at ASC"
     if limit:
         query += " LIMIT ?"
         params.append(limit)
-        
+
     cursor = conn.execute(query, params)
     return [_row_to_inbox(row) for row in cursor.fetchall()]
+
 
 def claim_next(
     conn: sqlite3.Connection,
@@ -131,7 +149,7 @@ def claim_next(
     now: str,
 ) -> InboxRow | None:
     """Atomically claim the next pending inbox item for an agent.
-    
+
     Uses a single atomic UPDATE with subquery. Safe for concurrent watchers:
     SQLite serializes writes; only one claimer per pending item.
     """
@@ -152,12 +170,15 @@ def claim_next(
             )
             RETURNING *
             """,
-            (pid, now, now, target_agent)
+            (pid, now, now, target_agent),
         )
         row = cursor.fetchone()
         return _row_to_inbox(row) if row else None
     except sqlite3.Error as e:
-        raise StateError(f"Failed to claim next task for agent '{target_agent}': {e}") from e
+        raise StateError(
+            f"Failed to claim next task for agent '{target_agent}': {e}"
+        ) from e
+
 
 def update_status(
     conn: sqlite3.Connection,
@@ -183,16 +204,18 @@ def update_status(
     elif to_status == "paused":
         query += ", paused_at = ?"
         params.append(now)
-        
+
     query += " WHERE id = ? AND status = ?"
     params.extend([id, from_status])
-    
+
     cursor = conn.execute(query, params)
     return cursor.rowcount > 0
+
 
 def mark_heartbeat(conn: sqlite3.Connection, id: str, now: str) -> None:
     """Update last_heartbeat for an inbox item."""
     conn.execute("UPDATE inbox SET last_heartbeat = ? WHERE id = ?", (now, id))
+
 
 def get_stale(
     conn: sqlite3.Connection,
@@ -203,9 +226,10 @@ def get_stale(
     """Get rows where status is launched/running and last_heartbeat is too old."""
     # Compute cutoff in Python; SQLite datetime() does not accept the 'Z' suffix.
     from datetime import datetime as _dt, timezone as _tz, timedelta as _td
+
     cutoff = (
-        _dt.strptime(now.rstrip("Z"), "%Y-%m-%dT%H:%M:%S")
-        .replace(tzinfo=_tz.utc) - _td(seconds=timeout_seconds)
+        _dt.strptime(now.rstrip("Z"), "%Y-%m-%dT%H:%M:%S").replace(tzinfo=_tz.utc)
+        - _td(seconds=timeout_seconds)
     ).strftime("%Y-%m-%dT%H:%M:%SZ")
     cursor = conn.execute(
         """
@@ -216,6 +240,7 @@ def get_stale(
         (cutoff,),
     )
     return [_row_to_inbox(row) for row in cursor.fetchall()]
+
 
 def set_retry(
     conn: sqlite3.Connection,
@@ -231,8 +256,9 @@ def set_retry(
         SET retry_count = ?, failed_reason = ?, status = 'pending', pid = NULL
         WHERE id = ?
         """,
-        (retry_count, failed_reason, id)
+        (retry_count, failed_reason, id),
     )
+
 
 def mark_stale(
     conn: sqlite3.Connection,
@@ -338,12 +364,28 @@ def remove(conn: sqlite3.Connection, id: str) -> bool:
     return cursor.rowcount > 0
 
 
-_VALID_FIELD_KEYS = frozenset({
-    "task_id", "target_agent", "status", "priority", "retry_count",
-    "max_retries", "recovery_count", "pid", "project_path", "plan_only",
-    "failed_reason", "launched_at", "last_heartbeat", "paused_at",
-    "failed_at", "done_at", "reason", "type",
-})
+_VALID_FIELD_KEYS = frozenset(
+    {
+        "task_id",
+        "target_agent",
+        "status",
+        "priority",
+        "retry_count",
+        "max_retries",
+        "recovery_count",
+        "pid",
+        "project_path",
+        "plan_only",
+        "failed_reason",
+        "launched_at",
+        "last_heartbeat",
+        "paused_at",
+        "failed_at",
+        "done_at",
+        "reason",
+        "type",
+    }
+)
 
 
 def set_field(

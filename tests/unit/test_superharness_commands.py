@@ -1,11 +1,13 @@
 from __future__ import annotations
 
-from tests.helpers import run_bash
-import sys
+from tests.helpers import run_bash, seed_sqlite_from_yaml
 import pytest
 
 
-pytestmark = pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
+pytestmark = pytest.mark.skip(
+    reason="legacy YAML fixture — pending SQLite migration (see PR #208)"
+)
+
 
 def _setup_project(tmp_path):
     project = tmp_path / "proj"
@@ -17,13 +19,13 @@ def _setup_project(tmp_path):
             [
                 "id: demo-contract",
                 "created: 2026-03-09",
-                "goal: \"Demo\"",
+                'goal: "Demo"',
                 "tasks:",
                 "  - id: mcp-docs",
-                "    title: \"Write docs\"",
+                '    title: "Write docs"',
                 "    owner: codex-cli",
                 "    status: plan_approved",
-                f"    project_path: '{project.as_posix()}'" ,
+                f"    project_path: '{project.as_posix()}'",
             ]
         )
         + "\n"
@@ -47,10 +49,15 @@ def test_contract_today_outputs_delegate_prompt(repo_root, tmp_path) -> None:
 
     assert result.returncode == 0, result.stderr
     assert "Contract demo-contract" in result.stdout
-    assert "I detected owner is codex-cli. Do you want to delegate mcp-docs now?" in result.stdout
+    assert (
+        "I detected owner is codex-cli. Do you want to delegate mcp-docs now?"
+        in result.stdout
+    )
 
 
-def test_contract_today_skips_discussion_round_delegate_prompt(repo_root, tmp_path) -> None:
+def test_contract_today_skips_discussion_round_delegate_prompt(
+    repo_root, tmp_path
+) -> None:
     project = _setup_project(tmp_path)
     harness = project / ".superharness"
     (harness / "contract.yaml").write_text(
@@ -58,14 +65,14 @@ def test_contract_today_skips_discussion_round_delegate_prompt(repo_root, tmp_pa
             [
                 "id: demo-contract",
                 "created: 2026-03-09",
-                "goal: \"Demo\"",
+                'goal: "Demo"',
                 "tasks:",
                 "  - id: discuss-demo/round-1",
-                "    title: \"Discussion round\"",
+                '    title: "Discussion round"',
                 "    owner: codex-cli",
                 "    status: in_progress",
                 "    workflow: discussion",
-                f"    project_path: '{project.as_posix()}'" ,
+                f"    project_path: '{project.as_posix()}'",
             ]
         )
         + "\n"
@@ -186,7 +193,9 @@ def test_task_create_allows_pending_user_approval_status(repo_root, tmp_path) ->
     assert "status: pending_user_approval" in contract_text
 
 
-def test_task_create_accepts_workflow_and_development_method(repo_root, tmp_path) -> None:
+def test_task_create_accepts_workflow_and_development_method(
+    repo_root, tmp_path
+) -> None:
     project = _setup_project(tmp_path)
     wrapper = repo_root / "superharness"
 
@@ -239,7 +248,10 @@ def test_task_create_rejects_failed_status(repo_root, tmp_path) -> None:
         ],
     )
     assert create_res.returncode == 2
-    assert "status must be todo, in_progress, pending_user_approval, or done" in create_res.stderr
+    assert (
+        "status must be todo, in_progress, pending_user_approval, or done"
+        in create_res.stderr
+    )
 
 
 def test_task_create_with_dependency(repo_root, tmp_path) -> None:
@@ -412,6 +424,8 @@ def test_doctor_passes_on_minimal_project(repo_root, tmp_path) -> None:
     project = _setup_project(tmp_path)
     wrapper = repo_root / "superharness"
 
-    result = run_bash(wrapper, cwd=repo_root, args=["doctor", "--project", str(project)])
+    result = run_bash(
+        wrapper, cwd=repo_root, args=["doctor", "--project", str(project)]
+    )
     assert result.returncode == 0, result.stderr
     assert "summary:" in result.stdout

@@ -1,4 +1,5 @@
 """Codex CLI harness adapter. See docs/PLAN-steal-omnigent.md iteration 6."""
+
 from __future__ import annotations
 
 from superharness.harnesses.base import Invocation, build_generic_invocation

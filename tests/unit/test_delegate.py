@@ -4,10 +4,10 @@ import os
 import subprocess
 import sys
 from pathlib import Path
-from tests.helpers import seed_sqlite_from_yaml
 
 from tests.helpers import REPO_ROOT
 import pytest
+
 
 def _run_delegate_py(cwd, args: list[str] | None = None, env: dict | None = None):
     """Run delegate Python module."""
@@ -20,7 +20,9 @@ def _run_delegate_py(cwd, args: list[str] | None = None, env: dict | None = None
             else:
                 merged[k] = v
     cmd = [sys.executable, "-m", "superharness.commands.delegate"] + (args or [])
-    return subprocess.run(cmd, cwd=str(cwd), text=True, capture_output=True, env=merged, check=False)
+    return subprocess.run(
+        cmd, cwd=str(cwd), text=True, capture_output=True, env=merged, check=False
+    )
 
 
 def _setup_project(tmp_path: Path, extra_task_fields: str = "") -> Path:
@@ -35,7 +37,7 @@ def _setup_project(tmp_path: Path, extra_task_fields: str = "") -> Path:
             "  - id: mcp-docs",
             "    owner: codex-cli",
             "    status: plan_approved",
-            f"    project_path: '{project.as_posix()}'" ,
+            f"    project_path: '{project.as_posix()}'",
         ]
     )
     if extra_task_fields:
@@ -61,7 +63,15 @@ def test_delegate_print_only_does_not_require_target_cli(repo_root, tmp_path) ->
     # Use a minimal PATH that does not include user-installed codex/claude CLIs.
     result = _run_delegate_py(
         repo_root,
-        args=["--to", "codex-cli", "--project", str(project), "--task", "mcp-docs", "--print-only"],
+        args=[
+            "--to",
+            "codex-cli",
+            "--project",
+            str(project),
+            "--task",
+            "mcp-docs",
+            "--print-only",
+        ],
         env={"PATH": "/usr/bin:/bin"},
     )
 
@@ -71,13 +81,25 @@ def test_delegate_print_only_does_not_require_target_cli(repo_root, tmp_path) ->
 
 
 @pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-def test_delegate_claude_non_interactive_requires_specific_skip_permissions_confirmation(repo_root, tmp_path) -> None:
+def test_delegate_claude_non_interactive_requires_specific_skip_permissions_confirmation(
+    repo_root, tmp_path
+) -> None:
     project = _setup_project(tmp_path)
     bin_dir = _fake_bin(tmp_path, "claude")
 
     result = _run_delegate_py(
         repo_root,
-        args=["--to", "claude-code", "--project", str(project), "--task", "mcp-docs", "--non-interactive", "--via", "cli"],
+        args=[
+            "--to",
+            "claude-code",
+            "--project",
+            str(project),
+            "--task",
+            "mcp-docs",
+            "--non-interactive",
+            "--via",
+            "cli",
+        ],
         env={
             "PATH": f"{bin_dir}:/usr/bin:/bin",
             "SUPERHARNESS_CONFIRM_NON_INTERACTIVE": "YES",
@@ -89,13 +111,24 @@ def test_delegate_claude_non_interactive_requires_specific_skip_permissions_conf
 
 
 @pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-def test_delegate_codex_bypass_requires_specific_confirmation(repo_root, tmp_path) -> None:
+def test_delegate_codex_bypass_requires_specific_confirmation(
+    repo_root, tmp_path
+) -> None:
     project = _setup_project(tmp_path)
     bin_dir = _fake_bin(tmp_path, "codex")
 
     result = _run_delegate_py(
         repo_root,
-        args=["--to", "codex-cli", "--project", str(project), "--task", "mcp-docs", "--non-interactive", "--codex-bypass"],
+        args=[
+            "--to",
+            "codex-cli",
+            "--project",
+            str(project),
+            "--task",
+            "mcp-docs",
+            "--non-interactive",
+            "--codex-bypass",
+        ],
         env={
             "PATH": f"{bin_dir}:/usr/bin:/bin",
             "SUPERHARNESS_CONFIRM_NON_INTERACTIVE": "YES",
@@ -123,7 +156,9 @@ def test_delegate_surfaces_malformed_handoff_error(repo_root, tmp_path) -> None:
 
 
 @pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-def test_delegate_codex_non_interactive_adds_skip_git_repo_check(repo_root, tmp_path) -> None:
+def test_delegate_codex_non_interactive_adds_skip_git_repo_check(
+    repo_root, tmp_path
+) -> None:
     project = _setup_project(tmp_path)
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir(exist_ok=True)
@@ -133,7 +168,15 @@ def test_delegate_codex_non_interactive_adds_skip_git_repo_check(repo_root, tmp_
 
     result = _run_delegate_py(
         repo_root,
-        args=["--to", "codex-cli", "--project", str(project), "--task", "mcp-docs", "--non-interactive"],
+        args=[
+            "--to",
+            "codex-cli",
+            "--project",
+            str(project),
+            "--task",
+            "mcp-docs",
+            "--non-interactive",
+        ],
         env={
             "PATH": f"{bin_dir}:/usr/bin:/bin",
             "SUPERHARNESS_CONFIRM_NON_INTERACTIVE": "YES",
@@ -158,8 +201,14 @@ def test_delegate_print_only_shows_model_and_effort(repo_root, tmp_path) -> None
     result = _run_delegate_py(
         repo_root,
         args=[
-            "--to", "codex-cli", "--project", str(project),
-            "--task", "mcp-docs", "--print-only", "--no-auto-model",
+            "--to",
+            "codex-cli",
+            "--project",
+            str(project),
+            "--task",
+            "mcp-docs",
+            "--print-only",
+            "--no-auto-model",
         ],
         env={"PATH": "/usr/bin:/bin"},
     )
@@ -177,9 +226,17 @@ def test_delegate_model_override_via_cli(repo_root, tmp_path) -> None:
     result = _run_delegate_py(
         repo_root,
         args=[
-            "--to", "claude-code", "--project", str(project),
-            "--task", "mcp-docs", "--print-only",
-            "--model", "opus", "--effort", "high",
+            "--to",
+            "claude-code",
+            "--project",
+            str(project),
+            "--task",
+            "mcp-docs",
+            "--print-only",
+            "--model",
+            "opus",
+            "--effort",
+            "high",
         ],
         env={"PATH": "/usr/bin:/bin"},
     )
@@ -197,8 +254,14 @@ def test_delegate_no_auto_model_uses_fallback(repo_root, tmp_path) -> None:
     result = _run_delegate_py(
         repo_root,
         args=[
-            "--to", "claude-code", "--project", str(project),
-            "--task", "mcp-docs", "--print-only", "--no-auto-model",
+            "--to",
+            "claude-code",
+            "--project",
+            str(project),
+            "--task",
+            "mcp-docs",
+            "--print-only",
+            "--no-auto-model",
         ],
         env={"PATH": "/usr/bin:/bin"},
     )
@@ -211,13 +274,21 @@ def test_delegate_no_auto_model_uses_fallback(repo_root, tmp_path) -> None:
 @pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
 def test_delegate_task_level_model_field(repo_root, tmp_path) -> None:
     """model field on a task in contract.yaml is used when no CLI flag."""
-    project = _setup_project(tmp_path, extra_task_fields="    model: mini\n    effort: low")
+    project = _setup_project(
+        tmp_path, extra_task_fields="    model: mini\n    effort: low"
+    )
 
     result = _run_delegate_py(
         repo_root,
         args=[
-            "--to", "claude-code", "--project", str(project),
-            "--task", "mcp-docs", "--print-only", "--no-auto-model",
+            "--to",
+            "claude-code",
+            "--project",
+            str(project),
+            "--task",
+            "mcp-docs",
+            "--print-only",
+            "--no-auto-model",
         ],
         env={"PATH": "/usr/bin:/bin"},
     )
@@ -236,9 +307,15 @@ def test_delegate_tier_name_resolves_to_agent_model(repo_root, tmp_path) -> None
     result = _run_delegate_py(
         repo_root,
         args=[
-            "--to", "claude-code", "--project", str(project),
-            "--task", "mcp-docs", "--print-only",
-            "--model", "max",
+            "--to",
+            "claude-code",
+            "--project",
+            str(project),
+            "--task",
+            "mcp-docs",
+            "--print-only",
+            "--model",
+            "max",
         ],
         env={"PATH": "/usr/bin:/bin"},
     )
@@ -255,9 +332,15 @@ def test_delegate_codex_tier_resolves_correctly(repo_root, tmp_path) -> None:
     result = _run_delegate_py(
         repo_root,
         args=[
-            "--to", "codex-cli", "--project", str(project),
-            "--task", "mcp-docs", "--print-only",
-            "--model", "mini",
+            "--to",
+            "codex-cli",
+            "--project",
+            str(project),
+            "--task",
+            "mcp-docs",
+            "--print-only",
+            "--model",
+            "mini",
         ],
         env={"PATH": "/usr/bin:/bin"},
     )
@@ -274,11 +357,21 @@ def test_delegate_codex_tier_resolves_correctly(repo_root, tmp_path) -> None:
 @pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
 def test_delegate_blocked_by_scheduled_after(repo_root, tmp_path) -> None:
     """Task with future scheduled_after date blocks delegation."""
-    project = _setup_project(tmp_path, extra_task_fields="    scheduled_after: '2099-12-31'")
+    project = _setup_project(
+        tmp_path, extra_task_fields="    scheduled_after: '2099-12-31'"
+    )
 
     result = _run_delegate_py(
         repo_root,
-        args=["--to", "codex-cli", "--project", str(project), "--task", "mcp-docs", "--print-only"],
+        args=[
+            "--to",
+            "codex-cli",
+            "--project",
+            str(project),
+            "--task",
+            "mcp-docs",
+            "--print-only",
+        ],
         env={"PATH": "/usr/bin:/bin"},
     )
 
@@ -290,11 +383,21 @@ def test_delegate_blocked_by_scheduled_after(repo_root, tmp_path) -> None:
 @pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
 def test_delegate_allowed_after_scheduled_date(repo_root, tmp_path) -> None:
     """Task with past scheduled_after date allows delegation."""
-    project = _setup_project(tmp_path, extra_task_fields="    scheduled_after: '2020-01-01'")
+    project = _setup_project(
+        tmp_path, extra_task_fields="    scheduled_after: '2020-01-01'"
+    )
 
     result = _run_delegate_py(
         repo_root,
-        args=["--to", "codex-cli", "--project", str(project), "--task", "mcp-docs", "--print-only"],
+        args=[
+            "--to",
+            "codex-cli",
+            "--project",
+            str(project),
+            "--task",
+            "mcp-docs",
+            "--print-only",
+        ],
         env={"PATH": "/usr/bin:/bin"},
     )
 
@@ -308,7 +411,15 @@ def test_delegate_warns_overdue_task(repo_root, tmp_path) -> None:
 
     result = _run_delegate_py(
         repo_root,
-        args=["--to", "codex-cli", "--project", str(project), "--task", "mcp-docs", "--print-only"],
+        args=[
+            "--to",
+            "codex-cli",
+            "--project",
+            str(project),
+            "--task",
+            "mcp-docs",
+            "--print-only",
+        ],
         env={"PATH": "/usr/bin:/bin"},
     )
 
@@ -339,7 +450,15 @@ def test_delegate_blocked_by_dependency(repo_root, tmp_path) -> None:
 
     result = _run_delegate_py(
         repo_root,
-        args=["--to", "codex-cli", "--project", str(project), "--task", "mcp-docs", "--print-only"],
+        args=[
+            "--to",
+            "codex-cli",
+            "--project",
+            str(project),
+            "--task",
+            "mcp-docs",
+            "--print-only",
+        ],
         env={"PATH": "/usr/bin:/bin"},
     )
 
@@ -371,7 +490,15 @@ def test_delegate_allowed_when_dependency_done(repo_root, tmp_path) -> None:
 
     result = _run_delegate_py(
         repo_root,
-        args=["--to", "codex-cli", "--project", str(project), "--task", "mcp-docs", "--print-only"],
+        args=[
+            "--to",
+            "codex-cli",
+            "--project",
+            str(project),
+            "--task",
+            "mcp-docs",
+            "--print-only",
+        ],
         env={"PATH": "/usr/bin:/bin"},
     )
 
@@ -380,16 +507,34 @@ def test_delegate_allowed_when_dependency_done(repo_root, tmp_path) -> None:
 
 def test_delegate_scheduled_after_idempotent(repo_root, tmp_path) -> None:
     """Running delegate twice on a future-scheduled task returns same error both times."""
-    project = _setup_project(tmp_path, extra_task_fields="    scheduled_after: '2099-12-31'")
+    project = _setup_project(
+        tmp_path, extra_task_fields="    scheduled_after: '2099-12-31'"
+    )
 
     r1 = _run_delegate_py(
         repo_root,
-        args=["--to", "codex-cli", "--project", str(project), "--task", "mcp-docs", "--print-only"],
+        args=[
+            "--to",
+            "codex-cli",
+            "--project",
+            str(project),
+            "--task",
+            "mcp-docs",
+            "--print-only",
+        ],
         env={"PATH": "/usr/bin:/bin"},
     )
     r2 = _run_delegate_py(
         repo_root,
-        args=["--to", "codex-cli", "--project", str(project), "--task", "mcp-docs", "--print-only"],
+        args=[
+            "--to",
+            "codex-cli",
+            "--project",
+            str(project),
+            "--task",
+            "mcp-docs",
+            "--print-only",
+        ],
         env={"PATH": "/usr/bin:/bin"},
     )
 
@@ -415,6 +560,7 @@ def test_delegate_via_sdk_uses_sdk_runner_when_available(repo_root, tmp_path) ->
     if not callable(getattr(sdk, "query", None)):
         pytest.skip("claude_agent_sdk is a test stub, not the real SDK")
     import shutil
+
     if not shutil.which("claude"):
         pytest.skip("claude CLI not on PATH")
 
@@ -423,8 +569,15 @@ def test_delegate_via_sdk_uses_sdk_runner_when_available(repo_root, tmp_path) ->
     result = _run_delegate_py(
         repo_root,
         args=[
-            "--to", "claude-code", "--project", str(project),
-            "--task", "mcp-docs", "--via", "sdk", "--print-only",
+            "--to",
+            "claude-code",
+            "--project",
+            str(project),
+            "--task",
+            "mcp-docs",
+            "--via",
+            "sdk",
+            "--print-only",
         ],
     )
 
@@ -432,7 +585,9 @@ def test_delegate_via_sdk_uses_sdk_runner_when_available(repo_root, tmp_path) ->
 
 
 @pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-def test_delegate_via_sdk_falls_back_to_cli_when_sdk_unavailable(repo_root, tmp_path) -> None:
+def test_delegate_via_sdk_falls_back_to_cli_when_sdk_unavailable(
+    repo_root, tmp_path
+) -> None:
     """--via sdk falls back to CLI when SDK is not available."""
     project = _setup_project(tmp_path)
     bin_dir = _fake_bin(tmp_path, "claude")
@@ -440,8 +595,15 @@ def test_delegate_via_sdk_falls_back_to_cli_when_sdk_unavailable(repo_root, tmp_
     result = _run_delegate_py(
         repo_root,
         args=[
-            "--to", "claude-code", "--project", str(project),
-            "--task", "mcp-docs", "--via", "sdk", "--print-only",
+            "--to",
+            "claude-code",
+            "--project",
+            str(project),
+            "--task",
+            "mcp-docs",
+            "--via",
+            "sdk",
+            "--print-only",
         ],
         env={
             "PATH": f"{bin_dir}:/usr/bin:/bin",
@@ -450,20 +612,31 @@ def test_delegate_via_sdk_falls_back_to_cli_when_sdk_unavailable(repo_root, tmp_
     )
 
     # Should warn about fallback and show CLI mode
-    assert "SDK not available" in result.stderr or "falling back" in result.stderr.lower()
+    assert (
+        "SDK not available" in result.stderr or "falling back" in result.stderr.lower()
+    )
     assert "Via: cli" in result.stdout
 
 
 @pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-def test_delegate_via_sdk_print_only_falls_back_when_unavailable(repo_root, tmp_path) -> None:
+def test_delegate_via_sdk_print_only_falls_back_when_unavailable(
+    repo_root, tmp_path
+) -> None:
     """--via sdk --print-only falls back to CLI when SDK is unavailable."""
     project = _setup_project(tmp_path)
 
     result = _run_delegate_py(
         repo_root,
         args=[
-            "--to", "claude-code", "--project", str(project),
-            "--task", "mcp-docs", "--via", "sdk", "--print-only",
+            "--to",
+            "claude-code",
+            "--project",
+            str(project),
+            "--task",
+            "mcp-docs",
+            "--via",
+            "sdk",
+            "--print-only",
         ],
         env={
             "PATH": "/usr/bin:/bin",
@@ -472,11 +645,14 @@ def test_delegate_via_sdk_print_only_falls_back_when_unavailable(repo_root, tmp_
     )
 
     assert result.returncode == 0, result.stderr
-    assert "SDK not available" in result.stderr and "falling back" in result.stderr.lower()
+    assert (
+        "SDK not available" in result.stderr and "falling back" in result.stderr.lower()
+    )
     assert "Via: cli" in result.stdout
 
 
 # ── gate 4 exit code + --plan-only ───────────────────────────────────────────
+
 
 def _setup_project_todo(tmp_path: Path) -> Path:
     """Project with a single `todo` + `implementation` task."""
@@ -502,8 +678,15 @@ def test_delegate_returns_exit_2_on_permanent_lifecycle_block(tmp_path):
     project = _setup_project_todo(tmp_path)
     r = _run_delegate_py(
         project,
-        args=["--to", "claude-code", "--project", str(project),
-              "--task", "feat.wip", "--print-only"],
+        args=[
+            "--to",
+            "claude-code",
+            "--project",
+            str(project),
+            "--task",
+            "feat.wip",
+            "--print-only",
+        ],
     )
     assert r.returncode == 2, (r.returncode, r.stdout, r.stderr)
     assert "plan must be approved" in r.stderr or "blocked" in r.stderr
@@ -515,8 +698,16 @@ def test_delegate_plan_only_accepts_todo_implementation(tmp_path):
     project = _setup_project_todo(tmp_path)
     r = _run_delegate_py(
         project,
-        args=["--to", "claude-code", "--project", str(project),
-              "--task", "feat.wip", "--plan-only", "--print-only"],
+        args=[
+            "--to",
+            "claude-code",
+            "--project",
+            str(project),
+            "--task",
+            "feat.wip",
+            "--plan-only",
+            "--print-only",
+        ],
     )
     assert r.returncode == 0, (r.returncode, r.stdout, r.stderr)
 
@@ -527,8 +718,16 @@ def test_delegate_plan_only_injects_directive_into_prompt(tmp_path):
     project = _setup_project_todo(tmp_path)
     r = _run_delegate_py(
         project,
-        args=["--to", "claude-code", "--project", str(project),
-              "--task", "feat.wip", "--plan-only", "--print-only"],
+        args=[
+            "--to",
+            "claude-code",
+            "--project",
+            str(project),
+            "--task",
+            "feat.wip",
+            "--plan-only",
+            "--print-only",
+        ],
     )
     assert r.returncode == 0, r.stderr
     assert "PLAN-ONLY MODE" in r.stdout
@@ -542,13 +741,13 @@ def test_delegate_without_plan_only_returns_exit_2_for_todo_impl(tmp_path):
     project = _setup_project_todo(tmp_path)
     r = _run_delegate_py(
         project,
-        args=["--to", "claude-code", "--project", str(project),
-              "--task", "feat.wip"],
+        args=["--to", "claude-code", "--project", str(project), "--task", "feat.wip"],
     )
     assert r.returncode == 2, (r.returncode, r.stderr)
 
 
 # ── ship_on_complete directive ────────────────────────────────────────────────
+
 
 def _setup_project_ship_on_complete(tmp_path: Path) -> Path:
     """Project with a plan_approved + ship_on_complete task."""
@@ -575,8 +774,15 @@ def test_ship_on_complete_injects_directive_into_prompt(tmp_path):
     project = _setup_project_ship_on_complete(tmp_path)
     r = _run_delegate_py(
         project,
-        args=["--to", "claude-code", "--project", str(project),
-              "--task", "feat.ship-me", "--print-only"],
+        args=[
+            "--to",
+            "claude-code",
+            "--project",
+            str(project),
+            "--task",
+            "feat.ship-me",
+            "--print-only",
+        ],
     )
     assert r.returncode == 0, r.stderr
     assert "SHIP-ON-COMPLETE" in r.stdout
@@ -600,8 +806,15 @@ def test_ship_on_complete_false_no_directive(tmp_path):
     )
     r = _run_delegate_py(
         project,
-        args=["--to", "claude-code", "--project", str(project),
-              "--task", "feat.wip", "--print-only"],
+        args=[
+            "--to",
+            "claude-code",
+            "--project",
+            str(project),
+            "--task",
+            "feat.wip",
+            "--print-only",
+        ],
     )
     assert r.returncode == 0, r.stderr
     assert "SHIP-ON-COMPLETE" not in r.stdout
@@ -624,8 +837,16 @@ def test_delegate_ship_on_complete_flag_overrides_contract(tmp_path):
     )
     r = _run_delegate_py(
         project,
-        args=["--to", "claude-code", "--project", str(project),
-              "--task", "feat.wip", "--ship-on-complete", "--print-only"],
+        args=[
+            "--to",
+            "claude-code",
+            "--project",
+            str(project),
+            "--task",
+            "feat.wip",
+            "--ship-on-complete",
+            "--print-only",
+        ],
     )
     assert r.returncode == 0, r.stderr
     assert "SHIP-ON-COMPLETE" in r.stdout
@@ -640,6 +861,7 @@ class TestSaveContextSnapshotTaskUsage:
         project.mkdir()
         (project / ".superharness").mkdir()
         from superharness.engine.db import get_connection, init_db
+
         conn = get_connection(str(project))
         init_db(conn)
         conn.execute(
@@ -656,7 +878,12 @@ class TestSaveContextSnapshotTaskUsage:
         from superharness.engine.db import get_connection, init_db
 
         project = self._setup(tmp_path)
-        result = {"output": "done", "input_tokens": 200, "output_tokens": 80, "cost_usd": 0.02}
+        result = {
+            "output": "done",
+            "input_tokens": 200,
+            "output_tokens": 80,
+            "cost_usd": 0.02,
+        }
         _save_context_snapshot(str(project), "t1", result, model="claude-sonnet-5")
 
         conn = get_connection(str(project))
@@ -672,12 +899,19 @@ class TestSaveContextSnapshotTaskUsage:
         assert rows[0].output_tokens == 80
         assert rows[0].cost_usd == 0.02
 
-    def test_save_context_snapshot_still_writes_yaml_cache(self, tmp_path: Path) -> None:
+    def test_save_context_snapshot_still_writes_yaml_cache(
+        self, tmp_path: Path
+    ) -> None:
         from superharness.commands.delegate import _save_context_snapshot
         import yaml
 
         project = self._setup(tmp_path)
-        result = {"output": "done", "input_tokens": 200, "output_tokens": 80, "cost_usd": 0.02}
+        result = {
+            "output": "done",
+            "input_tokens": 200,
+            "output_tokens": 80,
+            "cost_usd": 0.02,
+        }
         _save_context_snapshot(str(project), "t1", result, model="claude-sonnet-5")
 
         cache_file = project / ".superharness" / "context-cache" / "t1.yaml"
@@ -688,13 +922,20 @@ class TestSaveContextSnapshotTaskUsage:
         assert snapshot["output_tokens"] == 80
         assert snapshot["cost_usd"] == 0.02
 
-    def test_save_context_snapshot_handles_missing_cost_data_gracefully(self, tmp_path: Path) -> None:
+    def test_save_context_snapshot_handles_missing_cost_data_gracefully(
+        self, tmp_path: Path
+    ) -> None:
         from superharness.commands.delegate import _save_context_snapshot
         from superharness.engine import usage_dao
         from superharness.engine.db import get_connection, init_db
 
         project = self._setup(tmp_path)
-        result = {"output": "done", "input_tokens": 0, "output_tokens": 0, "cost_usd": None}
+        result = {
+            "output": "done",
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "cost_usd": None,
+        }
         _save_context_snapshot(str(project), "t1", result, model="unknown-model")
 
         conn = get_connection(str(project))

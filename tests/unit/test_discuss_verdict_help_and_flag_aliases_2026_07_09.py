@@ -12,6 +12,7 @@ Covers two bugs:
   only accepted `--id`, `submit` only accepted `--discussion`. Every
   cross-subcommand invocation was a guess.
 """
+
 from __future__ import annotations
 
 import subprocess
@@ -27,7 +28,11 @@ def _run_discuss(cwd: Path, args: list[str]) -> subprocess.CompletedProcess:
     env = {**__import__("os").environ, "PYTHONPATH": str(REPO_ROOT / "src")}
     return subprocess.run(
         [sys.executable, "-m", "superharness.commands.discuss"] + args,
-        cwd=str(cwd), text=True, capture_output=True, env=env, check=False,
+        cwd=str(cwd),
+        text=True,
+        capture_output=True,
+        env=env,
+        check=False,
     )
 
 
@@ -46,6 +51,7 @@ def _assert_clean_argparse(result: subprocess.CompletedProcess) -> None:
 # Bug N — --verdict help text omits agree/partial
 # ---------------------------------------------------------------------------
 
+
 class TestBugN_VerdictHelpMismatch:
     def test_submit_help_lists_all_valid_verdicts(self):
         """--help for `discuss submit` must list every value the validator
@@ -61,6 +67,7 @@ class TestBugN_VerdictHelpMismatch:
 # ---------------------------------------------------------------------------
 # Bug O — --id / --discussion not interchangeable
 # ---------------------------------------------------------------------------
+
 
 class TestBugO_IdDiscussionFlagAlias:
     """rounds/consensus/summary/close natively accept --id; --discussion must
@@ -79,17 +86,39 @@ class TestBugO_IdDiscussionFlagAlias:
         _assert_clean_argparse(result)
 
     def test_submit_accepts_id_alias(self):
-        result = _run_discuss(REPO_ROOT, [
-            "submit", "--id", "disc-test-123",
-            "--agent", "claude-code", "--round", "1",
-            "--verdict", "agree", "--position", "test",
-        ])
+        result = _run_discuss(
+            REPO_ROOT,
+            [
+                "submit",
+                "--id",
+                "disc-test-123",
+                "--agent",
+                "claude-code",
+                "--round",
+                "1",
+                "--verdict",
+                "agree",
+                "--position",
+                "test",
+            ],
+        )
         _assert_clean_argparse(result)
 
     def test_submit_still_accepts_discussion(self):
-        result = _run_discuss(REPO_ROOT, [
-            "submit", "--discussion", "disc-test-123",
-            "--agent", "claude-code", "--round", "1",
-            "--verdict", "agree", "--position", "test",
-        ])
+        result = _run_discuss(
+            REPO_ROOT,
+            [
+                "submit",
+                "--discussion",
+                "disc-test-123",
+                "--agent",
+                "claude-code",
+                "--round",
+                "1",
+                "--verdict",
+                "agree",
+                "--position",
+                "test",
+            ],
+        )
         _assert_clean_argparse(result)

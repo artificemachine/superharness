@@ -1,4 +1,5 @@
 """Iteration 2: issue_url render in `shux contract` and `shux context`."""
+
 from __future__ import annotations
 
 from datetime import datetime, timezone
@@ -25,24 +26,27 @@ def _add_task(project: Path, task_id: str, issue_url: str | None = None) -> None
     conn = get_connection(str(project))
     try:
         init_db(conn)
-        tasks_dao.upsert(conn, TaskRow(
-            id=task_id,
-            title=f"Task {task_id}",
-            owner="claude-code",
-            status="todo",
-            effort="medium",
-            project_path=str(project),
-            development_method="tdd",
-            acceptance_criteria=[],
-            test_types=[],
-            out_of_scope=[],
-            definition_of_done=[],
-            context=None,
-            tdd=None,
-            version=1,
-            created_at=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-            issue_url=issue_url,
-        ))
+        tasks_dao.upsert(
+            conn,
+            TaskRow(
+                id=task_id,
+                title=f"Task {task_id}",
+                owner="claude-code",
+                status="todo",
+                effort="medium",
+                project_path=str(project),
+                development_method="tdd",
+                acceptance_criteria=[],
+                test_types=[],
+                out_of_scope=[],
+                definition_of_done=[],
+                context=None,
+                tdd=None,
+                version=1,
+                created_at=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                issue_url=issue_url,
+            ),
+        )
         conn.commit()
     finally:
         conn.close()

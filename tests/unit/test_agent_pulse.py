@@ -1,11 +1,10 @@
 """Tests for agent-pulse command and AgentPulse schema (Phase 2)."""
+
 from __future__ import annotations
 
-import time
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
-import pytest
 import yaml
 
 from superharness.engine.schemas import AgentPulse, TaskStatus
@@ -76,8 +75,17 @@ class TestTaskStatusPhase2:
         assert TaskStatus.paused == "paused"
 
     def test_all_original_statuses_unchanged(self):
-        for s in ("todo", "plan_proposed", "plan_approved", "in_progress",
-                  "report_ready", "review_passed", "done", "failed", "blocked"):
+        for s in (
+            "todo",
+            "plan_proposed",
+            "plan_approved",
+            "in_progress",
+            "report_ready",
+            "review_passed",
+            "done",
+            "failed",
+            "blocked",
+        ):
             assert TaskStatus(s).value == s
 
 
@@ -91,6 +99,7 @@ class TestWritePulse:
         """SQLite is SoT — write_pulse creates a SQLite row."""
         from superharness.engine.db import get_connection, init_db
         from superharness.engine import agent_pulse_dao
+
         project = _make_project(tmp_path)
         _write_pulse(str(project), "T-10", "claude-code")
         conn = get_connection(str(project))
@@ -105,9 +114,15 @@ class TestWritePulse:
     def test_pulse_content_in_sqlite(self, tmp_path):
         from superharness.engine.db import get_connection, init_db
         from superharness.engine import agent_pulse_dao
+
         project = _make_project(tmp_path)
-        _write_pulse(str(project), "T-20", "codex-cli", status="waiting_input",
-                     message="waiting on review")
+        _write_pulse(
+            str(project),
+            "T-20",
+            "codex-cli",
+            status="waiting_input",
+            message="waiting on review",
+        )
         conn = get_connection(str(project))
         try:
             init_db(conn)
@@ -125,6 +140,7 @@ class TestWritePulse:
     def test_overwrites_existing_pulse(self, tmp_path):
         from superharness.engine.db import get_connection, init_db
         from superharness.engine import agent_pulse_dao
+
         project = _make_project(tmp_path)
         _write_pulse(str(project), "T-30", "claude-code")
         _write_pulse(str(project), "T-31", "claude-code")
@@ -156,14 +172,20 @@ class TestReadPulse:
     def test_returns_2_for_stale_pulse(self, tmp_path, capsys):
         project = _make_project(tmp_path)
         # Write a pulse with a timestamp 20 minutes in the past
-        old_ts = (datetime.now(timezone.utc) - timedelta(minutes=20)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        old_ts = (datetime.now(timezone.utc) - timedelta(minutes=20)).strftime(
+            "%Y-%m-%dT%H:%M:%SZ"
+        )
         pulse_file = _pulse_path(str(project))
-        pulse_file.write_text(yaml.dump({
-            "task_id": "T-50",
-            "agent": "claude-code",
-            "status": "running",
-            "last_seen": old_ts,
-        }))
+        pulse_file.write_text(
+            yaml.dump(
+                {
+                    "task_id": "T-50",
+                    "agent": "claude-code",
+                    "status": "running",
+                    "last_seen": old_ts,
+                }
+            )
+        )
         rc = _read_pulse(str(project), stale_minutes=10)
         assert rc == 2
         out = capsys.readouterr().out
@@ -174,6 +196,7 @@ class TestClearPulse:
     def test_clear_removes_sqlite_row(self, tmp_path):
         from superharness.engine.db import get_connection, init_db
         from superharness.engine import agent_pulse_dao
+
         project = _make_project(tmp_path)
         _write_pulse(str(project), "T-60", "claude-code")
         conn = get_connection(str(project))

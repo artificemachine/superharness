@@ -3,6 +3,7 @@
 Shows active contract summary with task table, pending approvals,
 and delegate suggestion for team projects.
 """
+
 from __future__ import annotations
 
 import os
@@ -11,6 +12,7 @@ import sys
 from superharness.engine.next_action import infer_workflow as _infer_workflow_na
 
 import logging
+
 logger = logging.getLogger(__name__)
 
 
@@ -43,6 +45,7 @@ def _read_team_size(project_dir: str) -> str:
         return "team"  # no profile → default team (matches original Bash behaviour)
     try:
         import yaml
+
         with open(profile_file) as f:
             doc = yaml.safe_load(f) or {}
         return str(doc.get("team_size") or "team")
@@ -71,12 +74,17 @@ def contract_today(
     import yaml
 
     from superharness.utils.paths import is_project_initialized
+
     if not is_project_initialized(project_dir):
-        print(f"Missing project state at {project_dir}. Run 'shux init' first.", file=sys.stderr)
+        print(
+            f"Missing project state at {project_dir}. Run 'shux init' first.",
+            file=sys.stderr,
+        )
         return 1
 
     try:
         from superharness.engine.state_reader import get_contract_doc
+
         doc = get_contract_doc(project_dir)
     except Exception as e:
         print(f"Failed to parse contract: {e}", file=sys.stderr)
@@ -101,9 +109,7 @@ def contract_today(
     # Only add the Issue column when at least one visible task has a linked
     # issue — keeps render byte-identical to the pre-Iteration-2 table when
     # no task carries a URL.
-    show_issue_col = any(
-        isinstance(t, dict) and t.get("issue_url") for t in tasks
-    )
+    show_issue_col = any(isinstance(t, dict) and t.get("issue_url") for t in tasks)
 
     rows_raw: list[list[str]] = []
     if include_subtasks:
@@ -122,7 +128,7 @@ def contract_today(
                 row.append(str(t.get("issue_url") or ""))
             rows_raw.append(row)
             parent_status = str(t.get("status", ""))
-            for s in (t.get("subtasks") or []):
+            for s in t.get("subtasks") or []:
                 if not isinstance(s, dict):
                     continue
                 eff = resolve_subtask_status(s, parent_status)
@@ -170,12 +176,15 @@ def contract_today(
     print(_hline("└", "┴", "┘", widths))
 
     if archived_count:
-        print(f"({archived_count} archived task(s) hidden — pass --include-archived to show)")
+        print(
+            f"({archived_count} archived task(s) hidden — pass --include-archived to show)"
+        )
 
     # Pending user approvals (from SQLite)
     pending_approvals: list[tuple[str, str]] = []
     try:
         from superharness.engine import state_reader as _sr
+
         handoff_rows = _sr.get_handoffs(project_dir)
         for row in handoff_rows:
             if not isinstance(row, dict):
@@ -191,22 +200,27 @@ def contract_today(
                         gate = parsed.get("approval_gate")
                 except Exception:
                     pass
-            is_pending = (
-                status == "pending_user_approval"
-                or (isinstance(gate, dict) and gate.get("required") and not gate.get("approved_by_user"))
+            is_pending = status == "pending_user_approval" or (
+                isinstance(gate, dict)
+                and gate.get("required")
+                and not gate.get("approved_by_user")
             )
             if is_pending:
                 task_id = str(row.get("task_id") or "")
                 pending_approvals.append((task_id, ""))
     except Exception as e:
-        logger.warning("contract_today.py pending approvals failed: %s", e, exc_info=True)
+        logger.warning(
+            "contract_today.py pending approvals failed: %s", e, exc_info=True
+        )
 
     if pending_approvals:
         print()
         print("⚠️  USER APPROVAL REQUIRED")
         for task_id, report in pending_approvals:
             print(f"- task={task_id} report={report}")
-            print(f'  approve: superharness discuss approve --task {task_id} --by owner --note "Approved"')
+            print(
+                f'  approve: superharness discuss approve --task {task_id} --by owner --note "Approved"'
+            )
 
     # Delegate suggestion (team mode only)
     team_size = _read_team_size(project_dir)
@@ -261,11 +275,13 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--project", "-p", default=None)
     parser.add_argument("--agent", default="")
     parser.add_argument(
-        "--include-subtasks", action="store_true",
+        "--include-subtasks",
+        action="store_true",
         help="Also render orchestrator-decomposed subtasks nested under each parent",
     )
     parser.add_argument(
-        "--include-archived", action="store_true",
+        "--include-archived",
+        action="store_true",
         help="Also render tasks with status: archived (hidden by default)",
     )
 

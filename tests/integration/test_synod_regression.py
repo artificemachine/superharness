@@ -11,9 +11,11 @@ delegate.py gate-4 would always reject.
 Fix: inbox_enqueue._validate_contract now mirrors delegate's lifecycle gate.
 These tests assert the pre-write rejection so inbox.yaml is never written.
 """
+
 from __future__ import annotations
 
 import sys
+import subprocess
 import yaml
 import pytest
 from pathlib import Path
@@ -26,7 +28,8 @@ _CLI = [sys.executable, "-m", "superharness.commands.inbox_enqueue"]
 
 
 def _run(args: list[str], *, project: Path) -> "subprocess.CompletedProcess[str]":
-    import subprocess, os
+    import subprocess
+    import os
 
     env = os.environ.copy()
     env["PYTHONPATH"] = str(REPO_ROOT / "src")
@@ -44,6 +47,7 @@ def _make_project(tmp_path: Path, name: str) -> Path:
     project = tmp_path / name
     (project / ".superharness").mkdir(parents=True)
     from superharness.engine.db import get_connection, init_db
+
     conn = get_connection(str(project))
     init_db(conn)
     conn.close()
@@ -58,22 +62,27 @@ def _write_contract(project: Path, task: dict) -> None:
     }
     (project / ".superharness" / "contract.yaml").write_text(yaml.dump(contract))
     from tests.helpers import seed_sqlite_from_yaml
+
     seed_sqlite_from_yaml(project)
 
 
 # ── core regression ──────────────────────────────────────────────────────────
 
+
 def test_todo_task_cannot_be_enqueued_for_implementation(tmp_path: Path) -> None:
     """Exact synod failure: todo + implementation → rejected before inbox.yaml written."""
     project = _make_project(tmp_path, "synod-replica")
-    _write_contract(project, {
-        "id": "iter-0-red",
-        "title": "TDD red phase",
-        "status": "todo",
-        "workflow": "implementation",
-        "owner": "claude-code",
-        "project_path": str(project.resolve()),
-    })
+    _write_contract(
+        project,
+        {
+            "id": "iter-0-red",
+            "title": "TDD red phase",
+            "status": "todo",
+            "workflow": "implementation",
+            "owner": "claude-code",
+            "project_path": str(project.resolve()),
+        },
+    )
 
     result = _run(
         ["--project", str(project), "--to", "claude-code", "--task", "iter-0-red"],
@@ -91,14 +100,17 @@ def test_todo_task_cannot_be_enqueued_for_implementation(tmp_path: Path) -> None
 def test_rejected_message_surfaces_hint(tmp_path: Path) -> None:
     """Rejection message tells the user how to unblock (--plan-only)."""
     project = _make_project(tmp_path, "synod-hint")
-    _write_contract(project, {
-        "id": "iter-0",
-        "title": "Iteration 0",
-        "status": "todo",
-        "workflow": "implementation",
-        "owner": "claude-code",
-        "project_path": str(project.resolve()),
-    })
+    _write_contract(
+        project,
+        {
+            "id": "iter-0",
+            "title": "Iteration 0",
+            "status": "todo",
+            "workflow": "implementation",
+            "owner": "claude-code",
+            "project_path": str(project.resolve()),
+        },
+    )
 
     result = _run(
         ["--project", str(project), "--to", "claude-code", "--task", "iter-0"],
@@ -113,17 +125,28 @@ def test_rejected_message_surfaces_hint(tmp_path: Path) -> None:
 def test_plan_only_unblocks_todo_implementation(tmp_path: Path) -> None:
     """--plan-only is the escape hatch that the synod session needed."""
     project = _make_project(tmp_path, "synod-plan-only")
-    _write_contract(project, {
-        "id": "iter-0-red",
-        "title": "TDD red phase",
-        "status": "todo",
-        "workflow": "implementation",
-        "owner": "claude-code",
-        "project_path": str(project.resolve()),
-    })
+    _write_contract(
+        project,
+        {
+            "id": "iter-0-red",
+            "title": "TDD red phase",
+            "status": "todo",
+            "workflow": "implementation",
+            "owner": "claude-code",
+            "project_path": str(project.resolve()),
+        },
+    )
 
     result = _run(
-        ["--project", str(project), "--to", "claude-code", "--task", "iter-0-red", "--plan-only"],
+        [
+            "--project",
+            str(project),
+            "--to",
+            "claude-code",
+            "--task",
+            "iter-0-red",
+            "--plan-only",
+        ],
         project=project,
     )
 
@@ -139,14 +162,17 @@ def test_plan_only_unblocks_todo_implementation(tmp_path: Path) -> None:
 def test_owner_mismatch_silent_accept_is_gone(tmp_path: Path) -> None:
     """Defect B: silently accepting --to that contradicts owner is fixed."""
     project = _make_project(tmp_path, "synod-owner")
-    _write_contract(project, {
-        "id": "iter-0-red",
-        "title": "TDD red phase",
-        "status": "plan_approved",
-        "workflow": "implementation",
-        "owner": "codex-cli",
-        "project_path": str(project.resolve()),
-    })
+    _write_contract(
+        project,
+        {
+            "id": "iter-0-red",
+            "title": "TDD red phase",
+            "status": "plan_approved",
+            "workflow": "implementation",
+            "owner": "codex-cli",
+            "project_path": str(project.resolve()),
+        },
+    )
 
     result = _run(
         ["--project", str(project), "--to", "claude-code", "--task", "iter-0-red"],

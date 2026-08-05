@@ -10,10 +10,9 @@ Tests:
 - validate.py inherits default_definition_of_done
 - validate.py warns on high/max effort without out_of_scope
 """
+
 from __future__ import annotations
 
-import os
-import sys
 from pathlib import Path
 
 import pytest
@@ -23,15 +22,21 @@ import yaml
 # ── Schema tests ──
 
 
-pytestmark = pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
+pytestmark = pytest.mark.skip(
+    reason="legacy YAML fixture — pending SQLite migration (see PR #208)"
+)
+
 
 def test_contract_task_effort_field():
     """ContractTask accepts effort field with valid values."""
     from superharness.engine.schemas import ContractTask
 
     task = ContractTask(
-        id="t-1", title="test", owner="claude-code",
-        status="todo", effort="high",
+        id="t-1",
+        title="test",
+        owner="claude-code",
+        status="todo",
+        effort="high",
     )
     assert task.effort == "high"
 
@@ -41,7 +46,10 @@ def test_contract_task_effort_default():
     from superharness.engine.schemas import ContractTask
 
     task = ContractTask(
-        id="t-1", title="test", owner="claude-code", status="todo",
+        id="t-1",
+        title="test",
+        owner="claude-code",
+        status="todo",
     )
     assert task.effort == "medium"
 
@@ -52,8 +60,11 @@ def test_contract_task_plan_field_direct():
 
     plan = {"red": "write test", "green": "implement", "refactor": "cleanup"}
     task = ContractTask(
-        id="t-1", title="test", owner="claude-code",
-        status="todo", plan=plan,
+        id="t-1",
+        title="test",
+        owner="claude-code",
+        status="todo",
+        plan=plan,
     )
     assert task.plan == plan
 
@@ -64,8 +75,11 @@ def test_plan_field_reads_old_tdd_alias():
 
     tdd_data = {"red": "write test", "green": "implement"}
     task = ContractTask(
-        id="t-1", title="test", owner="claude-code",
-        status="todo", tdd=tdd_data,
+        id="t-1",
+        title="test",
+        owner="claude-code",
+        status="todo",
+        tdd=tdd_data,
     )
     assert task.plan == tdd_data
 
@@ -76,8 +90,11 @@ def test_contract_task_out_of_scope():
 
     oos = ["no UI changes", "do not modify user model"]
     task = ContractTask(
-        id="t-1", title="test", owner="claude-code",
-        status="todo", out_of_scope=oos,
+        id="t-1",
+        title="test",
+        owner="claude-code",
+        status="todo",
+        out_of_scope=oos,
     )
     assert task.out_of_scope == oos
 
@@ -88,8 +105,11 @@ def test_contract_task_definition_of_done():
 
     dod = ["all tests pass", "no new warnings"]
     task = ContractTask(
-        id="t-1", title="test", owner="claude-code",
-        status="todo", definition_of_done=dod,
+        id="t-1",
+        title="test",
+        owner="claude-code",
+        status="todo",
+        definition_of_done=dod,
     )
     assert task.definition_of_done == dod
 
@@ -100,8 +120,11 @@ def test_contract_task_context():
 
     ctx = "Read src/api/ first. Auth middleware in middleware/"
     task = ContractTask(
-        id="t-1", title="test", owner="claude-code",
-        status="todo", context=ctx,
+        id="t-1",
+        title="test",
+        owner="claude-code",
+        status="todo",
+        context=ctx,
     )
     assert task.context == ctx
 
@@ -111,8 +134,11 @@ def test_contract_task_timeout_minutes():
     from superharness.engine.schemas import ContractTask
 
     task = ContractTask(
-        id="t-1", title="test", owner="claude-code",
-        status="todo", timeout_minutes=25,
+        id="t-1",
+        title="test",
+        owner="claude-code",
+        status="todo",
+        timeout_minutes=25,
     )
     assert task.timeout_minutes == 25
 
@@ -122,7 +148,10 @@ def test_contract_task_progress_timeout_minutes():
     from superharness.engine.schemas import ContractTask
 
     task = ContractTask(
-        id="t-1", title="test", owner="claude-code", status="todo",
+        id="t-1",
+        title="test",
+        owner="claude-code",
+        status="todo",
     )
     assert task.progress_timeout_minutes == 10
 
@@ -133,8 +162,11 @@ def test_contract_default_definition_of_done():
 
     dod = ["all tests pass", "no new warnings"]
     contract = Contract(
-        id="test", created="2026-04-07", created_by="owner",
-        status="active", default_definition_of_done=dod,
+        id="test",
+        created="2026-04-07",
+        created_by="owner",
+        status="active",
+        default_definition_of_done=dod,
     )
     assert contract.default_definition_of_done == dod
 
@@ -148,8 +180,11 @@ def test_development_method_any_string(tmp_path):
 
     contract_file = _make_contract(tmp_path)
     rc = create(
-        contract_file, task_id="t-any", title="test any method",
-        owner="claude-code", status="todo",
+        contract_file,
+        task_id="t-any",
+        title="test any method",
+        owner="claude-code",
+        status="todo",
         project_path=str(tmp_path),
         development_method="atdd",
     )
@@ -162,8 +197,11 @@ def test_task_create_development_method_atdd(tmp_path):
 
     contract_file = _make_contract(tmp_path)
     rc = create(
-        contract_file, task_id="t-atdd", title="test atdd",
-        owner="claude-code", status="todo",
+        contract_file,
+        task_id="t-atdd",
+        title="test atdd",
+        owner="claude-code",
+        status="todo",
         project_path=str(tmp_path),
         development_method="atdd",
     )
@@ -179,8 +217,11 @@ def test_task_create_development_method_custom(tmp_path):
 
     contract_file = _make_contract(tmp_path)
     rc = create(
-        contract_file, task_id="t-custom", title="test custom",
-        owner="claude-code", status="todo",
+        contract_file,
+        task_id="t-custom",
+        title="test custom",
+        owner="claude-code",
+        status="todo",
         project_path=str(tmp_path),
         development_method="spike",
     )
@@ -196,8 +237,11 @@ def test_task_create_with_effort(tmp_path):
 
     contract_file = _make_contract(tmp_path)
     rc = create(
-        contract_file, task_id="t-eff", title="test effort",
-        owner="claude-code", status="todo",
+        contract_file,
+        task_id="t-eff",
+        title="test effort",
+        owner="claude-code",
+        status="todo",
         project_path=str(tmp_path),
         effort="high",
     )
@@ -213,8 +257,11 @@ def test_task_create_with_test_types(tmp_path):
 
     contract_file = _make_contract(tmp_path)
     rc = create(
-        contract_file, task_id="t-tt", title="test types",
-        owner="claude-code", status="todo",
+        contract_file,
+        task_id="t-tt",
+        title="test types",
+        owner="claude-code",
+        status="todo",
         project_path=str(tmp_path),
         test_types=["unit", "integration"],
     )
@@ -230,8 +277,11 @@ def test_task_create_with_out_of_scope(tmp_path):
 
     contract_file = _make_contract(tmp_path)
     rc = create(
-        contract_file, task_id="t-oos", title="test oos",
-        owner="claude-code", status="todo",
+        contract_file,
+        task_id="t-oos",
+        title="test oos",
+        owner="claude-code",
+        status="todo",
         project_path=str(tmp_path),
         out_of_scope=["no UI changes"],
     )
@@ -247,8 +297,11 @@ def test_task_create_with_definition_of_done(tmp_path):
 
     contract_file = _make_contract(tmp_path)
     rc = create(
-        contract_file, task_id="t-dod", title="test dod",
-        owner="claude-code", status="todo",
+        contract_file,
+        task_id="t-dod",
+        title="test dod",
+        owner="claude-code",
+        status="todo",
         project_path=str(tmp_path),
         definition_of_done=["all tests pass", "no warnings"],
     )
@@ -264,8 +317,11 @@ def test_task_create_with_context(tmp_path):
 
     contract_file = _make_contract(tmp_path)
     rc = create(
-        contract_file, task_id="t-ctx", title="test ctx",
-        owner="claude-code", status="todo",
+        contract_file,
+        task_id="t-ctx",
+        title="test ctx",
+        owner="claude-code",
+        status="todo",
         project_path=str(tmp_path),
         context="Read src/api/ first",
     )
@@ -281,8 +337,11 @@ def test_task_create_with_timeout_minutes(tmp_path):
 
     contract_file = _make_contract(tmp_path)
     rc = create(
-        contract_file, task_id="t-to", title="test timeout",
-        owner="claude-code", status="todo",
+        contract_file,
+        task_id="t-to",
+        title="test timeout",
+        owner="claude-code",
+        status="todo",
         project_path=str(tmp_path),
         timeout_minutes=20,
     )
@@ -299,8 +358,11 @@ def test_task_create_with_plan_bdd(tmp_path):
     contract_file = _make_contract(tmp_path)
     plan = {"given": "user logged in", "when": "clicks buy", "then": "order created"}
     rc = create(
-        contract_file, task_id="t-bdd", title="test bdd",
-        owner="claude-code", status="todo",
+        contract_file,
+        task_id="t-bdd",
+        title="test bdd",
+        owner="claude-code",
+        status="todo",
         project_path=str(tmp_path),
         development_method="bdd",
         plan=plan,

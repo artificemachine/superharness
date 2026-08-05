@@ -3,6 +3,7 @@
 Provides contract/task query functions and a CLI that mirrors the Ruby interface
 byte-for-byte so that parity tests pass.
 """
+
 from __future__ import annotations
 
 import glob
@@ -10,7 +11,12 @@ import logging
 import os
 import sys
 
-from superharness.engine.errors import OperationError, SuperharnessError, UsageError, handle_cli_error
+from superharness.engine.errors import (
+    OperationError,
+    SuperharnessError,
+    UsageError,
+    handle_cli_error,
+)
 from superharness.engine.yaml_helpers import safe_load
 
 _log = logging.getLogger(__name__)
@@ -29,7 +35,9 @@ def task_exists(file: str, task: str) -> int:
         return 0
     if not isinstance(tasks, list):
         raise ValueError(f"contract tasks must be a sequence: {file}")
-    found = any(isinstance(t, dict) and str(t.get("id", "")) == str(task) for t in tasks)
+    found = any(
+        isinstance(t, dict) and str(t.get("id", "")) == str(task) for t in tasks
+    )
     print("true" if found else "false")
     return 0
 
@@ -41,7 +49,10 @@ def task_project_path(file: str, task: str) -> int:
         return 0
     if not isinstance(tasks, list):
         raise ValueError(f"contract tasks must be a sequence: {file}")
-    row = next((t for t in tasks if isinstance(t, dict) and str(t.get("id", "")) == str(task)), None)
+    row = next(
+        (t for t in tasks if isinstance(t, dict) and str(t.get("id", "")) == str(task)),
+        None,
+    )
     if row is None:
         return 0
     val = row.get("project_path")
@@ -59,7 +70,10 @@ def task_owner(file: str, task: str) -> int:
         return 0
     if not isinstance(tasks, list):
         raise ValueError(f"contract tasks must be a sequence: {file}")
-    row = next((t for t in tasks if isinstance(t, dict) and str(t.get("id", "")) == str(task)), None)
+    row = next(
+        (t for t in tasks if isinstance(t, dict) and str(t.get("id", "")) == str(task)),
+        None,
+    )
     if row is None:
         return 0
     val = row.get("owner")
@@ -77,7 +91,10 @@ def task_status(file: str, task: str) -> int:
         return 0
     if not isinstance(tasks, list):
         raise ValueError(f"contract tasks must be a sequence: {file}")
-    row = next((t for t in tasks if isinstance(t, dict) and str(t.get("id", "")) == str(task)), None)
+    row = next(
+        (t for t in tasks if isinstance(t, dict) and str(t.get("id", "")) == str(task)),
+        None,
+    )
     if row is None:
         return 0
     val = row.get("status")
@@ -101,7 +118,10 @@ def task_acceptance_criteria(file: str, task: str) -> int:
         return 0
     if not isinstance(tasks, list):
         raise ValueError(f"contract tasks must be a sequence: {file}")
-    row = next((t for t in tasks if isinstance(t, dict) and str(t.get("id", "")) == str(task)), None)
+    row = next(
+        (t for t in tasks if isinstance(t, dict) and str(t.get("id", "")) == str(task)),
+        None,
+    )
     if row is None:
         return 0
     criteria = row.get("acceptance_criteria")
@@ -119,7 +139,10 @@ def task_deadline_minutes(file: str, task: str) -> int:
         return 0
     if not isinstance(tasks, list):
         raise ValueError(f"contract tasks must be a sequence: {file}")
-    row = next((t for t in tasks if isinstance(t, dict) and str(t.get("id", "")) == str(task)), None)
+    row = next(
+        (t for t in tasks if isinstance(t, dict) and str(t.get("id", "")) == str(task)),
+        None,
+    )
     if row is None:
         return 0
     val = row.get("deadline_minutes")
@@ -135,7 +158,9 @@ def latest_handoff_task(dir: str, to: str) -> int:
         try:
             data = safe_load(file, dict)
         except Exception as e:
-            raise OperationError(f"Failed to parse handoff {file}: {e}", exit_code=1) from e
+            raise OperationError(
+                f"Failed to parse handoff {file}: {e}", exit_code=1
+            ) from e
         if str(data.get("to", "")) != str(to):
             continue
         task_val = str(data.get("task", ""))
@@ -161,8 +186,14 @@ def _make_parser() -> "argparse.ArgumentParser":  # noqa: F821
     )
     sub = p.add_subparsers(dest="cmd")
 
-    for name in ("task_exists", "task_project_path", "task_owner", "task_status",
-                 "task_deadline_minutes", "task_acceptance_criteria"):
+    for name in (
+        "task_exists",
+        "task_project_path",
+        "task_owner",
+        "task_status",
+        "task_deadline_minutes",
+        "task_acceptance_criteria",
+    ):
         s = sub.add_parser(name, add_help=False)
         s.add_argument("--file")
         s.add_argument("--task")
@@ -210,8 +241,14 @@ def main(argv: list[str] | None = None) -> None:
     # Parse remaining args for this subcommand
     parser = argparse.ArgumentParser(add_help=False)
 
-    if cmd_name in ("task_exists", "task_project_path", "task_owner", "task_status",
-                    "task_deadline_minutes", "task_acceptance_criteria"):
+    if cmd_name in (
+        "task_exists",
+        "task_project_path",
+        "task_owner",
+        "task_status",
+        "task_deadline_minutes",
+        "task_acceptance_criteria",
+    ):
         parser.add_argument("--file")
         parser.add_argument("--task")
         opts = parser.parse_args(rest)

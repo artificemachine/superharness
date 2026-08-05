@@ -6,6 +6,7 @@ extract a compact skill entry and append it to .superharness/skills.yaml.
 Skills are surfaced during delegate context-hint building so future agents
 can reuse proven approaches without rediscovering them.
 """
+
 from __future__ import annotations
 
 import re
@@ -16,6 +17,7 @@ from pathlib import Path
 from typing import Any
 
 import logging
+
 logger = logging.getLogger(__name__)
 
 try:
@@ -32,9 +34,23 @@ _CATEGORY_SIGNALS: list[tuple[str, list[str]]] = [
     ("security", ["security", "auth", "secret", "credential", "cve", "vulnerability"]),
     ("test", ["pytest", "unittest", "fixture", "mock", "coverage", "assertion"]),
     ("bug-fix", ["fix", "bug", "crash", "broken", "regression", "hotfix", "patch"]),
-    ("refactor", ["refactor", "cleanup", "simplify", "extract", "rename", "reorganize", "restructure"]),
+    (
+        "refactor",
+        [
+            "refactor",
+            "cleanup",
+            "simplify",
+            "extract",
+            "rename",
+            "reorganize",
+            "restructure",
+        ],
+    ),
     ("docs", ["readme", "changelog", "docstring", "spec"]),
-    ("perf", ["perf", "performance", "speed", "cache", "optimiz", "benchmark", "latency"]),
+    (
+        "perf",
+        ["perf", "performance", "speed", "cache", "optimiz", "benchmark", "latency"],
+    ),
     ("config", ["config.yaml", "settings", "toml", "dockerfile"]),
     ("feature", ["feat", "feature", "implement", "support", "introduce"]),
 ]
@@ -55,19 +71,57 @@ def _infer_category(text: str) -> str:
 
 _TECHNIQUE_KEYWORDS = [
     # Python patterns
-    "dataclass", "decorator", "context manager", "generator", "async", "threading",
-    "subprocess", "pathlib", "argparse", "unittest.mock", "pytest.fixture",
+    "dataclass",
+    "decorator",
+    "context manager",
+    "generator",
+    "async",
+    "threading",
+    "subprocess",
+    "pathlib",
+    "argparse",
+    "unittest.mock",
+    "pytest.fixture",
     # Git patterns
-    "worktree", "rebase", "cherry-pick", "stash",
+    "worktree",
+    "rebase",
+    "cherry-pick",
+    "stash",
     # Architecture patterns
-    "fanout", "swarm", "dispatch", "registry", "factory", "singleton", "plugin",
-    "middleware", "hook", "event", "callback", "observer",
+    "fanout",
+    "swarm",
+    "dispatch",
+    "registry",
+    "factory",
+    "singleton",
+    "plugin",
+    "middleware",
+    "hook",
+    "event",
+    "callback",
+    "observer",
     # Data patterns
-    "yaml", "json", "csv", "sqlite", "cache", "index",
+    "yaml",
+    "json",
+    "csv",
+    "sqlite",
+    "cache",
+    "index",
     # Ops patterns
-    "launchd", "systemd", "cron", "daemon", "signal", "lock", "mutex",
+    "launchd",
+    "systemd",
+    "cron",
+    "daemon",
+    "signal",
+    "lock",
+    "mutex",
     # Test patterns
-    "parametrize", "fixture", "mock", "patch", "monkeypatch", "tmp_path",
+    "parametrize",
+    "fixture",
+    "mock",
+    "patch",
+    "monkeypatch",
+    "tmp_path",
 ]
 
 
@@ -84,6 +138,7 @@ def _extract_techniques(text: str) -> list[str]:
 # Git diff analysis
 # ---------------------------------------------------------------------------
 
+
 def _get_diff_summary(project_dir: str, base_ref: str = "HEAD~1") -> dict[str, Any]:
     """Get a compact summary of changes since base_ref."""
     summary: dict[str, Any] = {
@@ -96,7 +151,10 @@ def _get_diff_summary(project_dir: str, base_ref: str = "HEAD~1") -> dict[str, A
     try:
         r = subprocess.run(
             ["git", "diff", "--shortstat", base_ref, "HEAD"],
-            capture_output=True, text=True, check=False, cwd=project_dir,
+            capture_output=True,
+            text=True,
+            check=False,
+            cwd=project_dir,
         )
         if r.returncode == 0 and r.stdout.strip():
             m = re.search(r"(\d+) files? changed", r.stdout)
@@ -112,7 +170,10 @@ def _get_diff_summary(project_dir: str, base_ref: str = "HEAD~1") -> dict[str, A
         # Get file list
         r2 = subprocess.run(
             ["git", "diff", "--name-only", base_ref, "HEAD"],
-            capture_output=True, text=True, check=False, cwd=project_dir,
+            capture_output=True,
+            text=True,
+            check=False,
+            cwd=project_dir,
         )
         if r2.returncode == 0:
             files = [f.strip() for f in r2.stdout.splitlines() if f.strip()]
@@ -131,6 +192,7 @@ def _get_diff_summary(project_dir: str, base_ref: str = "HEAD~1") -> dict[str, A
 # ---------------------------------------------------------------------------
 # Core extraction
 # ---------------------------------------------------------------------------
+
 
 @dataclass
 class ExtractedSkill:
@@ -197,6 +259,7 @@ def extract_skill_from_task(project_dir: str, task: dict) -> ExtractedSkill | No
 # ---------------------------------------------------------------------------
 # Storage
 # ---------------------------------------------------------------------------
+
 
 def _load_skills(skills_file: str) -> dict:
     if yaml is None:
@@ -274,16 +337,18 @@ def search_skills(project_dir: str, query: str, top_n: int = 5) -> list[dict]:
         return []
 
     query_lower = query.lower()
-    query_words = set(re.findall(r'[a-z]{3,}', query_lower))
+    query_words = set(re.findall(r"[a-z]{3,}", query_lower))
 
     scored: list[tuple[int, dict]] = []
     for entry in data["skills"]:
-        text = " ".join([
-            entry.get("title", ""),
-            entry.get("summary", ""),
-            entry.get("category", ""),
-            " ".join(entry.get("techniques", [])),
-        ]).lower()
+        text = " ".join(
+            [
+                entry.get("title", ""),
+                entry.get("summary", ""),
+                entry.get("category", ""),
+                " ".join(entry.get("techniques", [])),
+            ]
+        ).lower()
         score = sum(1 for w in query_words if w in text)
         if score > 0:
             scored.append((score, entry))
@@ -299,7 +364,7 @@ def get_skill_hints(project_dir: str, task: dict) -> list[str]:
     """
     title = str(task.get("title", ""))
     corpus = title
-    for ac in (task.get("acceptance_criteria") or []):
+    for ac in task.get("acceptance_criteria") or []:
         corpus += " " + str(ac)
 
     matches = search_skills(project_dir, corpus, top_n=3)

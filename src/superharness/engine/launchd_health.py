@@ -14,6 +14,7 @@ Three classes of divergence this module catches and repairs:
 All operations are best-effort and degrade gracefully on non-macOS
 platforms (return empty results / False).
 """
+
 from __future__ import annotations
 
 import logging
@@ -37,8 +38,8 @@ CURRENT_LABEL_PREFIXES: tuple[str, ...] = (
 
 # Patterns that should always be removed (legacy from pre-1.56 layouts).
 STALE_LABEL_PATTERNS: tuple[str, ...] = (
-    "com.superharness.inbox.",     # pre-1.50 inbox-watcher agents
-    "com.superharness.watcher.",   # short-lived intermediate scheme
+    "com.superharness.inbox.",  # pre-1.50 inbox-watcher agents
+    "com.superharness.watcher.",  # short-lived intermediate scheme
 )
 
 
@@ -59,7 +60,9 @@ def _uid() -> int:
 
 
 def _run(cmd: list[str], timeout: float = 5.0) -> subprocess.CompletedProcess:
-    return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, check=False)
+    return subprocess.run(
+        cmd, capture_output=True, text=True, timeout=timeout, check=False
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -70,7 +73,7 @@ def _run(cmd: list[str], timeout: float = 5.0) -> subprocess.CompletedProcess:
 @dataclass(frozen=True)
 class LaunchdEntry:
     label: str
-    pid: int | None       # None if not running
+    pid: int | None  # None if not running
     last_exit_code: int | None
 
 
@@ -116,7 +119,8 @@ def plist_path_for_label(label: str) -> Path:
 def find_zombies() -> list[LaunchdEntry]:
     """Services loaded in launchd whose plist file is missing on disk."""
     return [
-        e for e in list_loaded_superharness_services()
+        e
+        for e in list_loaded_superharness_services()
         if not plist_path_for_label(e.label).is_file()
     ]
 
@@ -125,7 +129,8 @@ def find_stale_versions() -> list[LaunchdEntry]:
     """Services from prior superharness layouts that the current install
     no longer ships (e.g. com.superharness.inbox.* from pre-1.50)."""
     return [
-        e for e in list_loaded_superharness_services()
+        e
+        for e in list_loaded_superharness_services()
         if any(e.label.startswith(p) for p in STALE_LABEL_PATTERNS)
     ]
 
@@ -169,7 +174,7 @@ def bootout(label: str) -> bool:
     if not _is_macos():
         return False
     try:
-        result = _run(["launchctl", "bootout", f"gui/{_uid()}/{label}"])
+        _run(["launchctl", "bootout", f"gui/{_uid()}/{label}"])
     except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
         return False
     # bootout returns non-zero for "service not loaded" which we treat as success.
@@ -211,13 +216,21 @@ class HealReport:
             return f"launchd-heal: skipped ({self.skipped_reason})"
         parts = []
         if self.zombies_removed:
-            parts.append(f"removed {len(self.zombies_removed)} zombie(s): {', '.join(self.zombies_removed)}")
+            parts.append(
+                f"removed {len(self.zombies_removed)} zombie(s): {', '.join(self.zombies_removed)}"
+            )
         if self.stale_services_removed:
-            parts.append(f"removed {len(self.stale_services_removed)} stale service(s): {', '.join(self.stale_services_removed)}")
+            parts.append(
+                f"removed {len(self.stale_services_removed)} stale service(s): {', '.join(self.stale_services_removed)}"
+            )
         if self.orphan_plists_removed:
-            parts.append(f"removed {len(self.orphan_plists_removed)} orphan plist(s): {', '.join(self.orphan_plists_removed)}")
+            parts.append(
+                f"removed {len(self.orphan_plists_removed)} orphan plist(s): {', '.join(self.orphan_plists_removed)}"
+            )
         if self.bootstrapped:
-            parts.append(f"bootstrapped {len(self.bootstrapped)}: {', '.join(self.bootstrapped)}")
+            parts.append(
+                f"bootstrapped {len(self.bootstrapped)}: {', '.join(self.bootstrapped)}"
+            )
         if not parts:
             return "launchd-heal: nothing to do (state is clean)"
         return "launchd-heal: " + "; ".join(parts)
@@ -231,7 +244,9 @@ class HealReport:
         )
 
 
-def heal(operator_plist: Path | None = None, *, remove_orphan_plists: bool = True) -> HealReport:
+def heal(
+    operator_plist: Path | None = None, *, remove_orphan_plists: bool = True
+) -> HealReport:
     """Run the full self-heal sequence:
 
     1. Bootout zombies (loaded but no plist on disk).
@@ -288,7 +303,9 @@ def watchdog_plist_path() -> Path:
     return _launch_agents_dir() / f"{watchdog_label()}.plist"
 
 
-def write_watchdog_plist(python_bin: str | None = None, interval_seconds: int = 300) -> Path:
+def write_watchdog_plist(
+    python_bin: str | None = None, interval_seconds: int = 300
+) -> Path:
     """Install a watchdog launchd agent that runs `shux operator heal`
     every N seconds. Default 300s = 5 min. The watchdog itself has
     KeepAlive=true so launchd will restart it if it crashes.
@@ -309,7 +326,9 @@ def write_watchdog_plist(python_bin: str | None = None, interval_seconds: int = 
     return plist_path
 
 
-def _render_watchdog_plist(label: str, python_bin: str, interval: int, log_dir: Path) -> str:
+def _render_watchdog_plist(
+    label: str, python_bin: str, interval: int, log_dir: Path
+) -> str:
     return f"""<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -354,17 +373,19 @@ PERSISTENT_MARKER = "persistent"
 # the scan cheaper. Only applied to the default $HOME scan — callers that
 # pass search_roots explicitly are honored as-is.
 # (Fix: TCC-prompt-loop-auto-discover.)
-_HOME_TCC_PROTECTED_DIRNAMES = frozenset({
-    "Library",
-    "Desktop",
-    "Documents",
-    "Downloads",
-    "Movies",
-    "Music",
-    "Pictures",
-    "Applications",
-    ".Trash",
-})
+_HOME_TCC_PROTECTED_DIRNAMES = frozenset(
+    {
+        "Library",
+        "Desktop",
+        "Documents",
+        "Downloads",
+        "Movies",
+        "Music",
+        "Pictures",
+        "Applications",
+        ".Trash",
+    }
+)
 
 
 def find_all_superharness_projects(
@@ -386,7 +407,10 @@ def find_all_superharness_projects(
 
     (Fix: BUGREPORT watcher-silent-death-no-recovery, root cause #4.)
     """
-    _log.debug("launchd_health: scanning for .superharness/ dirs (require_marker=%s)", require_marker)
+    _log.debug(
+        "launchd_health: scanning for .superharness/ dirs (require_marker=%s)",
+        require_marker,
+    )
     # Default $HOME scan prunes TCC-protected home subdirs; explicit
     # search_roots are honored verbatim so callers can target them.
     default_home_scan = search_roots is None
@@ -396,7 +420,9 @@ def find_all_superharness_projects(
     skip_paths: set[str] = set()
     if default_home_scan:
         home = Path.home()
-        skip_paths = {os.path.join(str(home), name) for name in _HOME_TCC_PROTECTED_DIRNAMES}
+        skip_paths = {
+            os.path.join(str(home), name) for name in _HOME_TCC_PROTECTED_DIRNAMES
+        }
 
     found: list[Path] = []
     seen: set[Path] = set()
@@ -412,7 +438,10 @@ def find_all_superharness_projects(
             harness_dir = Path(dirpath) / ".superharness"
             if harness_dir.is_dir():
                 if require_marker and not (harness_dir / PERSISTENT_MARKER).is_file():
-                    _log.debug("launchd_health: skipping %s (no .superharness/persistent marker)", dirpath)
+                    _log.debug(
+                        "launchd_health: skipping %s (no .superharness/persistent marker)",
+                        dirpath,
+                    )
                 else:
                     project = Path(dirpath).resolve()
                     if project not in seen:
@@ -420,12 +449,15 @@ def find_all_superharness_projects(
                         found.append(project)
             # Skip hidden dirs (noise) and TCC-protected home subdirs (prompt loop).
             dirnames[:] = [
-                d for d in dirnames
+                d
+                for d in dirnames
                 if (not d.startswith(".") or d == ".superharness")
                 and os.path.join(dirpath, d) not in skip_paths
             ]
 
-    _log.debug("launchd_health: discovered %d project(s) with .superharness/", len(found))
+    _log.debug(
+        "launchd_health: discovered %d project(s) with .superharness/", len(found)
+    )
     return found
 
 
@@ -444,9 +476,13 @@ def heal_all(search_roots: list[Path] | None = None) -> list[HealReport]:
     for project_dir in projects:
         short = hashlib.md5(str(project_dir).encode()).hexdigest()[:8]
         operator_label = f"com.superharness.operator.{short}"
-        operator_plist = Path.home() / "Library" / "LaunchAgents" / f"{operator_label}.plist"
+        operator_plist = (
+            Path.home() / "Library" / "LaunchAgents" / f"{operator_label}.plist"
+        )
 
-        report = heal(operator_plist=operator_plist if operator_plist.is_file() else None)
+        report = heal(
+            operator_plist=operator_plist if operator_plist.is_file() else None
+        )
         report.label = operator_label
         report.project = str(project_dir)
         reports.append(report)
@@ -457,8 +493,15 @@ def heal_all(search_roots: list[Path] | None = None) -> list[HealReport]:
         summary_lines = "\n".join(
             f"  [{r.label}] {r.summary()}" for r in reports if r.fixed_count()
         )
-        _log.info("launchd_health: heal_all fixed %d project(s):\n%s", sum(1 for r in reports if r.fixed_count()), summary_lines)
+        _log.info(
+            "launchd_health: heal_all fixed %d project(s):\n%s",
+            sum(1 for r in reports if r.fixed_count()),
+            summary_lines,
+        )
     else:
-        _log.debug("launchd_health: heal_all — nothing to fix across %d project(s)", len(projects))
+        _log.debug(
+            "launchd_health: heal_all — nothing to fix across %d project(s)",
+            len(projects),
+        )
 
     return reports

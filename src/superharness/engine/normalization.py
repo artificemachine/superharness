@@ -5,6 +5,7 @@ consumer of contract.yaml has to filter the same set of null-equivalent
 sentinels. Centralizing that logic here keeps adapter-payload output and
 dashboard rendering in lockstep.
 """
+
 from __future__ import annotations
 
 from typing import Any

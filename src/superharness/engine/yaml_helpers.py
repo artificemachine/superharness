@@ -3,6 +3,7 @@
 Shared YAML loading helpers for all engine scripts.
 Consolidates safe_load patterns from contract.py, inbox.py, and validate.py.
 """
+
 from __future__ import annotations
 
 import io
@@ -21,7 +22,9 @@ except ImportError:
     _ruamel_rt = None  # type: ignore[assignment]
 
 
-def safe_load(path: str, expected_class: type, schema: type = None, strict: bool = False) -> Union[dict, list]:
+def safe_load(
+    path: str, expected_class: type, schema: type = None, strict: bool = False
+) -> Union[dict, list]:
     """Load a YAML file safely.
 
     Returns the expected type's empty value if the file is missing or contains

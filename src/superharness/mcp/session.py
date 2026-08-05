@@ -3,6 +3,7 @@
 Maps conn_id → ProjectSession. Each session holds an independent SQLite
 connection so concurrent agents never share a connection object.
 """
+
 from __future__ import annotations
 
 import os
@@ -14,6 +15,7 @@ from superharness.utils.paths import resolve_active_state_db_path
 from superharness.engine.db import _resolve_journal_mode
 
 import logging
+
 logger = logging.getLogger(__name__)
 
 
@@ -37,7 +39,9 @@ class SessionManager:
         self._sessions: dict[str, ProjectSession] = {}
         self._lock = threading.Lock()
 
-    def init_session(self, conn_id: str, project_path: str, agent: str = "unknown") -> str:
+    def init_session(
+        self, conn_id: str, project_path: str, agent: str = "unknown"
+    ) -> str:
         """Open a new session for *project_path*. Returns *conn_id*.
 
         Uses the canonical state resolver. Explicit state-root conflicts fail
@@ -46,8 +50,7 @@ class SessionManager:
         db_path = resolve_active_state_db_path(project_path)
         if not os.path.isfile(db_path):
             raise ValueError(
-                f"No superharness state found at {db_path}.\n"
-                "Run 'shux init' first."
+                f"No superharness state found at {db_path}.\nRun 'shux init' first."
             )
 
         # Raw connect (not engine.db.get_connection) because MCP sessions are
@@ -97,6 +100,7 @@ class SessionManager:
             except Exception as e:
                 logger.warning("session.py unexpected error: %s", e, exc_info=True)
                 pass
+
     def active_sessions(self) -> list[str]:
         with self._lock:
             return list(self._sessions.keys())
@@ -107,6 +111,7 @@ class SessionManager:
         try:
             import importlib.resources as _res
             import yaml
+
             manifests = _res.files("superharness").joinpath("adapter_manifests")
             manifest_path = manifests.joinpath(f"{agent}.yaml")
             text = manifest_path.read_text()

@@ -1,8 +1,7 @@
 """Tests for shux daemon command."""
+
 from __future__ import annotations
 
-import json
-from pathlib import Path
 
 import pytest
 
@@ -44,7 +43,10 @@ def test_daemon_start_missing_superharness_dir(tmp_path):
     runner = CliRunner()
     result = runner.invoke(cmd_daemon, ["start", "--project", str(empty)])
     assert result.exit_code != 0
-    assert "no .superharness" in result.output.lower() or "no .superharness" in (result.output + "").lower()
+    assert (
+        "no .superharness" in result.output.lower()
+        or "no .superharness" in (result.output + "").lower()
+    )
 
 
 def test_daemon_status_stale_pid(project):

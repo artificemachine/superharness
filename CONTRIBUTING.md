@@ -6,7 +6,14 @@
 git clone https://github.com/artificemachine/superharness.git
 cd superharness
 uv sync --dev             # dev deps live in [dependency-groups] (PEP 735)
-pytest tests/ -q          # all tests must pass
+pytest tests/ -q          # offline suite; all tests must pass
+```
+
+The normal suite never contacts a provider or invokes an agent CLI. Run live
+provider smoke tests only with an explicit opt-in and the required credentials:
+
+```bash
+SUPERHARNESS_ALLOW_LIVE_TESTS=1 RUN_PROVIDER_SMOKE=1 pytest tests/integration/test_summarizer_smoke.py -q
 ```
 
 ## Making changes
@@ -14,7 +21,7 @@ pytest tests/ -q          # all tests must pass
 1. Create a branch: `git checkout -b feat/your-feature`
 2. Write a failing test first (TDD) — see `tests/unit/` for examples
 3. Implement the fix or feature
-4. Run `pytest tests/ -q` and `shipguard scan .` — both must pass
+4. Run the offline `pytest tests/ -q` suite and `shipguard scan .` — both must pass
 5. Open a PR against `main`
 
 ## Code conventions

@@ -1,4 +1,5 @@
 """Tests for shux benchmark --models (TDD: written before implementation)."""
+
 from __future__ import annotations
 
 import json
@@ -40,14 +41,29 @@ def _write_benchmark(project: Path, records: list[dict]) -> None:
 
 def test_benchmark_models_shows_usage(runner, project):
     """shux benchmark --models → table with Model column."""
-    _write_benchmark(project, [
-        {"task_id": "t1", "agent": "claude-code", "model": "claude-opus-4-6",
-         "cost_usd": 1.50, "duration_seconds": 120, "outcome": "done",
-         "timestamp": _recent_timestamp(days_ago=1)},
-        {"task_id": "t2", "agent": "claude-code", "model": "claude-sonnet-4-6",
-         "cost_usd": 0.30, "duration_seconds": 60, "outcome": "done",
-         "timestamp": _recent_timestamp(days_ago=2)},
-    ])
+    _write_benchmark(
+        project,
+        [
+            {
+                "task_id": "t1",
+                "agent": "claude-code",
+                "model": "claude-opus-4-6",
+                "cost_usd": 1.50,
+                "duration_seconds": 120,
+                "outcome": "done",
+                "timestamp": _recent_timestamp(days_ago=1),
+            },
+            {
+                "task_id": "t2",
+                "agent": "claude-code",
+                "model": "claude-sonnet-4-6",
+                "cost_usd": 0.30,
+                "duration_seconds": 60,
+                "outcome": "done",
+                "timestamp": _recent_timestamp(days_ago=2),
+            },
+        ],
+    )
     from superharness.commands.benchmark import main as benchmark_main
     from io import StringIO
     import sys
@@ -60,7 +76,11 @@ def test_benchmark_models_shows_usage(runner, project):
         sys.stdout = old_stdout
 
     output = buf.getvalue()
-    assert "model" in output.lower() or "opus" in output.lower() or "sonnet" in output.lower()
+    assert (
+        "model" in output.lower()
+        or "opus" in output.lower()
+        or "sonnet" in output.lower()
+    )
 
 
 def test_benchmark_models_empty(runner, project):

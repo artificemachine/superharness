@@ -1,4 +1,5 @@
 """Hooks section — stale worktree path detection + global CLAUDE.md update."""
+
 from __future__ import annotations
 
 import json
@@ -9,6 +10,7 @@ from pathlib import Path
 from superharness.ui.prompts import print_header, print_info, print_warning
 
 import logging
+
 logger = logging.getLogger(__name__)
 
 # Worktree temp prefix — must match commands/worktree_gc.py:WORKTREE_BASE
@@ -78,9 +80,7 @@ def run(project_dir: Path, non_interactive: bool = False) -> None:
     stale = scan_stale_worktree_paths(settings_path)
 
     if stale:
-        print_warning(
-            f"{len(stale)} stale worktree path(s) found in {settings_path}:"
-        )
+        print_warning(f"{len(stale)} stale worktree path(s) found in {settings_path}:")
         for path in stale:
             print_warning(f"  {path}")
         print_warning("Run: shux worktree-gc  to clean orphaned worktrees.")
@@ -90,6 +90,7 @@ def run(project_dir: Path, non_interactive: bool = False) -> None:
     # 2. Ensure global CLAUDE.md has the superharness section
     try:
         from superharness.commands.onboard import _step_global_claude_md
+
         _step_global_claude_md({})
     except Exception as exc:  # pragma: no cover
         print_info(f"Note: could not update global CLAUDE.md: {exc}")

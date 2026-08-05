@@ -25,6 +25,7 @@ from typing import Literal
 import yaml
 
 import logging
+
 logger = logging.getLogger(__name__)
 
 
@@ -165,12 +166,24 @@ LIFECYCLE_RULES: list[LifecycleRule] = [
 # Non-terminal states that are eligible for deadline enforcement.
 # Terminal/archived states are excluded because deadline has already passed or
 # the task was intentionally closed.
-_DEADLINE_ELIGIBLE_STATES = frozenset({
-    "todo", "plan_proposed", "plan_approved", "in_progress",
-    "report_ready", "review_requested", "review_passed", "review_failed",
-    "pending_user_approval", "waiting_input", "pr_open", "blocked",
-    "paused", "stopped",
-})
+_DEADLINE_ELIGIBLE_STATES = frozenset(
+    {
+        "todo",
+        "plan_proposed",
+        "plan_approved",
+        "in_progress",
+        "report_ready",
+        "review_requested",
+        "review_passed",
+        "review_failed",
+        "pending_user_approval",
+        "waiting_input",
+        "pr_open",
+        "blocked",
+        "paused",
+        "stopped",
+    }
+)
 
 
 def _now_utc_str() -> str:
@@ -241,7 +254,7 @@ def _apply_action(item: dict, rule: LifecycleRule, age: float, limit: int) -> bo
 
 def _scan_inbox(project_dir: str, rules: list[LifecycleRule], profile: dict) -> int:
     from superharness.engine import state_reader, state_writer
-    
+
     try:
         items = state_reader.get_inbox_items(project_dir)
     except Exception as e:
@@ -272,10 +285,19 @@ def _scan_inbox(project_dir: str, rules: list[LifecycleRule], profile: dict) -> 
                     item_id = str(item.get("id", ""))
                     # Write update via state_writer — pass only lifecycle-relevant fields
                     _lifecycle_fields = {
-                        k: v for k, v in item.items()
-                        if k in ("failed_reason", "failed_at", "archived_reason", "archived_at")
+                        k: v
+                        for k, v in item.items()
+                        if k
+                        in (
+                            "failed_reason",
+                            "failed_at",
+                            "archived_reason",
+                            "archived_at",
+                        )
                     }
-                    if state_writer.set_inbox_status(project_dir, item_id, new_status, **_lifecycle_fields):
+                    if state_writer.set_inbox_status(
+                        project_dir, item_id, new_status, **_lifecycle_fields
+                    ):
                         print(
                             f"lifecycle: inbox item {item_id} "
                             f"{rule.state} → {new_status} ({int(age)}m >= {limit}m)"
@@ -319,16 +341,26 @@ def _scan_contract(project_dir: str, rules: list[LifecycleRule], profile: dict) 
                     task_id = str(task.get("id", ""))
                     # Write update via state_writer — pass only lifecycle-relevant fields
                     _lifecycle_fields = {
-                        k: v for k, v in task.items()
-                        if k in ("failed_reason", "failed_at", "archived_reason", "archived_at")
+                        k: v
+                        for k, v in task.items()
+                        if k
+                        in (
+                            "failed_reason",
+                            "failed_at",
+                            "archived_reason",
+                            "archived_at",
+                        )
                     }
                     # System-driven transition (timeout): bypass the
                     # interactive transition graph since e.g. in_progress→archived
                     # is not a legal user move but is the whole point of
                     # the reconciler.
                     if state_writer.set_task_status(
-                        project_dir, task_id, new_status,
-                        from_status=original_status, force=True,
+                        project_dir,
+                        task_id,
+                        new_status,
+                        from_status=original_status,
+                        force=True,
                         **_lifecycle_fields,
                     ):
                         print(
@@ -409,6 +441,7 @@ def _check_deadlines(project_dir: str, profile: dict) -> int:
     if watchdog_active:
         try:
             from superharness.engine.db import get_connection, init_db
+
             events_conn = get_connection(project_dir)
             init_db(events_conn)
         except Exception as e:
@@ -455,8 +488,11 @@ def _check_deadlines(project_dir: str, profile: dict) -> int:
                             f"{absolute_ceiling}m ceiling) — task was in status '{status}'"
                         )
                         if state_writer.set_task_status(
-                            project_dir, task_id, "failed",
-                            from_status=status, force=True,
+                            project_dir,
+                            task_id,
+                            "failed",
+                            from_status=status,
+                            force=True,
                             failed_reason=reason,
                             failed_at=_now_utc_str(),
                         ):
@@ -472,8 +508,11 @@ def _check_deadlines(project_dir: str, profile: dict) -> int:
                             f"{idle_timeout}m idle limit) — task was in status '{status}'"
                         )
                         if state_writer.set_task_status(
-                            project_dir, task_id, "failed",
-                            from_status=status, force=True,
+                            project_dir,
+                            task_id,
+                            "failed",
+                            from_status=status,
+                            force=True,
                             failed_reason=reason,
                             failed_at=_now_utc_str(),
                         ):
@@ -509,8 +548,11 @@ def _check_deadlines(project_dir: str, profile: dict) -> int:
                 f"task was in status '{status}'"
             )
             if state_writer.set_task_status(
-                project_dir, task_id, "failed",
-                from_status=status, force=True,
+                project_dir,
+                task_id,
+                "failed",
+                from_status=status,
+                force=True,
                 failed_reason=reason,
                 failed_at=_now_utc_str(),
             ):

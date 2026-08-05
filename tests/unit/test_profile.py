@@ -2,9 +2,9 @@ from __future__ import annotations
 
 """Tests for engine/profile.py"""
 
-import sys
+import sys  # noqa: E402
 
-from tests.helpers import run_cmd, REPO_ROOT
+from tests.helpers import run_cmd, REPO_ROOT  # noqa: E402
 
 
 def _run_profile(tmp_path, *args):
@@ -27,11 +27,13 @@ def _write_profile(harness_dir, **fields):
 
 # ── script basics ─────────────────────────────────────────────────────────────
 
+
 def test_profile_py_exists(repo_root) -> None:
     assert (REPO_ROOT / "src/superharness/engine/profile.py").exists()
 
 
 # ── reads fields from profile.yaml ───────────────────────────────────────────
+
 
 def test_profile_reads_autonomy(repo_root, tmp_path) -> None:
     _write_profile(tmp_path / ".superharness", autonomy="autonomous")
@@ -71,6 +73,7 @@ def test_profile_reads_team_size_team(repo_root, tmp_path) -> None:
 
 # ── defaults when profile.yaml missing ───────────────────────────────────────
 
+
 def test_profile_default_autonomy_when_no_profile(repo_root, tmp_path) -> None:
     result = _run_profile(tmp_path, "--project", str(tmp_path), "autonomy")
     assert result.returncode == 0, result.stderr
@@ -90,6 +93,7 @@ def test_profile_default_team_size_when_no_profile(repo_root, tmp_path) -> None:
 
 
 # ── defaults when field missing from profile ─────────────────────────────────
+
 
 def test_profile_default_autonomy_when_field_missing(repo_root, tmp_path) -> None:
     _write_profile(tmp_path / ".superharness", team_size="small")
@@ -113,6 +117,7 @@ def test_profile_default_team_size_when_field_missing(repo_root, tmp_path) -> No
 
 
 # ── unknown field returns empty string ────────────────────────────────────────
+
 
 def test_profile_unknown_field_returns_empty(repo_root, tmp_path) -> None:
     _write_profile(tmp_path / ".superharness", autonomy="supervised")

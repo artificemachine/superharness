@@ -22,7 +22,9 @@ import pytest
 pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="requires bash")
 
 
-def _create_test_project(tmp_path, task_id: str, owner: str, deadline_minutes: int, launched_at: str):
+def _create_test_project(
+    tmp_path, task_id: str, owner: str, deadline_minutes: int, launched_at: str
+):
     """Helper to create a realistic test project with contract + inbox."""
     project = tmp_path / "deadline-smoke-project"
     project.mkdir()
@@ -82,7 +84,9 @@ def test_deadline_enforcement_full_integration(repo_root, tmp_path) -> None:
     deadline_minutes = 5
     launched_at = "2026-01-01T00:00:00Z"  # Far in the past (> 5 minutes ago)
 
-    project = _create_test_project(tmp_path, task_id, owner, deadline_minutes, launched_at)
+    project = _create_test_project(
+        tmp_path, task_id, owner, deadline_minutes, launched_at
+    )
 
     # Run inbox-deadline-check.
     script = repo_root / "src" / "superharness" / "scripts" / "inbox-deadline-check.sh"
@@ -100,18 +104,29 @@ def test_deadline_enforcement_full_integration(repo_root, tmp_path) -> None:
     # 2. Verify contract task is marked as failed with stopped_reason.
     contract_text = (project / ".superharness" / "contract.yaml").read_text()
     assert "status: failed" in contract_text, "Contract task should be marked failed"
-    assert "stopped_reason: deadline_exceeded_after_" in contract_text, \
+    assert "stopped_reason: deadline_exceeded_after_" in contract_text, (
         "Contract task should have stopped_reason with deadline_exceeded_after_Xm"
-    assert "stopped_at:" in contract_text, "Contract task should have stopped_at timestamp"
+    )
+    assert "stopped_at:" in contract_text, (
+        "Contract task should have stopped_at timestamp"
+    )
 
     # 3. Verify handoff was created.
-    handoff_files = list((project / ".superharness" / "handoffs").glob(f"*deadline-{task_id}.yaml"))
+    handoff_files = list(
+        (project / ".superharness" / "handoffs").glob(f"*deadline-{task_id}.yaml")
+    )
     assert len(handoff_files) == 1, f"Expected 1 handoff, found {len(handoff_files)}"
     handoff_text = handoff_files[0].read_text()
-    assert "status: deadline_exceeded" in handoff_text, "Handoff should have deadline_exceeded status"
-    assert f"from: {owner}" in handoff_text, f"Handoff should indicate original owner {owner}"
+    assert "status: deadline_exceeded" in handoff_text, (
+        "Handoff should have deadline_exceeded status"
+    )
+    assert f"from: {owner}" in handoff_text, (
+        f"Handoff should indicate original owner {owner}"
+    )
     assert "to: codex-cli" in handoff_text, "Handoff should reassign to codex-cli"
-    assert f"deadline_minutes: {deadline_minutes}" in handoff_text, "Handoff should document deadline"
+    assert f"deadline_minutes: {deadline_minutes}" in handoff_text, (
+        "Handoff should document deadline"
+    )
 
     # 4. Verify new inbox item created for alternate owner.
     assert "to: codex-cli" in inbox_text, "Should have re-enqueued item for codex-cli"
@@ -119,7 +134,9 @@ def test_deadline_enforcement_full_integration(repo_root, tmp_path) -> None:
 
     # 5. Verify ledger entry added.
     ledger_text = (project / ".superharness" / "ledger.md").read_text()
-    assert "deadline-exceeded" in ledger_text, "Ledger should have deadline-exceeded entry"
+    assert "deadline-exceeded" in ledger_text, (
+        "Ledger should have deadline-exceeded entry"
+    )
     assert task_id in ledger_text, "Ledger should reference the task"
     assert "codex-cli" in ledger_text, "Ledger should reference the new owner"
 
@@ -135,7 +152,9 @@ def test_deadline_not_yet_exceeded_no_action(repo_root, tmp_path) -> None:
     deadline_minutes = 60
     launched_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")  # Just now
 
-    project = _create_test_project(tmp_path, task_id, owner, deadline_minutes, launched_at)
+    project = _create_test_project(
+        tmp_path, task_id, owner, deadline_minutes, launched_at
+    )
 
     script = repo_root / "src" / "superharness" / "scripts" / "inbox-deadline-check.sh"
     result = run_bash(script, cwd=repo_root, args=["--project", str(project)])
@@ -149,7 +168,9 @@ def test_deadline_not_yet_exceeded_no_action(repo_root, tmp_path) -> None:
     assert inbox_text.count("status: pending") == 0, "No new item should be created"
 
     contract_text = (project / ".superharness" / "contract.yaml").read_text()
-    assert "status: in_progress" in contract_text, "Contract task should remain in_progress"
+    assert "status: in_progress" in contract_text, (
+        "Contract task should remain in_progress"
+    )
     assert "stopped_reason" not in contract_text, "No stopped_reason should be added"
 
     handoff_files = list((project / ".superharness" / "handoffs").glob("*.yaml"))

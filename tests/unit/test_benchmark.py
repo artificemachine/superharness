@@ -1,10 +1,9 @@
 """Tests for superharness.engine.benchmark."""
+
 from __future__ import annotations
 
 import json
 from pathlib import Path
-
-import pytest
 
 
 def _setup(tmp_path: Path) -> str:
@@ -15,8 +14,11 @@ def _setup(tmp_path: Path) -> str:
 class TestRecordDispatch:
     def test_creates_benchmark_jsonl(self, tmp_path: Path) -> None:
         from superharness.engine.benchmark import record_dispatch, _benchmark_path
+
         project = _setup(tmp_path)
-        record_dispatch(project, "feat.task-a", "claude-code", "done", 12.5, cost_usd=0.05)
+        record_dispatch(
+            project, "feat.task-a", "claude-code", "done", 12.5, cost_usd=0.05
+        )
         path = _benchmark_path(project)
         assert path.exists()
         lines = path.read_text().splitlines()
@@ -29,6 +31,7 @@ class TestRecordDispatch:
 
     def test_appends_multiple_records(self, tmp_path: Path) -> None:
         from superharness.engine.benchmark import record_dispatch, load_records
+
         project = _setup(tmp_path)
         record_dispatch(project, "feat.a", "claude-code", "done", 10.0)
         record_dispatch(project, "feat.b", "codex-cli", "failed", 5.0)
@@ -38,9 +41,18 @@ class TestRecordDispatch:
 
     def test_slot_fields_recorded(self, tmp_path: Path) -> None:
         from superharness.engine.benchmark import record_dispatch, load_records
+
         project = _setup(tmp_path)
-        record_dispatch(project, "feat.fan", "parallel-dispatch", "done", 30.0,
-                        cost_usd=0.10, slot_index=2, fanout_n=4)
+        record_dispatch(
+            project,
+            "feat.fan",
+            "parallel-dispatch",
+            "done",
+            30.0,
+            cost_usd=0.10,
+            slot_index=2,
+            fanout_n=4,
+        )
         records = load_records(project)
         assert records[0]["slot_index"] == 2
         assert records[0]["fanout_n"] == 4
@@ -49,20 +61,25 @@ class TestRecordDispatch:
 class TestLoadRecords:
     def test_empty_file_returns_empty(self, tmp_path: Path) -> None:
         from superharness.engine.benchmark import load_records
+
         project = _setup(tmp_path)
         (tmp_path / ".superharness" / "benchmark.jsonl").write_text("")
         assert load_records(project) == []
 
     def test_missing_file_returns_empty(self, tmp_path: Path) -> None:
         from superharness.engine.benchmark import load_records
+
         project = _setup(tmp_path)
         assert load_records(project) == []
 
     def test_skips_invalid_json_lines(self, tmp_path: Path) -> None:
         from superharness.engine.benchmark import load_records
+
         project = _setup(tmp_path)
         path = tmp_path / ".superharness" / "benchmark.jsonl"
-        path.write_text('{"task_id": "a", "outcome": "done", "duration_seconds": 1.0, "cost_usd": 0, "agent": "claude-code", "timestamp": "", "model": "", "slot_index": -1, "fanout_n": 1}\n{bad json}\n')
+        path.write_text(
+            '{"task_id": "a", "outcome": "done", "duration_seconds": 1.0, "cost_usd": 0, "agent": "claude-code", "timestamp": "", "model": "", "slot_index": -1, "fanout_n": 1}\n{bad json}\n'
+        )
         records = load_records(project)
         assert len(records) == 1
 
@@ -70,6 +87,7 @@ class TestLoadRecords:
 class TestAggregate:
     def _populate(self, project: str) -> None:
         from superharness.engine.benchmark import record_dispatch
+
         record_dispatch(project, "feat.a", "claude-code", "done", 10.0, 0.05)
         record_dispatch(project, "feat.a", "claude-code", "done", 8.0, 0.04)
         record_dispatch(project, "feat.a", "claude-code", "failed", 5.0, 0.02)
@@ -77,6 +95,7 @@ class TestAggregate:
 
     def test_groups_by_task_id(self, tmp_path: Path) -> None:
         from superharness.engine.benchmark import aggregate, load_records
+
         project = _setup(tmp_path)
         self._populate(project)
         stats = aggregate(load_records(project))
@@ -86,6 +105,7 @@ class TestAggregate:
 
     def test_counts_successes_and_failures(self, tmp_path: Path) -> None:
         from superharness.engine.benchmark import aggregate, load_records
+
         project = _setup(tmp_path)
         self._populate(project)
         stats = aggregate(load_records(project))
@@ -96,14 +116,16 @@ class TestAggregate:
 
     def test_success_rate_calculated(self, tmp_path: Path) -> None:
         from superharness.engine.benchmark import aggregate, load_records
+
         project = _setup(tmp_path)
         self._populate(project)
         stats = aggregate(load_records(project))
         a = next(s for s in stats if s.task_id == "feat.a")
-        assert abs(a.success_rate - 2/3) < 0.01
+        assert abs(a.success_rate - 2 / 3) < 0.01
 
     def test_total_cost_summed(self, tmp_path: Path) -> None:
         from superharness.engine.benchmark import aggregate, load_records
+
         project = _setup(tmp_path)
         self._populate(project)
         stats = aggregate(load_records(project))
@@ -112,6 +134,7 @@ class TestAggregate:
 
     def test_sorted_by_cost_desc(self, tmp_path: Path) -> None:
         from superharness.engine.benchmark import aggregate, load_records
+
         project = _setup(tmp_path)
         self._populate(project)
         stats = aggregate(load_records(project))
@@ -122,21 +145,30 @@ class TestAggregate:
 class TestLeaderboard:
     def test_respects_top_n(self, tmp_path: Path) -> None:
         from superharness.engine.benchmark import record_dispatch, leaderboard
+
         project = _setup(tmp_path)
         for i in range(10):
-            record_dispatch(project, f"task-{i}", "claude-code", "done", float(i), float(i) * 0.01)
+            record_dispatch(
+                project, f"task-{i}", "claude-code", "done", float(i), float(i) * 0.01
+            )
         board = leaderboard(project, top_n=3)
         assert len(board) == 3
 
     def test_empty_project_returns_empty(self, tmp_path: Path) -> None:
         from superharness.engine.benchmark import leaderboard
+
         project = _setup(tmp_path)
         assert leaderboard(project) == []
 
 
 class TestFormatLeaderboard:
     def test_shows_header_and_separator(self, tmp_path: Path) -> None:
-        from superharness.engine.benchmark import record_dispatch, leaderboard, format_leaderboard
+        from superharness.engine.benchmark import (
+            record_dispatch,
+            leaderboard,
+            format_leaderboard,
+        )
+
         project = _setup(tmp_path)
         record_dispatch(project, "feat.x", "claude-code", "done", 15.0, 0.07)
         board = leaderboard(project)
@@ -146,7 +178,12 @@ class TestFormatLeaderboard:
         assert "$" in output
 
     def test_show_agents_includes_agent_names(self, tmp_path: Path) -> None:
-        from superharness.engine.benchmark import record_dispatch, leaderboard, format_leaderboard
+        from superharness.engine.benchmark import (
+            record_dispatch,
+            leaderboard,
+            format_leaderboard,
+        )
+
         project = _setup(tmp_path)
         record_dispatch(project, "feat.x", "claude-code", "done", 10.0, 0.05)
         record_dispatch(project, "feat.x", "codex-cli", "done", 8.0, 0.03)
@@ -157,5 +194,6 @@ class TestFormatLeaderboard:
 
     def test_empty_shows_no_records_message(self, tmp_path: Path) -> None:
         from superharness.engine.benchmark import format_leaderboard
+
         output = format_leaderboard([])
         assert "No benchmark records" in output

@@ -1,7 +1,7 @@
-import os
 import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 from superharness.commands.delegate import delegate
+
 
 @pytest.fixture
 def dummy_project(tmp_path):
@@ -35,12 +35,15 @@ tasks:
 """)
     return project_dir
 
+
 @patch("superharness.commands.delegate._cmd_exists", return_value=True)
 @patch("superharness.engine.platform_runtime.launch_agent", return_value=0)
 @patch("superharness.commands.delegate._rotate_launcher_logs")
 @patch("superharness.commands.delegate.sdk_available", return_value=False)
 @pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-def test_delegate_routing_unification(mock_sdk, mock_rotate, mock_launch, mock_exists, dummy_project):
+def test_delegate_routing_unification(
+    mock_sdk, mock_rotate, mock_launch, mock_exists, dummy_project
+):
     # All agents now route through bash + launcher script (unified dispatch)
 
     # claude-code: bash delegate-to-claude.sh
@@ -54,7 +57,15 @@ def test_delegate_routing_unification(mock_sdk, mock_rotate, mock_launch, mock_e
 
     # opencode + model prefixing: bash delegate-to-opencode.sh --model anthropic/claude-sonnet
     with pytest.raises(SystemExit):
-        delegate(str(dummy_project), "opencode", "task-2", False, False, False, model_override="claude-sonnet")
+        delegate(
+            str(dummy_project),
+            "opencode",
+            "task-2",
+            False,
+            False,
+            False,
+            model_override="claude-sonnet",
+        )
     args, _ = mock_launch.call_args
     assert args[0][0] == "bash"
     assert "delegate-to-opencode.sh" in args[0][1]

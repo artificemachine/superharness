@@ -12,6 +12,7 @@ outside the write lock.
    discussion and re-fire the consensus transition (re-upserting the
    impl-* task and resetting its status).
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -113,7 +114,8 @@ def test_advance_markers_not_blocked_by_unique_index(
             )
         conn.commit()
         markers = [
-            r for r in discussions_dao.get_rounds(conn, DISCUSSION_ID)
+            r
+            for r in discussions_dao.get_rounds(conn, DISCUSSION_ID)
             if r.agent == "_advance"
         ]
         assert len(markers) == 2
@@ -160,7 +162,8 @@ def test_submit_rechecks_status_inside_write_txn(
     try:
         init_db(conn)
         rows = [
-            r for r in discussions_dao.get_rounds(conn, DISCUSSION_ID)
+            r
+            for r in discussions_dao.get_rounds(conn, DISCUSSION_ID)
             if r.agent == "codex-cli"
         ]
         assert rows == [], "racing submit must not persist a round row"
@@ -227,8 +230,10 @@ def test_pre_migration_backup_fires_without_project_dir(
     conn = db_mod.get_connection(str(project))
     db_mod.init_db(conn)  # note: no project_dir — the common caller shape
     conn.execute("DROP INDEX IF EXISTS idx_disc_rounds_unique_submission")
-    conn.execute("DELETE FROM schema_migrations WHERE version = ?",
-                 (db_mod.CURRENT_SCHEMA_VERSION,))
+    conn.execute(
+        "DELETE FROM schema_migrations WHERE version = ?",
+        (db_mod.CURRENT_SCHEMA_VERSION,),
+    )
     conn.execute(f"PRAGMA user_version = {db_mod.CURRENT_SCHEMA_VERSION - 1}")
     conn.commit()
     db_path = conn.execute("PRAGMA database_list").fetchone()[2]

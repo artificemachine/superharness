@@ -1,10 +1,12 @@
 """MCP skills tool — Iteration 8."""
+
 from __future__ import annotations
 
 import os
 from typing import Any
 
 import logging
+
 logger = logging.getLogger(__name__)
 
 try:
@@ -24,7 +26,10 @@ def get_skills(
     if manifests_dir is None:
         try:
             import importlib.resources as _res
-            manifests_dir = str(_res.files("superharness").joinpath("adapter_manifests"))
+
+            manifests_dir = str(
+                _res.files("superharness").joinpath("adapter_manifests")
+            )
         except Exception as e:
             logger.warning("skills.py unexpected error: %s", e, exc_info=True)
             return []

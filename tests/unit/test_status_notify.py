@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.helpers import run_bash
+from tests.helpers import run_bash, seed_sqlite_from_yaml
 import sys
 
 pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="requires bash")
@@ -55,7 +55,7 @@ def _fake_bin(tmp_path: Path, *, darwin: bool, launchctl_ok: bool) -> Path:
     if launchctl_ok:
         launchctl.write_text(
             "#!/bin/bash\n"
-            "if [ \"$1\" = \"print\" ]; then\n"
+            'if [ "$1" = "print" ]; then\n'
             "  cat <<'OUT'\n"
             "state = running\n"
             "last exit code = 0\n"
@@ -71,9 +71,13 @@ def _fake_bin(tmp_path: Path, *, darwin: bool, launchctl_ok: bool) -> Path:
     return bin_dir
 
 
-@pytest.mark.skipif(platform.system() != "Darwin", reason="launchctl-based watcher check is Darwin-only")
+@pytest.mark.skipif(
+    platform.system() != "Darwin", reason="launchctl-based watcher check is Darwin-only"
+)
 @pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-def test_status_reports_retry_alert_and_watcher_problem(repo_root: Path, tmp_path: Path) -> None:
+def test_status_reports_retry_alert_and_watcher_problem(
+    repo_root: Path, tmp_path: Path
+) -> None:
     project = _setup_project(tmp_path)
     fake_bin = _fake_bin(tmp_path, darwin=True, launchctl_ok=False)
     wrapper = repo_root / "superharness"
@@ -99,7 +103,9 @@ def test_status_reports_retry_alert_and_watcher_problem(repo_root: Path, tmp_pat
 
 
 @pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-def test_notify_retry_threshold_alert_and_cooldown(repo_root: Path, tmp_path: Path) -> None:
+def test_notify_retry_threshold_alert_and_cooldown(
+    repo_root: Path, tmp_path: Path
+) -> None:
     project = _setup_project(tmp_path)
     fake_bin = _fake_bin(tmp_path, darwin=True, launchctl_ok=True)
     wrapper = repo_root / "superharness"
@@ -180,7 +186,9 @@ def test_status_shows_heartbeat_stale(repo_root: Path, tmp_path: Path) -> None:
     from datetime import datetime, timezone
 
     stale_time = time.time() - 600
-    stale_ts = datetime.fromtimestamp(stale_time, tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    stale_ts = datetime.fromtimestamp(stale_time, tz=timezone.utc).strftime(
+        "%Y-%m-%dT%H:%M:%SZ"
+    )
     heartbeat.write_text(stale_ts + "\n")
 
     result = run_bash(

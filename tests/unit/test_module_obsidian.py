@@ -1,13 +1,21 @@
 """Tests for Obsidian module (vault integration)."""
+
 from __future__ import annotations
 
 from pathlib import Path
 
 
-
-
 class TestObsidianModule:
     """Test Obsidian vault integration module."""
+
+    def test_default_vault_locations_are_generic(self):
+        """Built-in discovery must not encode a maintainer-specific vault."""
+        from superharness.modules.actions.obsidian import _DEFAULT_VAULT_RELATIVE_PATHS
+
+        assert _DEFAULT_VAULT_RELATIVE_PATHS == (
+            ("Documents", "Obsidian"),
+            ("Obsidian",),
+        )
 
     def test_detect_vault_path(self, tmp_path: Path):
         """Finds vault at known paths."""
@@ -227,4 +235,6 @@ class TestObsidianModule:
         assert "sk-1234567890abcdef" not in content
         assert "ghp_abc123def456" not in content
         # Redaction markers should be present
-        assert "[REDACTED" in content or "***" in content or content != context["summary"]
+        assert (
+            "[REDACTED" in content or "***" in content or content != context["summary"]
+        )

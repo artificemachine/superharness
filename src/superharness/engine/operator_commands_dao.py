@@ -4,6 +4,7 @@ Each row represents one Telegram message processed by the gateway listener.
 The idempotency_key (= Telegram message_id stringified) enforces exactly-once
 execution even when the Telegram API redelivers updates.
 """
+
 from __future__ import annotations
 
 import json

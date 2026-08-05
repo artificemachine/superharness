@@ -4,6 +4,7 @@ Classifies tool calls by risk level and gates execution.
 Low-risk tools auto-approve. Medium/high require explicit operator approval.
 Approval state is kept in memory (keyed by approval_id).
 """
+
 from __future__ import annotations
 
 import threading
@@ -15,25 +16,25 @@ RiskLevel = Literal["low", "medium", "high"]
 # Tool → risk classification
 _RISK_TABLE: dict[str, RiskLevel] = {
     # Read-only → low
-    "get_contract":     "low",
-    "get_task":         "low",
-    "get_ledger":       "low",
-    "get_inbox":        "low",
-    "get_handoffs":     "low",
-    "get_skills":       "low",
-    "get_events":       "low",
+    "get_contract": "low",
+    "get_task": "low",
+    "get_ledger": "low",
+    "get_inbox": "low",
+    "get_handoffs": "low",
+    "get_skills": "low",
+    "get_events": "low",
     "get_contract_summary": "low",
-    "run_hygiene":      "low",
+    "run_hygiene": "low",
     # Write / state-changing → medium
-    "create_task":      "medium",
-    "update_status":    "medium",
-    "enqueue":          "medium",
-    "append_ledger":    "medium",
-    "append_event":     "medium",
+    "create_task": "medium",
+    "update_status": "medium",
+    "enqueue": "medium",
+    "append_ledger": "medium",
+    "append_event": "medium",
     # Destructive / irreversible → high
     "checkpoint_create": "high",
-    "write_handoff":    "high",
-    "fire_hook":        "high",
+    "write_handoff": "high",
+    "fire_hook": "high",
 }
 
 
@@ -44,8 +45,11 @@ def classify_risk(tool: str) -> RiskLevel:
 
 class ApprovalPending(Exception):
     """Raised when a tool call requires operator approval."""
+
     def __init__(self, approval_id: str, tool: str, risk: RiskLevel) -> None:
-        super().__init__(f"Approval required for tool '{tool}' (risk={risk}). ID: {approval_id}")
+        super().__init__(
+            f"Approval required for tool '{tool}' (risk={risk}). ID: {approval_id}"
+        )
         self.approval_id = approval_id
         self.tool = tool
         self.risk = risk
@@ -86,7 +90,9 @@ class ApprovalGate:
 
         with self._lock:
             if key in self._rejected:
-                raise ApprovalRejected(f"Tool '{tool}' was rejected for session '{conn_id}'")
+                raise ApprovalRejected(
+                    f"Tool '{tool}' was rejected for session '{conn_id}'"
+                )
             if key in self._approved:
                 return True
             if risk == "low":

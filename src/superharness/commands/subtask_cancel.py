@@ -7,6 +7,7 @@ Refuses to cancel a subtask that is already `done` (completed work cannot
 be retroactively cancelled). Allows cancellation from pending, in_progress,
 or failed.
 """
+
 from __future__ import annotations
 
 import json
@@ -46,7 +47,11 @@ def cancel_subtask(
             return 1
 
         subtask = next(
-            (s for s in subtasks if isinstance(s, dict) and str(s.get("id", "")) == sub_id),
+            (
+                s
+                for s in subtasks
+                if isinstance(s, dict) and str(s.get("id", "")) == sub_id
+            ),
             None,
         )
         if subtask is None:
@@ -65,10 +70,15 @@ def cancel_subtask(
         subtask["status"] = "cancelled"
         extras["subtasks"] = subtasks
         now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-        tasks_dao.update(conn, task_id, task_row.version, {
-            "extras_json": json.dumps(extras),
-            "updated_at": now,
-        })
+        tasks_dao.update(
+            conn,
+            task_id,
+            task_row.version,
+            {
+                "extras_json": json.dumps(extras),
+                "updated_at": now,
+            },
+        )
         conn.commit()
     finally:
         conn.close()
@@ -76,8 +86,7 @@ def cancel_subtask(
     now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     ledger_file = os.path.join(project_dir, ".superharness", "ledger.md")
     ledger_line = (
-        f"- {now} — {actor} — SUBTASK_CANCEL: {sub_id} "
-        f"(parent={task_id}) — {reason}\n"
+        f"- {now} — {actor} — SUBTASK_CANCEL: {sub_id} (parent={task_id}) — {reason}\n"
     )
     try:
         with open(ledger_file, "a") as f:
@@ -100,25 +109,29 @@ def main(argv: list[str] | None = None) -> None:
         description="Mark a subtask cancelled. Writes a ledger entry with the reason.",
     )
     parser.add_argument("--project", "-p", default=None)
-    parser.add_argument("--task", dest="task_id", required=True,
-                        help="Parent task ID")
-    parser.add_argument("--sub", dest="sub_id", required=True,
-                        help="Subtask ID to cancel")
+    parser.add_argument("--task", dest="task_id", required=True, help="Parent task ID")
+    parser.add_argument(
+        "--sub", dest="sub_id", required=True, help="Subtask ID to cancel"
+    )
     parser.add_argument("--actor", default="claude-code")
-    parser.add_argument("--reason", required=True,
-                        help="Why this subtask is being cancelled (mandatory)")
+    parser.add_argument(
+        "--reason",
+        required=True,
+        help="Why this subtask is being cancelled (mandatory)",
+    )
 
     opts = parser.parse_args(argv)
 
     project_dir = os.path.realpath(opts.project or os.getcwd())
 
     if not is_project_initialized(project_dir):
-        print(f"Missing project state at {project_dir}. Run 'shux init' first.", file=sys.stderr)
+        print(
+            f"Missing project state at {project_dir}. Run 'shux init' first.",
+            file=sys.stderr,
+        )
         sys.exit(1)
 
-    rc = cancel_subtask(
-        project_dir, opts.task_id, opts.sub_id, opts.actor, opts.reason
-    )
+    rc = cancel_subtask(project_dir, opts.task_id, opts.sub_id, opts.actor, opts.reason)
     sys.exit(rc)
 
 

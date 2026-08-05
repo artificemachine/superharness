@@ -25,6 +25,7 @@ This module provides:
     Walk every top-level task and its subtasks. Each yielded subtask dict
     carries an added "_parent_id" and "_effective_status" key for convenience.
 """
+
 from __future__ import annotations
 
 from typing import Iterator
@@ -101,7 +102,7 @@ def find_task_or_subtask(
     for t in tasks:
         if not isinstance(t, dict):
             continue
-        for s in (t.get("subtasks") or []):
+        for s in t.get("subtasks") or []:
             if isinstance(s, dict) and str(s.get("id", "")) == task_id:
                 return s, t
 
@@ -117,12 +118,12 @@ def iter_all_tasks(contract: dict) -> Iterator[dict]:
     """
     if not isinstance(contract, dict):
         return
-    for t in (contract.get("tasks") or []):
+    for t in contract.get("tasks") or []:
         if not isinstance(t, dict):
             continue
         yield t
         parent_status = str(t.get("status") or "")
-        for s in (t.get("subtasks") or []):
+        for s in t.get("subtasks") or []:
             if not isinstance(s, dict):
                 continue
             enriched = dict(s)

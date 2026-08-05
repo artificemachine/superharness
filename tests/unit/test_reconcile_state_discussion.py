@@ -54,7 +54,9 @@ def _make_ctx(tmp_path, *, has_log: bool = False, log_content: str = ""):
     ctx.project_dir = str(tmp_path)
     ctx.item_id = "inbox-item-abc"
     ctx.inbox_file = str(tmp_path / "inbox.yaml")
-    ctx.launch_start = time.time()  # real float so _sqlite_record_review can compute duration
+    ctx.launch_start = (
+        time.time()
+    )  # real float so _sqlite_record_review can compute duration
 
     log_path = str(tmp_path / "launcher.log")
     if has_log:
@@ -87,12 +89,14 @@ def _run(ctx, *, extra_patches=None):
         mock_lock.return_value.release = lambda: None
 
         stack.enter_context(
-            patch("superharness.commands.inbox_dispatch._set_inbox_status",
-                  side_effect=fake_set_status)
+            patch(
+                "superharness.commands.inbox_dispatch._set_inbox_status",
+                side_effect=fake_set_status,
+            )
         )
         for p in _SIDE_PATCHES:
             stack.enter_context(patch(p))
-        for name, kwargs in (extra_patches or []):
+        for name, kwargs in extra_patches or []:
             stack.enter_context(patch(name, **kwargs))
 
         _reconcile_state(ctx)
@@ -104,6 +108,7 @@ def _run(ctx, *, extra_patches=None):
 # Bug T: no YAML, no log → must set final_state = "failed" (not "paused")
 # ---------------------------------------------------------------------------
 
+
 class TestBugT_NoYamlNoLog:
     def test_discussion_no_yaml_goes_to_failed_not_paused(self, tmp_path):
         """With no YAML on disk and no log, item must be failed immediately."""
@@ -111,12 +116,16 @@ class TestBugT_NoYamlNoLog:
         target_statuses = _run(
             ctx,
             extra_patches=[
-                ("superharness.commands.inbox_dispatch._has_dirty_worktree",
-                 {"return_value": True}),
+                (
+                    "superharness.commands.inbox_dispatch._has_dirty_worktree",
+                    {"return_value": True},
+                ),
             ],
         )
         assert "failed" in target_statuses, f"Expected 'failed' in {target_statuses}"
-        assert "paused" not in target_statuses, f"Unexpected 'paused' in {target_statuses}"
+        assert "paused" not in target_statuses, (
+            f"Unexpected 'paused' in {target_statuses}"
+        )
 
     def test_dirty_worktree_check_not_called_for_discussion(self, tmp_path):
         """_has_dirty_worktree must never be consulted for discussion items."""
@@ -129,14 +138,18 @@ class TestBugT_NoYamlNoLog:
             mock_lock.return_value.acquire_with_retry = lambda *a: True
             mock_lock.return_value.release = lambda: None
             stack.enter_context(
-                patch("superharness.commands.inbox_dispatch._set_inbox_status",
-                      return_value=True)
+                patch(
+                    "superharness.commands.inbox_dispatch._set_inbox_status",
+                    return_value=True,
+                )
             )
             for p in _SIDE_PATCHES:
                 stack.enter_context(patch(p))
             mock_dirty = stack.enter_context(
-                patch("superharness.commands.inbox_dispatch._has_dirty_worktree",
-                      return_value=True)
+                patch(
+                    "superharness.commands.inbox_dispatch._has_dirty_worktree",
+                    return_value=True,
+                )
             )
             _reconcile_state(ctx)
 
@@ -147,10 +160,13 @@ class TestBugT_NoYamlNoLog:
 # Bug S (rc=0 path): YAML in log → recover, then mark done
 # ---------------------------------------------------------------------------
 
+
 class TestBugS_RecoverFromLog:
     def test_discussion_yaml_in_log_marks_done(self, tmp_path):
         """When YAML is recoverable from the log, final_state must be 'done'."""
-        block = yaml.dump(VALID_SUBMISSION, allow_unicode=True, default_flow_style=False)
+        block = yaml.dump(
+            VALID_SUBMISSION, allow_unicode=True, default_flow_style=False
+        )
         log_content = "Error: write_file not available\n```yaml\n" + block + "```\n"
         ctx = _make_ctx(tmp_path, has_log=True, log_content=log_content)
         target_statuses = _run(ctx)
@@ -160,13 +176,17 @@ class TestBugS_RecoverFromLog:
 
     def test_recovered_yaml_written_to_disk(self, tmp_path):
         """Recovered YAML must be written to the submission path on disk."""
-        block = yaml.dump(VALID_SUBMISSION, allow_unicode=True, default_flow_style=False)
+        block = yaml.dump(
+            VALID_SUBMISSION, allow_unicode=True, default_flow_style=False
+        )
         log_content = "```yaml\n" + block + "```\n"
         ctx = _make_ctx(tmp_path, has_log=True, log_content=log_content)
         _run(ctx)
 
         submission_path = _submission_path(tmp_path)
-        assert os.path.isfile(submission_path), "Submission YAML must be on disk after recovery"
+        assert os.path.isfile(submission_path), (
+            "Submission YAML must be on disk after recovery"
+        )
         data = yaml.safe_load(open(submission_path).read())
         assert data["verdict"] == "partial"
         assert data["agent"] == AGENT
@@ -178,8 +198,10 @@ class TestBugS_RecoverFromLog:
         target_statuses = _run(
             ctx,
             extra_patches=[
-                ("superharness.commands.inbox_dispatch._has_dirty_worktree",
-                 {"return_value": True}),
+                (
+                    "superharness.commands.inbox_dispatch._has_dirty_worktree",
+                    {"return_value": True},
+                ),
             ],
         )
         assert "failed" in target_statuses
@@ -189,6 +211,7 @@ class TestBugS_RecoverFromLog:
 # ---------------------------------------------------------------------------
 # Regression: YAML on disk still works as before
 # ---------------------------------------------------------------------------
+
 
 class TestRegression_YamlOnDisk:
     def test_yaml_on_disk_still_marks_done(self, tmp_path):
@@ -208,6 +231,7 @@ class TestRegression_YamlOnDisk:
 # ---------------------------------------------------------------------------
 # Regression: non-discussion items with dirty worktree still pause (unchanged)
 # ---------------------------------------------------------------------------
+
 
 class TestRegression_NonDiscussionDirtyWorktree:
     def test_non_discussion_dirty_worktree_still_pauses(self, tmp_path):
@@ -232,14 +256,18 @@ class TestRegression_NonDiscussionDirtyWorktree:
                 return True
 
             stack.enter_context(
-                patch("superharness.commands.inbox_dispatch._set_inbox_status",
-                      side_effect=fake_set_status)
+                patch(
+                    "superharness.commands.inbox_dispatch._set_inbox_status",
+                    side_effect=fake_set_status,
+                )
             )
             for p in _SIDE_PATCHES:
                 stack.enter_context(patch(p))
             stack.enter_context(
-                patch("superharness.commands.inbox_dispatch._has_dirty_worktree",
-                      return_value=True)
+                patch(
+                    "superharness.commands.inbox_dispatch._has_dirty_worktree",
+                    return_value=True,
+                )
             )
             mock_run = stack.enter_context(
                 patch("superharness.commands.inbox_dispatch.subprocess.run")

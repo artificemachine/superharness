@@ -3,6 +3,7 @@
 Plan quality gate: prevents auto_approve_plans from blindly approving
 incomplete plans. Operator only sees plans that fail quality checks.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -11,6 +12,7 @@ import pytest
 @pytest.fixture
 def validate_plan():
     from superharness.engine.plan_validator import validate_plan
+
     return validate_plan
 
 
@@ -92,8 +94,10 @@ def test_plan_with_empty_plan_field_is_rejected(validate_plan) -> None:
     plan = _good_plan(plan="")
     r = validate_plan(plan, _good_task())
     assert r.passed is False
-    assert any("plan" in f.lower() and ("empty" in f.lower() or "missing" in f.lower())
-               for f in r.failures)
+    assert any(
+        "plan" in f.lower() and ("empty" in f.lower() or "missing" in f.lower())
+        for f in r.failures
+    )
 
 
 def test_plan_with_todo_marker_is_rejected(validate_plan) -> None:

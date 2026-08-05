@@ -1,8 +1,8 @@
 """Tests for ship module (TDD — RED → GREEN → REFACTOR)."""
+
 from __future__ import annotations
 
 import subprocess
-
 
 
 class TestShipModule:
@@ -99,7 +99,9 @@ class TestShipModule:
         # Create initial commit (no pending changes)
         test_file = project / "test.txt"
         test_file.write_text("test content")
-        subprocess.run(["git", "add", "."], cwd=project, check=True, capture_output=True)
+        subprocess.run(
+            ["git", "add", "."], cwd=project, check=True, capture_output=True
+        )
         subprocess.run(
             ["git", "commit", "-m", "Initial commit"],
             cwd=project,
@@ -122,7 +124,10 @@ class TestShipModule:
 
         # Should skip gracefully
         assert result["success"] is True
-        assert "skipped" in result.get("message", "").lower() or "nothing to commit" in result.get("message", "").lower()
+        assert (
+            "skipped" in result.get("message", "").lower()
+            or "nothing to commit" in result.get("message", "").lower()
+        )
 
     def test_on_close_ship_failure_warns(self, tmp_path):
         """Ship fails → warning, close still succeeds."""

@@ -10,6 +10,7 @@ from tests.helpers import REPO_ROOT
 
 def _run_python(args: list[str]) -> subprocess.CompletedProcess:
     import os
+
     env = os.environ.copy()
     env["PYTHONPATH"] = str(REPO_ROOT / "src")
     return subprocess.run(
@@ -27,6 +28,7 @@ def _setup_project(tmp_path: Path, name: str) -> Path:
     project.mkdir()
     (project / ".superharness").mkdir(parents=True, exist_ok=True)
     from tests.helpers import seed_sqlite_from_yaml
+
     seed_sqlite_from_yaml(project)
     return project
 
@@ -34,10 +36,13 @@ def _setup_project(tmp_path: Path, name: str) -> Path:
 def _write_contract(project: Path, lines: list[str]) -> None:
     (project / ".superharness" / "contract.yaml").write_text("\n".join(lines) + "\n")
     from tests.helpers import seed_sqlite_from_yaml
+
     seed_sqlite_from_yaml(project)
 
 
-@pytest.mark.skip(reason="seed_sqlite_from_yaml always sets project_path=project_dir; needs direct SQLite seed to test missing-path scenario (see PR #208)")
+@pytest.mark.skip(
+    reason="seed_sqlite_from_yaml always sets project_path=project_dir; needs direct SQLite seed to test missing-path scenario (see PR #208)"
+)
 def test_enqueue_fails_when_task_project_path_missing(repo_root, tmp_path) -> None:
     project = _setup_project(tmp_path, "proj-missing-path")
     _write_contract(
@@ -53,19 +58,24 @@ def test_enqueue_fails_when_task_project_path_missing(repo_root, tmp_path) -> No
     # seed_sqlite_from_yaml sets project_path=project_dir by default.
     # Override with a direct SQLite upsert that has NULL project_path.
     import sqlite3
+
     db = sqlite3.connect(str(project / ".superharness" / "state.sqlite3"))
     db.execute("UPDATE tasks SET project_path = NULL WHERE id = 'mcp-docs'")
     db.commit()
     db.close()
 
-    result = _run_python(["--project", str(project), "--to", "codex-cli", "--task", "mcp-docs"])
+    result = _run_python(
+        ["--project", str(project), "--to", "codex-cli", "--task", "mcp-docs"]
+    )
 
     assert result.returncode == 1
     combined = result.stdout + result.stderr
     assert "missing project_path" in combined or "project_path" in combined
 
 
-@pytest.mark.skip(reason="seed_sqlite_from_yaml always sets project_path=project_dir; needs direct SQLite seed to test mismatch scenario (see PR #208)")
+@pytest.mark.skip(
+    reason="seed_sqlite_from_yaml always sets project_path=project_dir; needs direct SQLite seed to test mismatch scenario (see PR #208)"
+)
 def test_enqueue_fails_when_task_project_path_mismatch(repo_root, tmp_path) -> None:
     project = _setup_project(tmp_path, "proj-mismatch")
     other = tmp_path / "other-project"
@@ -81,7 +91,9 @@ def test_enqueue_fails_when_task_project_path_mismatch(repo_root, tmp_path) -> N
         ],
     )
 
-    result = _run_python(["--project", str(project), "--to", "codex-cli", "--task", "mcp-docs"])
+    result = _run_python(
+        ["--project", str(project), "--to", "codex-cli", "--task", "mcp-docs"]
+    )
 
     assert result.returncode == 1
     combined = result.stdout + result.stderr
@@ -98,11 +110,17 @@ def test_enqueue_rejects_invalid_task_token(repo_root, tmp_path) -> None:
         ],
     )
 
-    result = _run_python(["--project", str(project), "--to", "codex-cli", "--task", "bad|task"])
+    result = _run_python(
+        ["--project", str(project), "--to", "codex-cli", "--task", "bad|task"]
+    )
 
     assert result.returncode in (1, 2)
     combined = result.stdout + result.stderr
-    assert "task id" in combined.lower() or "invalid" in combined.lower() or "match" in combined.lower()
+    assert (
+        "task id" in combined.lower()
+        or "invalid" in combined.lower()
+        or "match" in combined.lower()
+    )
 
 
 def test_enqueue_blocks_plan_proposed_status(repo_root, tmp_path) -> None:
@@ -118,7 +136,9 @@ def test_enqueue_blocks_plan_proposed_status(repo_root, tmp_path) -> None:
         ],
     )
 
-    result = _run_python(["--project", str(project), "--to", "claude-code", "--task", "feat.blocked"])
+    result = _run_python(
+        ["--project", str(project), "--to", "claude-code", "--task", "feat.blocked"]
+    )
 
     assert result.returncode == 1
     combined = result.stdout + result.stderr
@@ -139,7 +159,9 @@ def test_enqueue_blocks_done_status(repo_root, tmp_path) -> None:
         ],
     )
 
-    result = _run_python(["--project", str(project), "--to", "claude-code", "--task", "feat.closed"])
+    result = _run_python(
+        ["--project", str(project), "--to", "claude-code", "--task", "feat.closed"]
+    )
 
     assert result.returncode == 1
     combined = result.stdout + result.stderr
@@ -160,7 +182,9 @@ def test_enqueue_allows_plan_approved_status(repo_root, tmp_path) -> None:
         ],
     )
 
-    result = _run_python(["--project", str(project), "--to", "claude-code", "--task", "feat.ready"])
+    result = _run_python(
+        ["--project", str(project), "--to", "claude-code", "--task", "feat.ready"]
+    )
 
     assert result.returncode == 0
     assert "Enqueued inbox item" in result.stdout
@@ -191,10 +215,15 @@ def test_enqueue_rejects_invalid_custom_item_id(repo_root, tmp_path) -> None:
 
     assert result.returncode in (1, 2)
     combined = result.stdout + result.stderr
-    assert "inbox id" in combined.lower() or "invalid" in combined.lower() or "match" in combined.lower()
+    assert (
+        "inbox id" in combined.lower()
+        or "invalid" in combined.lower()
+        or "match" in combined.lower()
+    )
 
 
 # ── gate parity: enqueue must mirror dispatch's workflow-aware gate ──────────
+
 
 def test_enqueue_rejects_todo_for_implementation(repo_root, tmp_path) -> None:
     """todo + implementation workflow cannot be enqueued (dispatch would reject)."""
@@ -210,7 +239,9 @@ def test_enqueue_rejects_todo_for_implementation(repo_root, tmp_path) -> None:
             f"    project_path: '{project.resolve().as_posix()}'",
         ],
     )
-    r = _run_python(["--project", str(project), "--to", "claude-code", "--task", "feat.wip"])
+    r = _run_python(
+        ["--project", str(project), "--to", "claude-code", "--task", "feat.wip"]
+    )
     assert r.returncode == 1
     combined = r.stdout + r.stderr
     assert "todo" in combined
@@ -232,12 +263,16 @@ def test_enqueue_accepts_todo_for_quick_workflow(repo_root, tmp_path) -> None:
             f"    project_path: '{project.resolve().as_posix()}'",
         ],
     )
-    r = _run_python(["--project", str(project), "--to", "claude-code", "--task", "chore.simple"])
+    r = _run_python(
+        ["--project", str(project), "--to", "claude-code", "--task", "chore.simple"]
+    )
     assert r.returncode == 0, r.stderr
     assert "Enqueued inbox item" in r.stdout
 
 
-def test_enqueue_accepts_todo_for_implementation_with_plan_only(repo_root, tmp_path) -> None:
+def test_enqueue_accepts_todo_for_implementation_with_plan_only(
+    repo_root, tmp_path
+) -> None:
     """--plan-only relaxes the gate: todo + implementation becomes enqueueable."""
     project = _setup_project(tmp_path, "proj-plan-only")
     _write_contract(
@@ -251,10 +286,17 @@ def test_enqueue_accepts_todo_for_implementation_with_plan_only(repo_root, tmp_p
             f"    project_path: '{project.resolve().as_posix()}'",
         ],
     )
-    r = _run_python([
-        "--project", str(project), "--to", "claude-code",
-        "--task", "feat.needs-plan", "--plan-only",
-    ])
+    r = _run_python(
+        [
+            "--project",
+            str(project),
+            "--to",
+            "claude-code",
+            "--task",
+            "feat.needs-plan",
+            "--plan-only",
+        ]
+    )
     assert r.returncode == 0, r.stderr
     assert "plan-only" in r.stdout
 
@@ -273,14 +315,22 @@ def test_enqueue_marks_item_plan_only_in_inbox(repo_root, tmp_path) -> None:
             f"    project_path: '{project.resolve().as_posix()}'",
         ],
     )
-    r = _run_python([
-        "--project", str(project), "--to", "claude-code",
-        "--task", "feat.needs-plan", "--plan-only",
-    ])
+    r = _run_python(
+        [
+            "--project",
+            str(project),
+            "--to",
+            "claude-code",
+            "--task",
+            "feat.needs-plan",
+            "--plan-only",
+        ]
+    )
     assert r.returncode == 0, r.stderr
 
     # Post-migration the inbox is in SQLite, not inbox.yaml.
     import sqlite3 as _sql
+
     db = _sql.connect(str(project / ".superharness" / "state.sqlite3"))
     rows = db.execute(
         "SELECT id, plan_only FROM inbox WHERE task_id='feat.needs-plan'"
@@ -291,6 +341,7 @@ def test_enqueue_marks_item_plan_only_in_inbox(repo_root, tmp_path) -> None:
 
 
 # ── owner-mismatch guard ─────────────────────────────────────────────────────
+
 
 def test_enqueue_blocks_owner_mismatch_by_default(repo_root, tmp_path) -> None:
     project = _setup_project(tmp_path, "proj-owner-mismatch")
@@ -306,7 +357,9 @@ def test_enqueue_blocks_owner_mismatch_by_default(repo_root, tmp_path) -> None:
             f"    project_path: '{project.resolve().as_posix()}'",
         ],
     )
-    r = _run_python(["--project", str(project), "--to", "claude-code", "--task", "feat.owned"])
+    r = _run_python(
+        ["--project", str(project), "--to", "claude-code", "--task", "feat.owned"]
+    )
     assert r.returncode == 1
     combined = r.stdout + r.stderr
     assert "owned by 'codex-cli'" in combined
@@ -328,10 +381,17 @@ def test_enqueue_allows_owner_mismatch_with_force_flag(repo_root, tmp_path) -> N
             f"    project_path: '{project.resolve().as_posix()}'",
         ],
     )
-    r = _run_python([
-        "--project", str(project), "--to", "claude-code",
-        "--task", "feat.owned", "--force-reassign",
-    ])
+    r = _run_python(
+        [
+            "--project",
+            str(project),
+            "--to",
+            "claude-code",
+            "--task",
+            "feat.owned",
+            "--force-reassign",
+        ]
+    )
     assert r.returncode == 0, r.stderr
     # force-reassign allows dispatch despite owner mismatch
     assert "owned by" not in r.stdout.lower()
@@ -353,7 +413,9 @@ def test_enqueue_accepts_target_matching_owner(repo_root, tmp_path) -> None:
             f"    project_path: '{project.resolve().as_posix()}'",
         ],
     )
-    r = _run_python(["--project", str(project), "--to", "claude-code", "--task", "feat.owned"])
+    r = _run_python(
+        ["--project", str(project), "--to", "claude-code", "--task", "feat.owned"]
+    )
     assert r.returncode == 0, r.stderr
     assert "reassigning" not in r.stderr.lower()
 
@@ -365,17 +427,20 @@ class TestTokenRe:
 
     def test_accepts_discussion_round_id(self):
         from superharness.commands.inbox_enqueue import TOKEN_RE
+
         assert TOKEN_RE.match("discuss-20260510T134404Z-54149-456275756/round-1")
 
     def test_matches_task_py_regex(self):
         from superharness.commands.inbox_enqueue import TOKEN_RE as ENQ_RE
         from superharness.commands.task import TOKEN_RE as TASK_RE
+
         assert ENQ_RE.pattern == TASK_RE.pattern, (
             "inbox_enqueue and task validators must agree on the task-id charset"
         )
 
     def test_still_rejects_invalid_chars(self):
         from superharness.commands.inbox_enqueue import TOKEN_RE
+
         assert not TOKEN_RE.match("task with spaces")
         assert not TOKEN_RE.match("task;rm -rf")
         assert not TOKEN_RE.match("task$injection")

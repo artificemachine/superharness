@@ -2,6 +2,7 @@
 
 See docs/PLAN-steal-omnigent.md iteration 3.
 """
+
 from __future__ import annotations
 
 import logging
@@ -61,6 +62,7 @@ def test_flush_drains_queue():
 
     def write_fn(key: str, value: str) -> None:
         import time
+
         time.sleep(0.05)
         order.append(value)
 

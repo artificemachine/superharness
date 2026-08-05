@@ -21,6 +21,7 @@ persist_runtime(watcher_yaml_path, interpreter) -> None
     Write ``python_executable: <interpreter>`` into ``watcher.yaml`` so that
     the service installer can use it when registering the scheduled task.
 """
+
 from __future__ import annotations
 
 import os
@@ -99,7 +100,9 @@ REQUIRED_MODULES: list[str] = [
 ]
 
 
-def probe_runtime_modules(interpreter: str, modules: list[str] | None = None) -> list[str]:
+def probe_runtime_modules(
+    interpreter: str, modules: list[str] | None = None
+) -> list[str]:
     """Check which *modules* are importable under *interpreter*.
 
     Runs a subprocess using *interpreter* to attempt each import.

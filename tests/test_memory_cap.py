@@ -3,6 +3,7 @@
 Replaces blind FIFO pruning for pitfalls.md: a hard line+byte cap that evicts
 lowest-confidence / oldest distilled lines first and never evicts manual lines.
 """
+
 from __future__ import annotations
 
 import time
@@ -21,7 +22,9 @@ def _write(path: Path, body_lines):
 
 
 def _body(path: Path):
-    return [l for l in path.read_text().splitlines() if l.strip() and not l.startswith("#")]
+    return [
+        line for line in path.read_text().splitlines() if line.strip() and not line.startswith("#")
+    ]
 
 
 def test_cap_evicts_lowest_confidence_first(tmp_path, monkeypatch):
@@ -30,7 +33,7 @@ def test_cap_evicts_lowest_confidence_first(tmp_path, monkeypatch):
     _write(p, [_line("high", 0.9), _line("mid", 0.8), _line("low", 0.7)])
     agent_memory._cap_index(str(p))
     text = p.read_text()
-    assert "c=0.70" not in text          # lowest dropped first
+    assert "c=0.70" not in text  # lowest dropped first
     assert "c=0.90" in text
     assert "c=0.80" in text
 
@@ -38,7 +41,14 @@ def test_cap_evicts_lowest_confidence_first(tmp_path, monkeypatch):
 def test_cap_never_evicts_manual_lines(tmp_path, monkeypatch):
     monkeypatch.setattr(agent_memory, "MAX_INDEX_LINES", 1)
     p = tmp_path / "pitfalls.md"
-    _write(p, ["- manual authoritative note", _line("distilled a", 0.9), _line("distilled b", 0.8)])
+    _write(
+        p,
+        [
+            "- manual authoritative note",
+            _line("distilled a", 0.9),
+            _line("distilled b", 0.8),
+        ],
+    )
     agent_memory._cap_index(str(p))
     text = p.read_text()
     assert "- manual authoritative note" in text
@@ -73,11 +83,20 @@ def test_under_cap_noop(tmp_path):
 # Integration — apply then cap invariants hold
 # --------------------------------------------------------------------------
 
+
 def test_apply_then_cap_holds_invariants(clean_harness, monkeypatch):
     from superharness.engine.distiller import LessonEntry
+
     monkeypatch.setattr(agent_memory, "MAX_INDEX_LINES", 3)
-    lessons = [LessonEntry(text=f"lesson {i}", type="project", confidence=0.5 + i / 100, source="distill")
-               for i in range(6)]
+    lessons = [
+        LessonEntry(
+            text=f"lesson {i}",
+            type="project",
+            confidence=0.5 + i / 100,
+            source="distill",
+        )
+        for i in range(6)
+    ]
     agent_memory.apply_lessons(lessons, str(clean_harness))
     p = Path(agent_memory.project_memory_dir(str(clean_harness))) / "pitfalls.md"
     assert len(_body(p)) <= 3
@@ -86,6 +105,7 @@ def test_apply_then_cap_holds_invariants(clean_harness, monkeypatch):
 # --------------------------------------------------------------------------
 # Contract — post-cap file still parses as valid distilled lines
 # --------------------------------------------------------------------------
+
 
 def test_post_cap_lines_still_parse(tmp_path, monkeypatch):
     monkeypatch.setattr(agent_memory, "MAX_INDEX_LINES", 2)
@@ -101,6 +121,7 @@ def test_post_cap_lines_still_parse(tmp_path, monkeypatch):
 # Regression — other memory files still use FIFO prune unchanged
 # --------------------------------------------------------------------------
 
+
 def test_conventions_still_fifo_pruned(clean_harness):
     big = "x" * 200
     for i in range(60):  # well over MEMORY_FILE_MAX_CHARS (5000)
@@ -112,6 +133,7 @@ def test_conventions_still_fifo_pruned(clean_harness):
 # --------------------------------------------------------------------------
 # Chaos — only manual lines, over cap → kept, not truncated
 # --------------------------------------------------------------------------
+
 
 def test_only_manual_over_cap_not_truncated(tmp_path, monkeypatch):
     monkeypatch.setattr(agent_memory, "MAX_INDEX_LINES", 1)
@@ -126,9 +148,12 @@ def test_only_manual_over_cap_not_truncated(tmp_path, monkeypatch):
 # Performance — cap of a 10k-line file is fast (runs on every append)
 # --------------------------------------------------------------------------
 
+
 def test_cap_perf_10k_lines(tmp_path):
     p = tmp_path / "pitfalls.md"
-    _write(p, [_line(f"lesson number {i}", 0.5 + (i % 50) / 100) for i in range(10_000)])
+    _write(
+        p, [_line(f"lesson number {i}", 0.5 + (i % 50) / 100) for i in range(10_000)]
+    )
     start = time.perf_counter()
     agent_memory._cap_index(str(p))
     elapsed = time.perf_counter() - start

@@ -1,15 +1,19 @@
 from __future__ import annotations
 
 import sys
+import subprocess
 from pathlib import Path
 
 
 from tests.helpers import REPO_ROOT, seed_sqlite_from_yaml
 
 
-def _run_python(args: list[str], *, env: dict | None = None) -> "subprocess.CompletedProcess[str]":
+def _run_python(
+    args: list[str], *, env: dict | None = None
+) -> "subprocess.CompletedProcess[str]":
     import os
     import subprocess
+
     merged_env = os.environ.copy()
     merged_env["PYTHONPATH"] = str(REPO_ROOT / "src")
     if env:
@@ -57,6 +61,20 @@ def test_doctor_passes_healthy_project(repo_root, tmp_path) -> None:
     # contract.yaml is an export-only artifact; doctor checks SQLite state-db instead
     assert "PASS file:ledger.md" in result.stdout
     assert "PASS dir:handoffs" in result.stdout
+
+
+def test_protected_project_path_uses_path_containment(tmp_path) -> None:
+    """Protected-folder detection must use resolved path containment."""
+    from superharness.commands.doctor import _is_protected_project_path
+
+    home = tmp_path / "home"
+    project = home / "Documents" / "project"
+    project.mkdir(parents=True)
+    sibling = home / "Documents-backup" / "project"
+    sibling.mkdir(parents=True)
+
+    assert _is_protected_project_path(project, home) is True
+    assert _is_protected_project_path(sibling, home) is False
 
 
 def test_doctor_fails_missing_superharness(repo_root, tmp_path) -> None:
@@ -134,27 +152,43 @@ def test_doctor_ok_when_plugin_installed(repo_root, tmp_path) -> None:
 def test_doctor_passes_global_hooks_path(repo_root, tmp_path) -> None:
     """Doctor must PASS when core.hooksPath points to an existing directory (e.g. ~/.githooks)."""
     import subprocess as sp
+
     project = _write_project(tmp_path)
     # Create a real hooks directory
     hooks_dir = tmp_path / "myglobalhooks"
     hooks_dir.mkdir()
     # Set core.hooksPath to this directory in the test project's git config
     sp.run(["git", "-C", str(project), "init"], capture_output=True, check=False)
-    sp.run(["git", "-C", str(project), "config", "core.hooksPath", str(hooks_dir)],
-           capture_output=True, check=True)
+    sp.run(
+        ["git", "-C", str(project), "config", "core.hooksPath", str(hooks_dir)],
+        capture_output=True,
+        check=True,
+    )
     result = _run_python(["--project", str(project)])
-    assert f"PASS git:core.hooksPath={hooks_dir}" in result.stdout, \
+    assert f"PASS git:core.hooksPath={hooks_dir}" in result.stdout, (
         f"Expected PASS for valid hooks dir, got:\n{result.stdout}"
+    )
     assert "WARN git:core.hooksPath" not in result.stdout
 
 
 def test_doctor_warns_nonexistent_hooks_path(repo_root, tmp_path) -> None:
     """Doctor must WARN when core.hooksPath points to a directory that doesn't exist."""
     import subprocess as sp
+
     project = _write_project(tmp_path)
     sp.run(["git", "-C", str(project), "init"], capture_output=True, check=False)
-    sp.run(["git", "-C", str(project), "config", "core.hooksPath", "/nonexistent/hooks/dir"],
-           capture_output=True, check=True)
+    sp.run(
+        [
+            "git",
+            "-C",
+            str(project),
+            "config",
+            "core.hooksPath",
+            "/nonexistent/hooks/dir",
+        ],
+        capture_output=True,
+        check=True,
+    )
     result = _run_python(["--project", str(project)])
     assert "WARN git:core.hooksPath=/nonexistent/hooks/dir" in result.stdout
 
@@ -166,12 +200,14 @@ def test_doctor_parity_section_runs_when_db_present(repo_root, tmp_path) -> None
     (not state.sqlite), and the section either reports PASS parity or FAIL parity.
     """
     import sys as _sys
+
     project = _write_project(tmp_path)
 
     # Create state.sqlite3 with schema (mimics shux migrate / first watcher tick)
     _sys.path.insert(0, str(REPO_ROOT / "src"))
     try:
         from superharness.engine.db import get_connection, init_db
+
         conn = get_connection(str(project))
         try:
             init_db(conn)

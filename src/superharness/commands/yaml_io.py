@@ -3,6 +3,7 @@
 Post-migration: generates human-readable YAML files from SQLite state
 for inspection, backup, or interop with older superharness versions.
 """
+
 from __future__ import annotations
 
 import os
@@ -16,7 +17,9 @@ def _now_tag() -> str:
     return datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
 
 
-def export_yaml(project_dir: str, *, out_dir: str | None = None, all_: bool = False) -> int:
+def export_yaml(
+    project_dir: str, *, out_dir: str | None = None, all_: bool = False
+) -> int:
     """Generate snapshot YAML files from current SQLite state.
 
     Always exports inbox and contract. With --all, also exports handoffs,
@@ -30,6 +33,7 @@ def export_yaml(project_dir: str, *, out_dir: str | None = None, all_: bool = Fa
         from dataclasses import asdict
         from superharness.engine.db import get_connection, init_db
         from superharness.engine import inbox_dao, tasks_dao
+
         conn = get_connection(project_dir)
         try:
             init_db(conn)
@@ -58,7 +62,9 @@ def export_yaml(project_dir: str, *, out_dir: str | None = None, all_: bool = Fa
     contract_path = os.path.join(out_dir, "contract.yaml")
     try:
         with open(contract_path, "w", encoding="utf-8") as f:
-            yaml.dump({"tasks": task_rows}, f, default_flow_style=False, allow_unicode=True)
+            yaml.dump(
+                {"tasks": task_rows}, f, default_flow_style=False, allow_unicode=True
+            )
         print(f"export-yaml: contract → {contract_path} ({len(task_rows)} tasks)")
     except OSError as exc:
         print(f"export-yaml: failed: {exc}", file=sys.stderr)
@@ -72,6 +78,7 @@ def export_yaml(project_dir: str, *, out_dir: str | None = None, all_: bool = Fa
         from dataclasses import asdict as _asdict2
         from superharness.engine.db import get_connection as gc2, init_db as idb2
         from superharness.engine import tasks_dao as td2, handoffs_dao as hd2
+
         conn2 = gc2(project_dir)
         try:
             idb2(conn2)
@@ -100,6 +107,7 @@ def export_yaml(project_dir: str, *, out_dir: str | None = None, all_: bool = Fa
         from dataclasses import asdict as _asdict3
         from superharness.engine.db import get_connection as gc3, init_db as idb3
         from superharness.engine import failures_dao as fd3
+
         conn3 = gc3(project_dir)
         try:
             idb3(conn3)
@@ -108,7 +116,9 @@ def export_yaml(project_dir: str, *, out_dir: str | None = None, all_: bool = Fa
             conn3.close()
         failures_path = os.path.join(out_dir, "failures.yaml")
         with open(failures_path, "w", encoding="utf-8") as f:
-            yaml.dump({"failures": failures}, f, default_flow_style=False, allow_unicode=True)
+            yaml.dump(
+                {"failures": failures}, f, default_flow_style=False, allow_unicode=True
+            )
         print(f"export-yaml: failures → {failures_path} ({len(failures)} entries)")
     except Exception as exc:
         print(f"export-yaml: failures export failed: {exc}", file=sys.stderr)
@@ -118,6 +128,7 @@ def export_yaml(project_dir: str, *, out_dir: str | None = None, all_: bool = Fa
         from dataclasses import asdict as _asdict4
         from superharness.engine.db import get_connection as gc4, init_db as idb4
         from superharness.engine import decisions_dao as dd4
+
         conn4 = gc4(project_dir)
         try:
             idb4(conn4)
@@ -164,6 +175,7 @@ def import_yaml(project_dir: str, *, source_dir: str) -> int:
             tasks = doc.get("tasks") or []
             from superharness.engine import tasks_dao
             from superharness.engine.contract_io import _task_row_from_dict
+
             now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
             with transaction(conn):
                 for t in tasks:
@@ -174,7 +186,9 @@ def import_yaml(project_dir: str, *, source_dir: str) -> int:
                     count_tasks += 1
                     for st in t.get("subtasks") or []:
                         if isinstance(st, dict) and str(st.get("id", "")):
-                            tasks_dao.upsert(conn, _task_row_from_dict(st, project_dir, now))
+                            tasks_dao.upsert(
+                                conn, _task_row_from_dict(st, project_dir, now)
+                            )
                             count_tasks += 1
             conn.commit()
             print(f"import-yaml: tasks → {count_tasks} imported")
@@ -189,6 +203,7 @@ def import_yaml(project_dir: str, *, source_dir: str) -> int:
             if not isinstance(items, list):
                 items = []
             from superharness.engine import inbox_dao
+
             now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
             # Pre-load known task IDs so we can skip orphan inbox rows that
             # reference deleted/missing tasks instead of aborting the whole
@@ -218,7 +233,10 @@ def import_yaml(project_dir: str, *, source_dir: str) -> int:
             conn.commit()
             print(f"import-yaml: inbox → {count_inbox} imported")
             if count_orphan:
-                print(f"import-yaml: inbox → {count_orphan} orphan row(s) skipped (referenced unknown task)", file=sys.stderr)
+                print(
+                    f"import-yaml: inbox → {count_orphan} orphan row(s) skipped (referenced unknown task)",
+                    file=sys.stderr,
+                )
         except Exception as exc:
             errors.append(f"inbox: {exc}")
 
@@ -255,18 +273,28 @@ def main(argv: list[str] | None = None) -> None:
 
     exp = sub.add_parser("export", help="Export YAML snapshot from SQLite")
     exp.add_argument("--project", "-p", default=".", help="Project directory")
-    exp.add_argument("--out-dir", help="Output directory (default: .superharness/export/)")
-    exp.add_argument("--all", action="store_true", help="Include handoffs, failures, decisions")
+    exp.add_argument(
+        "--out-dir", help="Output directory (default: .superharness/export/)"
+    )
+    exp.add_argument(
+        "--all", action="store_true", help="Include handoffs, failures, decisions"
+    )
 
     imp = sub.add_parser("import", help="Import YAML state files into SQLite")
     imp.add_argument("--project", "-p", default=".", help="Project directory")
-    imp.add_argument("--source-dir", required=True, help="Directory containing YAML state files")
+    imp.add_argument(
+        "--source-dir", required=True, help="Directory containing YAML state files"
+    )
 
     args = parser.parse_args(argv)
     project_dir = os.path.abspath(args.project)
 
     if args.action == "export":
-        sys.exit(export_yaml(project_dir, out_dir=getattr(args, "out_dir", None), all_=args.all))
+        sys.exit(
+            export_yaml(
+                project_dir, out_dir=getattr(args, "out_dir", None), all_=args.all
+            )
+        )
     elif args.action == "import":
         sys.exit(import_yaml(project_dir, source_dir=args.source_dir))
 

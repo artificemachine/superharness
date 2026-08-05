@@ -1,4 +1,5 @@
 """Tests for onboarding UX: shux --help quickstart and demo command-first flow."""
+
 from __future__ import annotations
 
 import subprocess
@@ -19,7 +20,10 @@ class TestShuxHelpQuickstart:
         assert result.returncode == 0
         output = result.stdout.lower()
         # Check for quickstart-related headers
-        assert any(marker in output for marker in ["quick start", "first commands", "getting started"])
+        assert any(
+            marker in output
+            for marker in ["quick start", "first commands", "getting started"]
+        )
 
     def test_help_shows_init_first(self):
         """shux --help quickstart section mentions 'shux init' as first step."""
@@ -118,7 +122,9 @@ class TestWindowsDocumentation:
         if install_doc.exists():
             content = install_doc.read_text().lower()
             # Cross-platform or explicit Windows mention
-            assert any(marker in content for marker in ["windows", "cross-platform", "pipx"])
+            assert any(
+                marker in content for marker in ["windows", "cross-platform", "pipx"]
+            )
 
 
 class TestOnboardingDocsCheck:

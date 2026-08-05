@@ -15,6 +15,7 @@ entirely (see `commands/daemon_monitor.py`, now a real importable module
 invoked via `-m`), which retired the last occurrence. The ratchets below now
 hold every file under `src/` to zero, with no exception.
 """
+
 from __future__ import annotations
 
 import inspect
@@ -25,7 +26,12 @@ import sys
 from pathlib import Path
 
 from superharness.engine import process as process_mod
-from superharness.engine.process import pid_alive, signal_process_group, terminate, terminate_group
+from superharness.engine.process import (
+    pid_alive,
+    signal_process_group,
+    terminate,
+    terminate_group,
+)
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 _SRC_ROOT = _REPO_ROOT / "src" / "superharness"
@@ -52,7 +58,7 @@ def test_pid_alive_never_uses_os_kill_on_windows():
     source = inspect.getsource(pid_alive)
     nt_idx = source.find('os.name == "nt"')
     kill_idx = source.find("os.kill(")
-    assert nt_idx != -1, "pid_alive has no os.name == \"nt\" branch"
+    assert nt_idx != -1, 'pid_alive has no os.name == "nt" branch'
     assert kill_idx != -1, "pid_alive has no os.kill( call"
     assert nt_idx < kill_idx, "the nt branch must appear before any os.kill( probe"
 
@@ -65,6 +71,7 @@ def test_no_generated_monitor_script_remains():
     behavioural coverage). This guards the deletion from silently coming
     back."""
     from superharness.commands import daemon as daemon_mod
+
     assert not hasattr(daemon_mod, "_write_monitor_script")
     assert not hasattr(daemon_mod, "_cleanup_monitor_script")
     assert "TerminateProcess, not a probe" not in _DAEMON_PY.read_text()
@@ -74,6 +81,7 @@ def test_pid_alive_treats_permission_error_as_alive(monkeypatch):
     """Chaos: a pid owned by another user raises PermissionError from
     os.kill, which means the process exists — pid_alive must not report it
     as dead."""
+
     def _raise_permission_error(pid, sig):
         raise PermissionError("owned by another user")
 
@@ -99,6 +107,7 @@ class TestNoDuplicateLivenessImplementations:
 
     def test_no_raw_os_kill_zero_probe(self):
         import re
+
         pattern = re.compile(r"os\.kill\([^)]*,\s*0\)")
         hits = []
         for f in sorted(_SRC_ROOT.rglob("*.py")):
@@ -121,9 +130,7 @@ class TestNoDuplicateLivenessImplementations:
                 continue
             if "os.killpg" in f.read_text():
                 hits.append(str(f.relative_to(_REPO_ROOT)))
-        assert not hits, (
-            f"raw os.killpg usage found outside engine/process.py: {hits}"
-        )
+        assert not hits, f"raw os.killpg usage found outside engine/process.py: {hits}"
 
     def test_getpgid_outside_the_seam_is_used_only_for_the_self_check(self):
         """`engine/operator.py` is a deliberate, narrow exception: it calls
@@ -156,6 +163,7 @@ class TestNoDuplicateLivenessImplementations:
 # Iteration 4 — terminate / signal_process_group / terminate_group
 # ---------------------------------------------------------------------------
 
+
 class TestTerminate:
     def test_terminate_is_idempotent_on_dead_pid(self, tmp_path, monkeypatch):
         child = subprocess.Popen([sys.executable, "-c", "pass"])
@@ -172,7 +180,9 @@ class TestTerminate:
         proc = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)"])
         try:
             terminate(proc.pid)
-            assert proc.wait(timeout=5) != 0 or True  # exited; exact code is platform-dependent
+            assert (
+                proc.wait(timeout=5) != 0 or True
+            )  # exited; exact code is platform-dependent
         finally:
             if proc.poll() is None:
                 proc.kill()
@@ -180,7 +190,9 @@ class TestTerminate:
 
 
 class TestSignalProcessGroup:
-    def test_signal_process_group_falls_back_to_single_pid_without_killpg(self, monkeypatch):
+    def test_signal_process_group_falls_back_to_single_pid_without_killpg(
+        self, monkeypatch
+    ):
         monkeypatch.delattr(os, "killpg", raising=False)
         kills = []
         monkeypatch.setattr(os, "kill", lambda pid, sig: kills.append((pid, sig)))
@@ -190,7 +202,12 @@ class TestSignalProcessGroup:
     def test_signal_process_group_uses_killpg_when_available(self, monkeypatch):
         killpg_calls = []
         monkeypatch.setattr(os, "getpgid", lambda pid: pid, raising=False)
-        monkeypatch.setattr(os, "killpg", lambda pgid, sig: killpg_calls.append((pgid, sig)), raising=False)
+        monkeypatch.setattr(
+            os,
+            "killpg",
+            lambda pgid, sig: killpg_calls.append((pgid, sig)),
+            raising=False,
+        )
         signal_process_group(4242, 15)
         assert killpg_calls == [(4242, 15)]
 
@@ -199,9 +216,14 @@ class TestSignalProcessGroup:
             raise OSError("no such process")
 
         monkeypatch.setattr(os, "getpgid", _raise, raising=False)
-        monkeypatch.setattr(os, "killpg", lambda pgid, sig: (_ for _ in ()).throw(
-            AssertionError("must not call killpg when getpgid failed")
-        ), raising=False)
+        monkeypatch.setattr(
+            os,
+            "killpg",
+            lambda pgid, sig: (_ for _ in ()).throw(
+                AssertionError("must not call killpg when getpgid failed")
+            ),
+            raising=False,
+        )
         kills = []
         monkeypatch.setattr(os, "kill", lambda pid, sig: kills.append((pid, sig)))
         signal_process_group(4242, 15)
@@ -219,10 +241,16 @@ class TestTerminateGroup:
 
         assert kills == [(4242, signal.SIGTERM)]
 
-    def test_terminate_group_sigterm_only_when_escalate_after_is_none(self, monkeypatch):
+    def test_terminate_group_sigterm_only_when_escalate_after_is_none(
+        self, monkeypatch
+    ):
         """The shape needed inside a signal handler: one signal, no blocking."""
         sent = []
-        monkeypatch.setattr(process_mod, "signal_process_group", lambda pid, sig: sent.append((pid, sig)))
+        monkeypatch.setattr(
+            process_mod,
+            "signal_process_group",
+            lambda pid, sig: sent.append((pid, sig)),
+        )
         slept = []
         terminate_group(4242, escalate_after=None, sleep=lambda s: slept.append(s))
         assert sent == [(4242, signal.SIGTERM)]
@@ -230,9 +258,15 @@ class TestTerminateGroup:
 
     def test_terminate_group_escalates_after_timeout(self, monkeypatch):
         sent = []
-        monkeypatch.setattr(process_mod, "signal_process_group", lambda pid, sig: sent.append((pid, sig)))
+        monkeypatch.setattr(
+            process_mod,
+            "signal_process_group",
+            lambda pid, sig: sent.append((pid, sig)),
+        )
         terminated = []
-        monkeypatch.setattr(process_mod, "terminate", lambda pid: terminated.append(pid))
+        monkeypatch.setattr(
+            process_mod, "terminate", lambda pid: terminated.append(pid)
+        )
         monkeypatch.setattr(process_mod, "pid_alive", lambda pid: True)  # never dies
 
         clock = {"t": 0.0}
@@ -243,21 +277,31 @@ class TestTerminateGroup:
         def fake_sleep(seconds):
             clock["t"] += seconds
 
-        terminate_group(4242, escalate_after=1.0, poll_interval=0.3, sleep=fake_sleep, now=fake_now)
+        terminate_group(
+            4242, escalate_after=1.0, poll_interval=0.3, sleep=fake_sleep, now=fake_now
+        )
 
         # SIGTERM to the group is the first move on every platform.
         assert sent[0] == (4242, signal.SIGTERM)
         if os.name == "nt":
             # Windows has no SIGKILL / process groups: escalation is a
             # forcible TerminateProcess via terminate().
-            assert terminated == [4242], "Windows escalation must go through terminate()"
+            assert terminated == [4242], (
+                "Windows escalation must go through terminate()"
+            )
         else:
             assert sent[-1] == (4242, signal.SIGKILL)
-            assert sent.count((4242, signal.SIGKILL)) == 1, "SIGKILL must be sent exactly once"
+            assert sent.count((4242, signal.SIGKILL)) == 1, (
+                "SIGKILL must be sent exactly once"
+            )
 
     def test_terminate_group_does_not_escalate_if_pid_dies_in_time(self, monkeypatch):
         sent = []
-        monkeypatch.setattr(process_mod, "signal_process_group", lambda pid, sig: sent.append((pid, sig)))
+        monkeypatch.setattr(
+            process_mod,
+            "signal_process_group",
+            lambda pid, sig: sent.append((pid, sig)),
+        )
 
         alive_calls = {"n": 0}
 
@@ -269,16 +313,24 @@ class TestTerminateGroup:
 
         clock = {"t": 0.0}
         terminate_group(
-            4242, escalate_after=5.0, poll_interval=0.1,
+            4242,
+            escalate_after=5.0,
+            poll_interval=0.1,
             sleep=lambda s: clock.__setitem__("t", clock["t"] + s),
             now=lambda: clock["t"],
         )
 
-        assert sent == [(4242, signal.SIGTERM)], "must not escalate to SIGKILL once the pid is confirmed dead"
+        assert sent == [(4242, signal.SIGTERM)], (
+            "must not escalate to SIGKILL once the pid is confirmed dead"
+        )
 
     def test_terminate_group_rejects_nonpositive(self, monkeypatch):
         sent = []
-        monkeypatch.setattr(process_mod, "signal_process_group", lambda pid, sig: sent.append((pid, sig)))
+        monkeypatch.setattr(
+            process_mod,
+            "signal_process_group",
+            lambda pid, sig: sent.append((pid, sig)),
+        )
         terminate_group(0)
         terminate_group(-1)
         assert sent == []

@@ -1,11 +1,10 @@
 """Performance benchmarks — verify system stays fast under load."""
+
 from __future__ import annotations
 
 import sqlite3
 import time
 from pathlib import Path
-
-import pytest
 
 
 def _setup_db(tmp_path: Path) -> sqlite3.Connection:
@@ -15,6 +14,7 @@ def _setup_db(tmp_path: Path) -> sqlite3.Connection:
     conn = sqlite3.connect(str(db_path))
     conn.row_factory = sqlite3.Row
     from superharness.engine.db import init_db
+
     init_db(conn)
     return conn
 
@@ -29,12 +29,14 @@ class TestInboxQueryPerformance:
             conn.execute(
                 "INSERT INTO inbox (id, task_id, target_agent, status, retry_count, max_retries, created_at) "
                 "VALUES (?, ?, ?, ?, 0, 3, datetime('now'))",
-                (f"perf-{i}", f"task-{i%10}", "claude-code", "done"),
+                (f"perf-{i}", f"task-{i % 10}", "claude-code", "done"),
             )
         conn.commit()
 
         start = time.perf_counter()
-        rows = conn.execute("SELECT * FROM inbox WHERE status='done' LIMIT 50").fetchall()
+        rows = conn.execute(
+            "SELECT * FROM inbox WHERE status='done' LIMIT 50"
+        ).fetchall()
         elapsed = (time.perf_counter() - start) * 1000
         assert len(rows) == 50
         assert elapsed < 100, f"Inbox query took {elapsed:.1f}ms (limit: 100ms)"
@@ -46,7 +48,7 @@ class TestInboxQueryPerformance:
             conn.execute(
                 "INSERT INTO inbox (id, task_id, target_agent, status, retry_count, max_retries, created_at) "
                 "VALUES (?, ?, 'claude-code', ?, 0, 3, datetime('now'))",
-                (f"cnt-{i}", f"task-{i%5}", "done" if i % 3 != 0 else "failed"),
+                (f"cnt-{i}", f"task-{i % 5}", "done" if i % 3 != 0 else "failed"),
             )
         conn.commit()
 

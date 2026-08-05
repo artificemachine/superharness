@@ -5,6 +5,7 @@ Covers:
 - plugin/.claude-plugin/plugin.json is valid JSON with required fields
 - plugin/commands/shux.md has valid frontmatter
 """
+
 from __future__ import annotations
 
 import json

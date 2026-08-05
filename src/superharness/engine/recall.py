@@ -8,6 +8,7 @@ Usage:
 
 Multi-keyword logic: OR — any term matching in a file produces a result.
 """
+
 from __future__ import annotations
 
 import os
@@ -17,9 +18,15 @@ from datetime import date, timedelta
 from pathlib import Path
 
 import logging
+
 logger = logging.getLogger(__name__)
 
-from superharness.engine.errors import OperationError, SuperharnessError, UsageError, handle_cli_error
+from superharness.engine.errors import (  # noqa: E402
+    OperationError,
+    SuperharnessError,
+    UsageError,
+    handle_cli_error,
+)
 
 
 def _try_date(val: object) -> date | None:
@@ -89,27 +96,39 @@ def _file_meta(path: Path, data: object) -> tuple[str, str]:
     agent = "unknown"
     task_id = path.stem.lstrip("0123456789-")
     if isinstance(data, dict):
-        agent = str(data.get("agent") or data.get("completed_by") or data.get("owner") or "unknown")
-        task_id = str(data.get("task_id") or data.get("task") or data.get("id") or task_id)
+        agent = str(
+            data.get("agent")
+            or data.get("completed_by")
+            or data.get("owner")
+            or "unknown"
+        )
+        task_id = str(
+            data.get("task_id") or data.get("task") or data.get("id") or task_id
+        )
     return agent, task_id
 
 
 def _ctx(lines: list[str], idx: int) -> str:
     start = max(idx - 1, 0)
     end = min(idx + 1, len(lines) - 1)
-    snippets = [l.strip() for l in lines[start:end + 1] if l.strip()]
+    snippets = [line.strip() for line in lines[start : end + 1] if line.strip()]
     return " / ".join(snippets[:3])
 
 
-def search(project_dir: Path, terms: list[str], since_days: int | None = None) -> list[dict]:
-    since_date = date.today() - timedelta(days=since_days) if since_days is not None else None
-    sh_dir = project_dir / ".superharness"
+def search(
+    project_dir: Path, terms: list[str], since_days: int | None = None
+) -> list[dict]:
+    since_date = (
+        date.today() - timedelta(days=since_days) if since_days is not None else None
+    )
+    project_dir / ".superharness"
 
     results: list[dict] = []
 
     # --- Scan handoffs from SQLite ---
     try:
         from superharness.engine import state_reader as _sr_h
+
         handoff_rows = _sr_h.get_handoffs(str(project_dir))
     except Exception as e:
         logger.warning("recall.py handoffs SQLite scan failed: %s", e, exc_info=True)
@@ -135,17 +154,20 @@ def search(project_dir: Path, terms: list[str], since_days: int | None = None) -
                         snippets.append(s)
         if count == 0:
             continue
-        results.append({
-            "date": fdate,
-            "agent": agent,
-            "task_id": task_id,
-            "count": count,
-            "snippets": snippets[:3],
-        })
+        results.append(
+            {
+                "date": fdate,
+                "agent": agent,
+                "task_id": task_id,
+                "count": count,
+                "snippets": snippets[:3],
+            }
+        )
 
     # --- Scan tasks from SQLite (titles + subtasks) ---
     try:
         from superharness.engine import state_reader as _sr
+
         tasks = _sr.get_tasks(str(project_dir))
     except Exception as e:
         logger.warning("recall.py unexpected error: %s", e, exc_info=True)
@@ -155,7 +177,7 @@ def search(project_dir: Path, terms: list[str], since_days: int | None = None) -
             continue
         parent_status = str(t.get("status") or "")
         _scan = [(t, None)]
-        for s in (t.get("subtasks") or []):
+        for s in t.get("subtasks") or []:
             if isinstance(s, dict):
                 _scan.append((s, t))
         for entry, parent in _scan:
@@ -169,17 +191,20 @@ def search(project_dir: Path, terms: list[str], since_days: int | None = None) -
             snippet = f"[{label_kind}] {entry.get('title', '')}"
             if parent is not None:
                 snippet += f" (parent: {parent.get('id', '')}, status: {parent_status})"
-            results.append({
-                "date": None,
-                "agent": str(entry.get("owner") or "unknown"),
-                "task_id": tid,
-                "count": count,
-                "snippets": [snippet[:160]],
-            })
+            results.append(
+                {
+                    "date": None,
+                    "agent": str(entry.get("owner") or "unknown"),
+                    "task_id": tid,
+                    "count": count,
+                    "snippets": [snippet[:160]],
+                }
+            )
 
     # --- Scan ledger from SQLite ---
     try:
         from superharness.engine import state_reader as _sr_l
+
         ledger_entries = _sr_l.get_ledger_entries(str(project_dir), limit=500)
     except Exception as e:
         logger.warning("recall.py ledger SQLite scan failed: %s", e, exc_info=True)
@@ -195,23 +220,29 @@ def search(project_dir: Path, terms: list[str], since_days: int | None = None) -
         count = sum(1 for t in terms if t in line.lower())
         if count == 0:
             continue
-        results.append({
-            "date": ldate,
-            "agent": agent,
-            "task_id": "ledger",
-            "count": count,
-            "snippets": [line.strip()[:120]],
-        })
+        results.append(
+            {
+                "date": ldate,
+                "agent": agent,
+                "task_id": "ledger",
+                "count": count,
+                "snippets": [line.strip()[:120]],
+            }
+        )
 
     # Sort: newest first, then by match count descending
-    results.sort(key=lambda r: (
-        -(r["date"].toordinal() if r["date"] else 0),
-        -r["count"],
-    ))
+    results.sort(
+        key=lambda r: (
+            -(r["date"].toordinal() if r["date"] else 0),
+            -r["count"],
+        )
+    )
     return results
 
 
-def format_results(results: list[dict], max_fresh_days: int = DEFAULT_MAX_FRESH_DAYS) -> str:
+def format_results(
+    results: list[dict], max_fresh_days: int = DEFAULT_MAX_FRESH_DAYS
+) -> str:
     """Render search results as text, appending a staleness caveat to old hits."""
     blocks: list[str] = []
     for r in results:
@@ -237,11 +268,19 @@ def main(argv: list[str] | None = None) -> None:
         prog="recall",
         description="Search .superharness/handoffs/ and ledger.md by keyword.",
     )
-    p.add_argument("-p", "--project", default=os.getcwd(), help="Project directory (default: cwd)")
-    p.add_argument("--since", metavar="Nd", default=None, help="Limit to last N days (e.g. 7d)")
-    p.add_argument("--max-fresh-days", type=int, default=None,
-                   help="Hits older than this many days get a staleness caveat "
-                        "(default 14, or $SHUX_RECALL_FRESH_DAYS)")
+    p.add_argument(
+        "-p", "--project", default=os.getcwd(), help="Project directory (default: cwd)"
+    )
+    p.add_argument(
+        "--since", metavar="Nd", default=None, help="Limit to last N days (e.g. 7d)"
+    )
+    p.add_argument(
+        "--max-fresh-days",
+        type=int,
+        default=None,
+        help="Hits older than this many days get a staleness caveat "
+        "(default 14, or $SHUX_RECALL_FRESH_DAYS)",
+    )
     p.add_argument("terms", nargs="*", help="Search terms (OR logic)")
     opts = p.parse_args(argv)
 
@@ -253,7 +292,8 @@ def main(argv: list[str] | None = None) -> None:
     sh_dir = project_dir / ".superharness"
     if not sh_dir.is_dir():
         raise OperationError(
-            f"Not a superharness project (no .superharness/): {project_dir}", exit_code=1
+            f"Not a superharness project (no .superharness/): {project_dir}",
+            exit_code=1,
         )
 
     since_days: int | None = None
@@ -261,7 +301,8 @@ def main(argv: list[str] | None = None) -> None:
         m = re.fullmatch(r"(\d+)d", opts.since)
         if not m:
             raise UsageError(
-                f"Invalid --since format (expected Nd, e.g. 7d): {opts.since}", exit_code=1
+                f"Invalid --since format (expected Nd, e.g. 7d): {opts.since}",
+                exit_code=1,
             )
         since_days = int(m.group(1))
 

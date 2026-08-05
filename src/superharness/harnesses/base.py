@@ -3,6 +3,7 @@
 A Harness turns a task into the exact subprocess argv/env/cwd superharness
 will spawn to run that agent. See docs/PLAN-steal-omnigent.md iterations 5-6.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -32,8 +33,7 @@ class Harness(Protocol):
 
     def build_invocation(
         self, task: dict, project_dir: str, non_interactive: bool
-    ) -> Invocation:
-        ...
+    ) -> Invocation: ...
 
 
 def _base_env(overrides: dict[str, str] | None = None) -> dict[str, str]:

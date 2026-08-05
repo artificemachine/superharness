@@ -1,8 +1,8 @@
 """Tests for Remember module (context refresh)."""
+
 from __future__ import annotations
 
 from pathlib import Path
-
 
 
 class TestRememberModule:
@@ -18,7 +18,9 @@ class TestRememberModule:
 
         # Create CLAUDE.md
         claude_md = project_dir / "CLAUDE.md"
-        claude_md.write_text("# Test Project\n\nThis is a test project.", encoding="utf-8")
+        claude_md.write_text(
+            "# Test Project\n\nThis is a test project.", encoding="utf-8"
+        )
 
         # Create .superharness structure
         sh_dir = project_dir / ".superharness"
@@ -78,7 +80,9 @@ Task summary and outcomes here.
 
         # Create CLAUDE.md
         claude_md = project_dir / "CLAUDE.md"
-        claude_md.write_text("# Test Project\n\nThis is a test project.", encoding="utf-8")
+        claude_md.write_text(
+            "# Test Project\n\nThis is a test project.", encoding="utf-8"
+        )
 
         # Create .superharness structure (but no handoffs)
         sh_dir = project_dir / ".superharness"

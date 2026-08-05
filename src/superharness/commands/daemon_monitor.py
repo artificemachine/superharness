@@ -17,6 +17,7 @@ adopted watcher exits (or the monitor itself respawns one after a crash),
 the new process *is* the monitor's child and `Popen.wait()` is used from
 then on.
 """
+
 from __future__ import annotations
 
 import json
@@ -38,9 +39,19 @@ def _find_python() -> str:
     return python
 
 
-def _spawn_watcher(project_dir: str, interval: int, out_log: str, err_log: str) -> subprocess.Popen:
-    cmd = [_find_python(), "-m", "superharness.commands.inbox_watch",
-           "--project", project_dir, "--interval", str(interval), "--once"]
+def _spawn_watcher(
+    project_dir: str, interval: int, out_log: str, err_log: str
+) -> subprocess.Popen:
+    cmd = [
+        _find_python(),
+        "-m",
+        "superharness.commands.inbox_watch",
+        "--project",
+        project_dir,
+        "--interval",
+        str(interval),
+        "--once",
+    ]
     env = os.environ.copy()
     src_root = os.path.join(project_dir, "src")
     if os.path.exists(src_root):
@@ -55,21 +66,26 @@ def _spawn_watcher(project_dir: str, interval: int, out_log: str, err_log: str) 
     )
 
 
-def _write_state(project_dir: str, interval: int, out_log: str, err_log: str, watcher_pid: int) -> None:
+def _write_state(
+    project_dir: str, interval: int, out_log: str, err_log: str, watcher_pid: int
+) -> None:
     """Key set must stay exactly {pid, watcher_pid, project, interval,
     log_out, log_err} — daemon._read_state, daemon._show_status, and
     `shux status` all consume this file."""
     sf = os.path.join(project_dir, ".superharness", "daemon-state.json")
     os.makedirs(os.path.dirname(sf), exist_ok=True)
     with open(sf, "w") as f:
-        json.dump({
-            "pid": os.getpid(),
-            "watcher_pid": watcher_pid,
-            "project": project_dir,
-            "interval": interval,
-            "log_out": out_log,
-            "log_err": err_log,
-        }, f)
+        json.dump(
+            {
+                "pid": os.getpid(),
+                "watcher_pid": watcher_pid,
+                "project": project_dir,
+                "interval": interval,
+                "log_out": out_log,
+                "log_err": err_log,
+            },
+            f,
+        )
 
 
 def _restart_message(exit_code: int | None) -> str:
@@ -105,6 +121,7 @@ def run_monitor(
     injectable so this loop is testable without any real process.
     """
     if spawn is None:
+
         def spawn():
             return _spawn_watcher(project_dir, interval, out_log, err_log)
 

@@ -5,6 +5,7 @@ After sub-agents complete their subtasks, the orchestrator calls this to:
 - Compute total actual cost vs estimated
 - Set parent task status to report_ready (all done) or failed (any failed)
 """
+
 from __future__ import annotations
 
 import json
@@ -16,8 +17,9 @@ from typing import Optional
 @dataclass
 class SubtaskResult:
     """Outcome from a single sub-agent execution."""
+
     subtask_id: str
-    status: str               # done | failed
+    status: str  # done | failed
     actual_tokens: int
     actual_cost_usd: float
     model_used: str
@@ -28,6 +30,7 @@ class SubtaskResult:
 @dataclass
 class AggregationSummary:
     """Summary of all subtask results for a parent task."""
+
     task_id: str
     total_actual_cost_usd: float
     total_estimated_cost_usd: float
@@ -103,7 +106,11 @@ class SubtaskAggregator:
             tasks_dao.update(conn, task_id, task_row.version, changes)
             conn.commit()
 
-            estimated_cost = task_row.extras_json and json.loads(task_row.extras_json or "{}").get("estimated_cost_usd") or 0.0
+            estimated_cost = (
+                task_row.extras_json
+                and json.loads(task_row.extras_json or "{}").get("estimated_cost_usd")
+                or 0.0
+            )
         finally:
             conn.close()
 

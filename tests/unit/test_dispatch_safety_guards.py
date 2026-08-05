@@ -11,9 +11,9 @@ Patterns covered:
 Each test documents the guard that prevents it and pins the behaviour so
 regressions surface immediately.
 """
+
 from __future__ import annotations
 
-import sqlite3
 from pathlib import Path
 from datetime import datetime, timezone
 
@@ -29,10 +29,13 @@ from superharness.engine.db import get_connection, init_db
 # to avoid test-order coupling)
 # ---------------------------------------------------------------------------
 
+
 def _project(tmp_path: Path, profile_extra: dict | None = None) -> Path:
     sh = tmp_path / ".superharness"
     sh.mkdir()
-    conn = get_connection(str(tmp_path)); init_db(conn); conn.close()
+    conn = get_connection(str(tmp_path))
+    init_db(conn)
+    conn.close()
     profile = {"auto_dispatch": True, "autonomy": "ai_driven", "_config_version": 1}
     if profile_extra:
         profile.update(profile_extra)
@@ -43,7 +46,10 @@ def _project(tmp_path: Path, profile_extra: dict | None = None) -> Path:
 
 def _task(project: Path, task_id: str, status: str = "plan_approved", **kwargs) -> None:
     sh = project / ".superharness"
-    doc = yaml.safe_load((sh / "contract.yaml").read_text()) or {"id": "main", "tasks": []}
+    doc = yaml.safe_load((sh / "contract.yaml").read_text()) or {
+        "id": "main",
+        "tasks": [],
+    }
     entry = {
         "id": task_id,
         "title": f"Task {task_id}",
@@ -80,7 +86,8 @@ def _fail(project: Path, task_id: str, count: int) -> None:
             "VALUES (?,?,'claude-code','failed',?,?)",
             (f"{task_id}-f{i}", task_id, str(project), now),
         )
-    conn.commit(); conn.close()
+    conn.commit()
+    conn.close()
 
 
 # ---------------------------------------------------------------------------
@@ -89,6 +96,7 @@ def _fail(project: Path, task_id: str, count: int) -> None:
 # Current state: NOT YET GUARDED — test documents desired behaviour and
 # will XFAIL until the guard is implemented.
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.xfail(
     reason="Guard not yet implemented: plan_approved with empty criteria should be blocked",
@@ -99,7 +107,7 @@ def test_plan_approved_with_no_criteria_is_not_dispatched(tmp_path):
     verify against. It should be held at plan_approved until criteria are added
     rather than being dispatched into a context-free execution loop."""
     project = _project(tmp_path)
-    _task(project, "t-nocrit", criteria=[])   # explicitly empty
+    _task(project, "t-nocrit", criteria=[])  # explicitly empty
     count = auto_enqueue_approved(str(project))
     assert count == 0, (
         "plan_approved tasks with no acceptance criteria must not be auto-dispatched. "
@@ -112,6 +120,7 @@ def test_plan_approved_with_no_criteria_is_not_dispatched(tmp_path):
 # Guard: skip enqueue if project_path is missing/blank on the task row
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.xfail(
     reason="Guard not yet implemented: missing project_path should block dispatch",
     strict=False,
@@ -121,15 +130,20 @@ def test_plan_approved_with_no_project_path_is_not_dispatched(tmp_path):
     wastes a retry budget and floods the inbox with context-free failures."""
     project = _project(tmp_path)
     sh = project / ".superharness"
-    doc = yaml.safe_load((sh / "contract.yaml").read_text()) or {"id": "main", "tasks": []}
-    doc["tasks"].append({
-        "id": "t-nopath",
-        "title": "No path task",
-        "status": "plan_approved",
-        "owner": "claude-code",
-        "created_at": datetime.now(timezone.utc).isoformat(),
-        # no project_path key
-    })
+    doc = yaml.safe_load((sh / "contract.yaml").read_text()) or {
+        "id": "main",
+        "tasks": [],
+    }
+    doc["tasks"].append(
+        {
+            "id": "t-nopath",
+            "title": "No path task",
+            "status": "plan_approved",
+            "owner": "claude-code",
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            # no project_path key
+        }
+    )
     (sh / "contract.yaml").write_text(yaml.dump(doc))
     count = auto_enqueue_approved(str(project))
     assert count == 0, (
@@ -146,6 +160,7 @@ def test_plan_approved_with_no_project_path_is_not_dispatched(tmp_path):
 # when they were inserted — total historical failures always accumulate,
 # so 6 failures (2× default cap of 3) already hard-stops re-dispatch.
 # ---------------------------------------------------------------------------
+
 
 def test_repeated_reset_does_not_create_infinite_retry_loop(tmp_path):
     """Simulates operator resetting a task to plan_approved after waiting_input
@@ -169,12 +184,15 @@ def test_repeated_reset_does_not_create_infinite_retry_loop(tmp_path):
 # Pattern D — legacy autonomy aliases all normalize to ai_driven and dispatch
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.parametrize("autonomy", ["approval-gated", "full-auto", "autonomous"])
 def test_legacy_autonomy_aliases_normalize_to_ai_driven_and_dispatch(
     tmp_path, autonomy
 ):
     # "supervised" is excluded: it is a distinct mode that preserves human oversight
-    project = _project(tmp_path, profile_extra={"autonomy": autonomy, "auto_dispatch": True})
+    project = _project(
+        tmp_path, profile_extra={"autonomy": autonomy, "auto_dispatch": True}
+    )
     _task(project, "t-sup")
     count = auto_enqueue_approved(str(project))
     assert count == 1, f"autonomy={autonomy} should normalize to ai_driven and dispatch"
@@ -182,7 +200,9 @@ def test_legacy_autonomy_aliases_normalize_to_ai_driven_and_dispatch(
 
 def test_supervised_autonomy_does_not_auto_dispatch(tmp_path):
     """supervised mode preserves human oversight — auto_enqueue must not dispatch."""
-    project = _project(tmp_path, profile_extra={"autonomy": "supervised", "auto_dispatch": True})
+    project = _project(
+        tmp_path, profile_extra={"autonomy": "supervised", "auto_dispatch": True}
+    )
     _task(project, "t-supervised")
     count = auto_enqueue_approved(str(project))
     assert count == 0, "supervised autonomy must not auto-dispatch"
@@ -197,23 +217,29 @@ def test_supervised_autonomy_does_not_auto_dispatch(tmp_path):
 # silently fails. This test pins that it does NOT crash and returns 0.
 # ---------------------------------------------------------------------------
 
+
 def test_plan_approved_task_missing_from_sqlite_does_not_crash(tmp_path):
     """Task exists in YAML but not in SQLite — FK would fail. Must not crash."""
     project = _project(tmp_path)
     sh = project / ".superharness"
-    doc = yaml.safe_load((sh / "contract.yaml").read_text()) or {"id": "main", "tasks": []}
-    doc["tasks"].append({
-        "id": "t-orphan",
-        "title": "Orphan",
-        "status": "plan_approved",
-        "owner": "claude-code",
-        "created_at": datetime.now(timezone.utc).isoformat(),
-        "project_path": str(project),
-    })
+    doc = yaml.safe_load((sh / "contract.yaml").read_text()) or {
+        "id": "main",
+        "tasks": [],
+    }
+    doc["tasks"].append(
+        {
+            "id": "t-orphan",
+            "title": "Orphan",
+            "status": "plan_approved",
+            "owner": "claude-code",
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "project_path": str(project),
+        }
+    )
     (sh / "contract.yaml").write_text(yaml.dump(doc))
     # Do NOT insert into SQLite tasks table — simulate the gap
     try:
-        count = auto_enqueue_approved(str(project))
+        auto_enqueue_approved(str(project))
     except Exception as exc:
         pytest.fail(f"auto_enqueue_approved must not raise on FK gap: {exc}")
     # Either succeeds (0 or 1) or skips — main invariant is no crash
@@ -223,6 +249,7 @@ def test_plan_approved_task_missing_from_sqlite_does_not_crash(tmp_path):
 # Regression: the exact bug that occurred (plan_approved + ai_driven + 0 failures)
 # This is the explicit regression test for the incident.
 # ---------------------------------------------------------------------------
+
 
 def test_regression_plan_approved_with_ai_driven_dispatches_once(tmp_path):
     """Regression for the incident where all I3-I8 tasks were auto-dispatched
@@ -235,7 +262,9 @@ def test_regression_plan_approved_with_ai_driven_dispatches_once(tmp_path):
     assert count == 1
     # auto_dispatch=False is the real gate now
     (project / ".superharness" / "profile.yaml").write_text(
-        yaml.dump({"auto_dispatch": False, "autonomy": "ai_driven", "_config_version": 1})
+        yaml.dump(
+            {"auto_dispatch": False, "autonomy": "ai_driven", "_config_version": 1}
+        )
     )
     count2 = auto_enqueue_approved(str(project))
     assert count2 == 0, "auto_dispatch=False must block dispatch regardless of autonomy"

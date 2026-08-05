@@ -14,7 +14,9 @@ def _run_demo_py(cwd, args: list[str] | None = None):
     env = os.environ.copy()
     env["PYTHONPATH"] = str(REPO_ROOT / "src")
     cmd = [sys.executable, "-m", "superharness.commands.demo"] + (args or [])
-    return subprocess.run(cmd, cwd=str(cwd), text=True, capture_output=True, env=env, check=False)
+    return subprocess.run(
+        cmd, cwd=str(cwd), text=True, capture_output=True, env=env, check=False
+    )
 
 
 def test_demo_module_exists(repo_root) -> None:
@@ -30,7 +32,9 @@ def test_demo_help(repo_root, tmp_path) -> None:
 
 def test_demo_runs_to_completion(repo_root, tmp_path) -> None:
     result = _run_demo_py(tmp_path)
-    assert result.returncode == 0, f"demo failed:\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}"
+    assert result.returncode == 0, (
+        f"demo failed:\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}"
+    )
 
 
 def test_demo_all_steps_present(repo_root, tmp_path) -> None:
@@ -56,7 +60,9 @@ def test_demo_cleans_up_temp_dir(repo_root, tmp_path) -> None:
     for line in result.stdout.splitlines():
         if "Temp project:" in line:
             temp_dir = line.split("Temp project:", 1)[1].strip().rstrip()
-            assert not os.path.exists(temp_dir), f"Temp dir was not cleaned up: {temp_dir}"
+            assert not os.path.exists(temp_dir), (
+                f"Temp dir was not cleaned up: {temp_dir}"
+            )
             break
     else:
         pytest.fail("Could not find 'Temp project:' line in demo output")
@@ -73,6 +79,7 @@ def test_demo_keep_flag_preserves_dir(repo_root, tmp_path) -> None:
             assert os.path.isdir(kept_dir), f"--keep dir not found: {kept_dir}"
             # cleanup manually so tmp_path teardown is clean
             import shutil
+
             shutil.rmtree(kept_dir, ignore_errors=True)
             break
     else:

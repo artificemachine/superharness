@@ -1,4 +1,5 @@
 """CLI for behavioral profile — shux profile show/edit."""
+
 from __future__ import annotations
 
 import json
@@ -18,7 +19,7 @@ def cmd_profile(args: list[str]) -> None:
       shux profile unlock <key>      — allow auto-adaptation again
     """
     from superharness.engine.behavioral import (
-        user_profile_path, load_profile, save_profile, extract_all_profiles,
+        user_profile_path,
     )
 
     if not args:
@@ -38,6 +39,7 @@ def cmd_profile(args: list[str]) -> None:
         profile_path = os.path.join(user_profile_path(), "task_style.json")
         editor = os.environ.get("EDITOR", "vim")
         import subprocess
+
         subprocess.run([editor, str(profile_path)])
     elif subcmd == "reset" and len(args) >= 2:
         key = args[1]
@@ -55,7 +57,8 @@ def cmd_profile(args: list[str]) -> None:
 
 def _show_profile(fmt: str = "text") -> None:
     from superharness.engine.behavioral import (
-        user_profile_path, load_profile, extract_all_profiles,
+        user_profile_path,
+        load_profile,
     )
 
     upath = user_profile_path()
@@ -101,7 +104,12 @@ def _show_profile(fmt: str = "text") -> None:
 
 
 def _reset_key(key: str) -> None:
-    from superharness.engine.behavioral import user_profile_path, load_profile, save_profile
+    from superharness.engine.behavioral import (
+        user_profile_path,
+        load_profile,
+        save_profile,
+    )
+
     upath = user_profile_path()
     for fname in os.listdir(upath):
         if fname.endswith(".json") and not fname.startswith("_"):
@@ -116,7 +124,12 @@ def _reset_key(key: str) -> None:
 
 
 def _lock_key(key: str) -> None:
-    from superharness.engine.behavioral import user_profile_path, save_profile, load_profile
+    from superharness.engine.behavioral import (
+        user_profile_path,
+        save_profile,
+        load_profile,
+    )
+
     upath = user_profile_path()
     locks_path = os.path.join(upath, "_locks.json")
     locks = load_profile(locks_path)
@@ -126,7 +139,12 @@ def _lock_key(key: str) -> None:
 
 
 def _unlock_key(key: str) -> None:
-    from superharness.engine.behavioral import user_profile_path, save_profile, load_profile
+    from superharness.engine.behavioral import (
+        user_profile_path,
+        save_profile,
+        load_profile,
+    )
+
     upath = user_profile_path()
     locks_path = os.path.join(upath, "_locks.json")
     locks = load_profile(locks_path)

@@ -1,197 +1,149 @@
 # superharness Architecture
 
-**Why it exists, how it works, the decisions behind it.**
+**A local, SQLite-backed coordination layer for multi-agent coding sessions.**
 
-> **Legacy note (pre-SQLite migration).** This document predates the YAML→SQLite
-> migration (v1.43+, completed v1.63). State now lives in SQLite at
-> `.superharness/state.db`; the `.superharness/*.yaml` files described below are
-> export/tombstone artifacts, not the source of truth. For the current state
-> architecture see `AGENTS.md` ("State backend") and `engine/state_reader.py`.
+superharness preserves task context, enforces lifecycle transitions, and
+coordinates agent work without requiring a hosted control plane. The command-line
+interface is the primary product surface; the dashboard is an optional,
+loopback-only view of the same local state.
 
----
+## Design principles
 
-## Problem
+| Principle | Implementation |
+| --- | --- |
+| Local-first | Runtime state is SQLite, not a network service. The project works offline after installation. |
+| One authoritative state | Tasks, inbox rows, handoffs, decisions, failures, and agent heartbeats are stored in one database. |
+| Explicit state transitions | `engine/next_action.py` owns legal lifecycle transitions and recommended next actions. |
+| Agent-neutral adapters | Claude Code, Codex CLI, Gemini CLI, and OpenCode integrations share manifests and a common task model. |
+| Least surprise for operators | Background services are opt-in; the dashboard defaults to loopback binding and per-project authentication. |
+| Compatibility without split brain | Legacy YAML can be imported or exported, but production reads use SQLite and conflicting state roots fail closed. |
 
-AI coding assistants are powerful within a session but lose context when you switch agents or return days later. superharness solves:
-
-1. **Session discontinuity** — no handoff state between sessions
-2. **Agent collision** — two agents can't safely work simultaneously
-3. **Task amnesia** — what was done, why, and what's next is lost
-4. **Queue coordination** — no way to delegate without manual prompting
-5. **Background execution** — can't run agents unattended
-
----
-
-## Design Principles
-
-| Principle | Why |
-|-----------|-----|
-| **Local SQLite, not a server** | Works offline; state.db is the single runtime source of truth (WAL, busy_timeout); YAML exports stay git-compatible and human-readable |
-| **Explicit handoffs, not shared memory** | Every agent transition is a recorded handoff — auditable, resumable |
-| **Contract-first** | Single source of truth for tasks, owners, dependencies |
-| **Queue-based dispatch** | Priority support, retry logic, status tracking |
-| **Append-only ledger** | Immutable history, grep-friendly, git-native |
-| **Hygiene before commit** | Catch violations early, not after the fact |
-
----
-
-## Layers
-
-```
-cli/                    → user-facing shell commands (delegate, enqueue, dispatch, hygiene…)
-src/superharness/engine/→ Python core: YAML ops, queue transitions, contract queries, validation
-scripts/                → watcher install, launchd/systemd, guard scripts, dashboard-ui (with autohealth watchdog)
-protocol/               → spec, templates, schema
-adapters/               → Claude Code hooks, Codex CLI templates
-```
-
-**Python for `engine/`:** structured YAML support via PyYAML, fast startup. Bash handles orchestration; Python handles YAML and business logic.
-
-**Key engine modules:**
-
-| Module | Role |
-|--------|------|
-| `next_action.py` | **Core Heart**: Single source of truth for task state transitions and dispatch gates. |
-| `operator.py` | **Guardian**: Self-healing stack manager for background Watchers and Dashboards. |
-| `adapter_registry.py` | **Connector**: Registry of agent manifests (Claude, Codex, Gemini) with versioned model mapping. |
-| `schemas.py` | Pydantic v2 models for all protocol YAML types. |
-| `model_router.py` | Maps tier names (mini/standard/max) to agent-specific model IDs. |
-| `orchestrator.py` | Opus-level orchestrator: decomposes tasks into subtasks. |
-| `sdk_runner.py` | Wraps `claude_agent_sdk` for programmatic, headless Claude dispatch. |
-
-## Headless-First Principle (v1.69.5+)
-
-The core engine is decoupled from the UI. The Guardian runs only the background worker by default, reducing resource usage and preventing port/process leakage in headless environments. 
-
-1. **Persistent Headless**: `shux operator start` (managed by `launchd`) ensures the task loop is always running without an HTTP server.
-2. **On-Demand UI**: `shux dashboard` provides a temporary view with an **auto-timeout (lease pattern)** that shuts down the server if no user activity or heartbeats are detected.
-3. **Opt-in Monitoring**: The `--dashboard` flag allows the Guardian to maintain a persistent UI instance if specifically requested.
-
----
-
-## Runtime State (`.superharness/`)
-
-```
-state.db            SQLite — the source of truth for tasks, inbox, decisions, failures
-handoffs/*.yaml     one file per task; written when a task completes or suspends
-ledger.md           append-only event log
-heartbeat.yaml      proactive watcher check config (config, not state)
-profile.yaml        autonomy, primary_agent, team_size (config, written by install)
-
-# Tombstone exports (generated from SQLite via `shux export-yaml`, NOT read as state):
-#   contract.yaml, inbox.yaml, decisions.yaml, failures.yaml
-```
-
----
-
-## Lifecycle
-
-**Inbox item:**
-```
-pending → launched → running → done
-        ↘ paused              ↘ failed → stale (recover.sh)
-```
-
-**Task:**
-```
-todo → in_progress → done
-                 ↘ blocked | failed | stopped
-```
-
-`paused` = skipped this cycle (dirty worktree or plan gate pending) — retried next cycle.
-
----
-
-## Architecture Diagram
+## Runtime topology
 
 ```mermaid
-graph TB
-    subgraph User
-        CLI["superharness CLI"]
-        Browser["Browser :8787"]
-    end
-
-    subgraph Scripts
-        delegate["delegate.sh"]
-        dispatch["inbox-dispatch.sh"]
-        watch["inbox-watch.sh"]
-        heartbeat["heartbeat.sh"]
-        dashboard["dashboard-ui.py"]
-    end
-
-    subgraph Engine["src/superharness/engine/ (Python)"]
-        inbox_py["inbox.py"]
-        contract_py["contract.py"]
-        profile_py["profile.py"]
-        recall_py["recall.py"]
-        orchestrator_py["orchestrator.py"]
-        cost_estimator_py["cost_estimator.py"]
-        subtask_agg_py["subtask_aggregator.py"]
-    end
-
-    subgraph State[".superharness/"]
-        contract["contract.yaml"]
-        inbox["inbox.yaml"]
-        ledger["ledger.md"]
-        handoffs["handoffs/*.yaml"]
-    end
-
-    subgraph Agents
-        claude["Claude Code"]
-        codex["Codex CLI"]
-    end
-
-    subgraph System
-        launchd["launchd / systemd"]
-        logs["~/Library/Logs/superharness/"]
-    end
-
-    CLI --> Scripts
-    Browser -->|HTTP| dashboard
-    launchd -->|every 15s| watch
-    watch --> dispatch
-    watch --> heartbeat
-    dispatch --> delegate
-    delegate --> claude
-    delegate --> codex
-    dashboard --> State
-    claude --> State
-    codex --> State
-    Engine --> State
-    Scripts --> Engine
+flowchart LR
+    User[Operator] --> CLI[shux / superharness CLI]
+    CLI --> Commands[commands/]
+    Commands --> Engine[engine/]
+    Engine --> DB[(SQLite state.db)]
+    Commands --> Adapters[Agent adapters]
+    Adapters --> Agents[Claude / Codex / Gemini / OpenCode]
+    Operator[Operator service] --> Watcher[Watcher and dispatcher]
+    Watcher --> Engine
+    Dashboard[Loopback dashboard] --> Engine
+    User --> Dashboard
 ```
 
----
+The CLI is a thin Click entry point in `src/superharness/cli.py`. It routes each
+subcommand to `src/superharness/commands/`, where input validation and
+operator-facing messages live. The engine contains the reusable state machine,
+SQLite data access, lifecycle rules, and orchestration logic.
 
-## Key Design Decisions
+## Components
 
-**YAML not JSON** — protocol files need human-readable comments and can be edited directly. JSON is used for runtime interchange (hook output).
+| Area | Responsibility |
+| --- | --- |
+| `cli.py` | Click command registration and lightweight process dispatch. |
+| `commands/` | One module per command: task management, delegation, watcher control, export/import, diagnostics, and installation. |
+| `engine/next_action.py` | Pure task lifecycle state machine and dispatch gates. |
+| `engine/schemas.py` | Pydantic models for task, inbox, handoff, profile, and adapter data. |
+| `engine/*_dao.py` | SQLite data-access layer for tasks, inbox, handoffs, decisions, failures, discussions, and heartbeats. |
+| `engine/operator.py` | Starts, monitors, and stops the optional watcher/dashboard stack. |
+| `engine/state_reader.py` and `engine/state_writer.py` | Canonical read/write paths over the SQLite store. |
+| `adapters/` and `adapter_manifests/` | Agent-specific launch, hook, and capability definitions. |
+| `scripts/dashboard-ui.py` | Authenticated loopback dashboard and optional autohealth supervisor. |
 
-**Heartbeat ID allowlist** — `heartbeat.yaml` maps check `id` values to hardcoded commands in `heartbeat.sh`. The `command:` field is documentation only and never executed, preventing YAML injection.
+## State model
 
-**No database** — YAML on disk is sufficient for hundreds of handoffs and thousands of ledger lines. `superharness recall` uses grep-level search over handoffs — no embeddings needed.
+### Database location
 
----
+New projects resolve state to:
 
-## Agent Identity
+```text
+$XDG_STATE_HOME/superharness/<project-hash>/state.db
+```
 
-For agents reading this: you are a coding agent working on behalf of the project owner — not a general-purpose assistant. Your job is to make forward progress on the current contract task with high precision and low blast radius.
+When `XDG_STATE_HOME` is unset, the standard local-state directory is used.
+`SUPERHARNESS_STATE_DIR` can select an explicit state root, and
+`SUPERHARNESS_STATE_PROJECT` lets a worktree use its parent project's state.
 
-**Operating constraints:**
-- Ship > plan. One focused task per session.
-- Keep changes within the current contract scope.
-- Ask before touching files outside your assigned task's scope.
+The resolver keeps compatibility with a legacy
+`.superharness/state.sqlite3` database. If an explicit state root would create
+a second database for the same project, startup fails rather than silently
+splitting state. See `utils/paths.py` for the resolver and precedence rules.
 
-**Guardrails:**
-- Never edit `.env`, credentials, secrets, or key files.
-- Never push directly to main without human review.
-- Run required checks before handoff or commit.
-- If blocked, log the blocker in contract failures and stop — do not guess.
+### SQLite as the source of truth
 
----
+Production commands use SQLite as the source of truth. The database holds:
 
-## See Also
+- task and subtask lifecycle data;
+- inbox and dispatch records;
+- handoffs, decisions, failures, and ledger-related metadata;
+- discussions, heartbeats, and operator-memory data.
 
-- [GUIDE.md](GUIDE.md) — command reference
+YAML import/export commands exist for migration, backup, and human inspection.
+They are compatibility surfaces, not the production read path. The supported
+commands are `shux import-yaml`, `shux export-yaml`, `shux archive-yaml`, and
+`shux backup-state`.
+
+### Lifecycle
+
+`TaskStatus` covers planning, execution, review, completion, failure, blocking,
+and operator-paused states. `InboxStatus` tracks the separate dispatch lifecycle:
+
+```text
+pending → launched → running → done
+                  ↘ failed | stale | paused
+```
+
+The state machine, rather than a caller, determines which transition is legal.
+This prevents a dashboard action, adapter, or background worker from inventing
+its own lifecycle semantics.
+
+## Background services and dashboard
+
+`shux operator start` manages the optional background stack. The watcher scans
+for dispatchable work and the operator restarts components that exit
+unexpectedly. It can run without a dashboard; a dashboard is started only when
+requested.
+
+The dashboard binds to loopback addresses only. Its read and mutation routes use
+a per-project token stored with restricted permissions. The autohealth process
+uses that token when probing the protected status route, so authentication does
+not cause a healthy dashboard to restart.
+
+Platform service integration is deliberately narrow: launchd and systemd wrappers
+supervise local processes but do not become another state authority.
+
+## Agent integration
+
+Adapter manifests declare what an agent can do, its launcher, and model-tier
+mapping. The dispatcher selects work using the shared task model and passes a
+bounded context payload to the chosen agent. An adapter may fail or be absent;
+that failure is recorded in local state and classified by the engine rather than
+silently changing a task's status.
+
+## Security boundaries
+
+- No API keys or credentials belong in repository state, examples, or tests.
+- The dashboard is loopback-only and token-protected.
+- The state resolver prevents accidental parallel databases for one project.
+- Repository hooks and CI run security scans before release work.
+- YAML compatibility data is treated as import/export material, not executable
+  configuration for arbitrary shell commands.
+
+## Development and verification
+
+Run unit tests with `uv run pytest tests/unit/ -q` and the complete suite with
+`uv run pytest tests/ -q`. Tests use temporary projects and offline defaults;
+live provider behavior requires an explicit opt-in environment variable.
+
+Before a release, verify the lockfile, dependency audit, secret scan, and the
+relevant end-to-end path. The project deliberately keeps global installation
+separate from the development checkout.
+
+## See also
+
+- [GUIDE.md](GUIDE.md) — command reference and operating workflows
 - [SECURITY.md](../SECURITY.md) — threat model and mitigations
-- [INSTALL-AGENT.md](INSTALL-AGENT.md) — AI-driven install flow
+- [CONTRIBUTING.md](../CONTRIBUTING.md) — local development setup

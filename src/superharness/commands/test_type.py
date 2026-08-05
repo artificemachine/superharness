@@ -8,13 +8,17 @@ Usage:
   superharness test-type --all --set unit --set e2e             # apply to all tasks
   superharness test-type --all --show                           # show types for all tasks
 """
+
 from __future__ import annotations
 
 import argparse
 import os
 import sys
 
-from superharness.engine.contract_io import write_contract as _write_contract, read_contract as _read_contract
+from superharness.engine.contract_io import (
+    write_contract as _write_contract,
+    read_contract as _read_contract,
+)
 
 HELP_TEXT = """\
 Usage:
@@ -43,14 +47,18 @@ SUGGESTED_TYPES = ["unit", "integration", "e2e", "manual", "smoke"]
 def _prompt_test_types(current: list[str]) -> list[str]:
     """Interactive prompt — ask user to pick test types from a menu."""
     print()
-    print("Select mandatory test types (space-separated numbers, or type custom names):")
+    print(
+        "Select mandatory test types (space-separated numbers, or type custom names):"
+    )
     for i, t in enumerate(SUGGESTED_TYPES, 1):
         mark = "✓" if t in current else " "
         print(f"  [{mark}] {i}. {t}")
     print()
     if current:
         print(f"  Current: {', '.join(current)}")
-    print("  Enter numbers (e.g. 1 3) or type names (e.g. unit e2e) or press Enter to keep current:")
+    print(
+        "  Enter numbers (e.g. 1 3) or type names (e.g. unit e2e) or press Enter to keep current:"
+    )
     try:
         raw = input("  > ").strip()
     except (EOFError, KeyboardInterrupt):
@@ -76,7 +84,6 @@ def _prompt_test_types(current: list[str]) -> list[str]:
 def _abort(msg: str, code: int = 1) -> None:
     print(msg, file=sys.stderr)
     sys.exit(code)
-
 
 
 def _find_task(tasks: list, task_id: str) -> dict | None:
@@ -236,7 +243,12 @@ def main(argv: list[str] | None = None) -> None:
     project = os.path.realpath(opts.project or os.getcwd())
     contract_file = os.path.join(project, ".superharness", "contract.yaml")
 
-    no_type_flags = not opts.set_types and not opts.add_types and not opts.remove_types and not opts.show
+    no_type_flags = (
+        not opts.set_types
+        and not opts.add_types
+        and not opts.remove_types
+        and not opts.show
+    )
 
     if opts.all_tasks:
         rc = run_all(

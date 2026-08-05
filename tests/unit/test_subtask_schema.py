@@ -1,4 +1,5 @@
 """Tests for Subtask schema and ContractTask subtask integration."""
+
 from __future__ import annotations
 
 import pytest
@@ -94,12 +95,14 @@ class TestSubtask:
             Subtask.model_validate(incomplete)
 
     def test_optional_actual_fields(self):
-        st = Subtask.model_validate({
-            **VALID_SUBTASK,
-            "actual_tokens": 50000,
-            "actual_cost_usd": 0.35,
-            "model_used": "claude-sonnet-4-6",
-        })
+        st = Subtask.model_validate(
+            {
+                **VALID_SUBTASK,
+                "actual_tokens": 50000,
+                "actual_cost_usd": 0.35,
+                "model_used": "claude-sonnet-4-6",
+            }
+        )
         assert st.actual_tokens == 50000
         assert st.actual_cost_usd == 0.35
         assert st.model_used == "claude-sonnet-4-6"
@@ -131,12 +134,14 @@ class TestContractTaskSubtasks:
         assert task.budget_usd is None
 
     def test_task_with_subtasks(self):
-        task = ContractTask.model_validate({
-            **VALID_TASK,
-            "subtasks": [VALID_SUBTASK],
-            "estimated_cost_usd": 0.28,
-            "budget_usd": 0.50,
-        })
+        task = ContractTask.model_validate(
+            {
+                **VALID_TASK,
+                "subtasks": [VALID_SUBTASK],
+                "estimated_cost_usd": 0.28,
+                "budget_usd": 0.50,
+            }
+        )
         assert len(task.subtasks) == 1
         assert task.subtasks[0].id == "T-42.1"
         assert task.subtasks[0].model_tier == ModelTier.standard
@@ -146,8 +151,20 @@ class TestContractTaskSubtasks:
     def test_task_with_multiple_subtasks(self):
         subtasks = [
             {**VALID_SUBTASK, "id": "T-42.1", "model_tier": "standard"},
-            {**VALID_SUBTASK, "id": "T-42.2", "model_tier": "mini", "estimated_tokens": 12000, "estimated_cost_usd": 0.02},
-            {**VALID_SUBTASK, "id": "T-42.3", "model_tier": "max", "estimated_tokens": 80000, "estimated_cost_usd": 2.50},
+            {
+                **VALID_SUBTASK,
+                "id": "T-42.2",
+                "model_tier": "mini",
+                "estimated_tokens": 12000,
+                "estimated_cost_usd": 0.02,
+            },
+            {
+                **VALID_SUBTASK,
+                "id": "T-42.3",
+                "model_tier": "max",
+                "estimated_tokens": 80000,
+                "estimated_cost_usd": 2.50,
+            },
         ]
         task = ContractTask.model_validate({**VALID_TASK, "subtasks": subtasks})
         assert len(task.subtasks) == 3
@@ -162,12 +179,15 @@ class TestContractTaskSubtasks:
     def test_subtask_yaml_round_trip(self):
         """Subtasks survive YAML serialization."""
         import yaml
-        task = ContractTask.model_validate({
-            **VALID_TASK,
-            "subtasks": [VALID_SUBTASK],
-            "estimated_cost_usd": 0.28,
-            "budget_usd": 0.50,
-        })
+
+        task = ContractTask.model_validate(
+            {
+                **VALID_TASK,
+                "subtasks": [VALID_SUBTASK],
+                "estimated_cost_usd": 0.28,
+                "budget_usd": 0.50,
+            }
+        )
         dumped = yaml.safe_dump(task.model_dump(mode="json"), default_flow_style=False)
         loaded = yaml.safe_load(dumped)
         restored = ContractTask.model_validate(loaded)

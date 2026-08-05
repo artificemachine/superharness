@@ -17,19 +17,15 @@ Bug F — `--verdict abstain` counts toward round completion. Unit tests
 Both tests use mocked subprocesses for codex auth detection / classifier
 calls so they run offline.
 """
+
 from __future__ import annotations
 
 import io
 import json
-import os
-import sqlite3
 import subprocess
-import sys
 from contextlib import redirect_stdout
 from pathlib import Path
 from unittest import mock
-
-import pytest
 
 
 # ---------------------------------------------------------------------------
@@ -47,6 +43,7 @@ def _seed_codex_project(tmp_path: Path, task_id: str = "t-codex-bug-c") -> Path:
     (sh / "state.sqlite3").touch()
 
     from superharness.engine.db import get_connection, init_db
+
     conn = get_connection(str(tmp_path))
     init_db(conn)
     conn.execute(
@@ -71,7 +68,9 @@ def _seed_codex_project(tmp_path: Path, task_id: str = "t-codex-bug-c") -> Path:
 
 
 class TestBugCRuntime:
-    def test_chatgpt_auth_remaps_codex_model_at_dispatch_time(self, tmp_path, monkeypatch):
+    def test_chatgpt_auth_remaps_codex_model_at_dispatch_time(
+        self, tmp_path, monkeypatch
+    ):
         """End-to-end: delegate(target=codex-cli) with ChatGPT auth must
         print `Model: gpt-5-codex (...)` not `gpt-5.3-codex`. This is
         the exact runtime path that §8 reported as unverified."""
@@ -83,28 +82,37 @@ class TestBugCRuntime:
 
         # Force the bundled override to fire by faking ChatGPT auth.
         chatgpt_auth = subprocess.CompletedProcess(
-            args=[], returncode=0,
-            stdout="Logged in using ChatGPT", stderr="",
+            args=[],
+            returncode=0,
+            stdout="Logged in using ChatGPT",
+            stderr="",
         )
 
         # Pin auto-classifier output so we deterministically exercise
         # the auto-classify resolution path (the one that bypassed the
         # override in 1.56.0–1.56.2 and was wired correctly in 1.56.3).
-        with mock.patch(
-            "superharness.engine.model_router.subprocess.run",
-            return_value=chatgpt_auth,
-        ), mock.patch(
-            "superharness.commands.delegate.classify_task",
-            return_value=("standard", "medium"),
-        ) if False else mock.patch(
-            "superharness.engine.model_router.classify_task",
-            return_value=("standard", "medium"),
-        ), mock.patch(
-            "superharness.commands.delegate._launch_agent",
-            return_value=0,
-        ), mock.patch(
-            "superharness.commands.delegate._confirm_non_interactive_risk",
-            return_value=None,
+        with (
+            mock.patch(
+                "superharness.engine.model_router.subprocess.run",
+                return_value=chatgpt_auth,
+            ),
+            mock.patch(
+                "superharness.commands.delegate.classify_task",
+                return_value=("standard", "medium"),
+            )
+            if False
+            else mock.patch(
+                "superharness.engine.model_router.classify_task",
+                return_value=("standard", "medium"),
+            ),
+            mock.patch(
+                "superharness.commands.delegate._launch_agent",
+                return_value=0,
+            ),
+            mock.patch(
+                "superharness.commands.delegate._confirm_non_interactive_risk",
+                return_value=None,
+            ),
         ):
             buf = io.StringIO()
             with redirect_stdout(buf):
@@ -173,7 +181,8 @@ def _seed_two_owner_discussion(project: Path, owners: list[str]) -> Path:
 class TestBugFRuntime:
     def test_two_abstain_submissions_complete_the_round(self, tmp_path):
         from superharness.engine.discussion import (
-            cmd_submit_round, cmd_check_round,
+            cmd_submit_round,
+            cmd_check_round,
         )
 
         project = tmp_path
@@ -193,7 +202,10 @@ class TestBugFRuntime:
             assert rc == 0
             payload = json.loads(buf.getvalue())
             assert payload == {
-                "submitted": True, "round": 1, "agent": agent, "verdict": "abstain",
+                "submitted": True,
+                "round": 1,
+                "agent": agent,
+                "verdict": "abstain",
                 "acknowledged_inbox_ids": [],
             }
 
@@ -246,17 +258,20 @@ class TestBugFRuntime:
         auto-consensus is blocked and cmd_advance is the right path to
         either advance to next round or close as no_consensus."""
         from superharness.engine.discussion import (
-            cmd_submit_round, cmd_advance,
+            cmd_submit_round,
+            cmd_advance,
         )
 
         project = tmp_path
         disc_dir = _seed_two_owner_discussion(project, ["codex-cli", "claude-code"])
 
         with redirect_stdout(io.StringIO()):
-            cmd_submit_round(str(disc_dir), 1, "codex-cli",
-                             "disagree", "codex disagrees")
-            cmd_submit_round(str(disc_dir), 1, "claude-code",
-                             "abstain", "claude abstains")
+            cmd_submit_round(
+                str(disc_dir), 1, "codex-cli", "disagree", "codex disagrees"
+            )
+            cmd_submit_round(
+                str(disc_dir), 1, "claude-code", "abstain", "claude abstains"
+            )
 
         buf = io.StringIO()
         with redirect_stdout(buf):
@@ -271,17 +286,18 @@ class TestBugFRuntime:
         """One agree + one abstain must still complete the round —
         abstain is not a "doesn't count" signal."""
         from superharness.engine.discussion import (
-            cmd_submit_round, cmd_check_round,
+            cmd_submit_round,
+            cmd_check_round,
         )
 
         project = tmp_path
         disc_dir = _seed_two_owner_discussion(project, ["codex-cli", "claude-code"])
 
         with redirect_stdout(io.StringIO()):
-            cmd_submit_round(str(disc_dir), 1, "codex-cli",
-                             "agree", "codex agrees")
-            cmd_submit_round(str(disc_dir), 1, "claude-code",
-                             "abstain", "claude abstains")
+            cmd_submit_round(str(disc_dir), 1, "codex-cli", "agree", "codex agrees")
+            cmd_submit_round(
+                str(disc_dir), 1, "claude-code", "abstain", "claude abstains"
+            )
 
         buf = io.StringIO()
         with redirect_stdout(buf):

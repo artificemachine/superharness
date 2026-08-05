@@ -1,4 +1,5 @@
 """Tests for engine.failure_classifier — RED tests for iter 1 of auto-mode-gap-plan."""
+
 from __future__ import annotations
 
 import pytest
@@ -7,12 +8,15 @@ import pytest
 @pytest.fixture
 def classify():
     from superharness.engine.failure_classifier import classify
+
     return classify
 
 
 def test_classifies_bash_unbound_variable_as_permanent_block(classify) -> None:
     """The exact bug we hit on 2026-04-27: bash 3.2 + set -u + empty array."""
-    log_tail = "/path/to/delegate-to-claude.sh: line 86: CLAUDE_ARGS[@]: unbound variable"
+    log_tail = (
+        "/path/to/delegate-to-claude.sh: line 86: CLAUDE_ARGS[@]: unbound variable"
+    )
     r = classify(launcher_rc=1, error_text="", log_tail=log_tail)
     assert r.category == "permanent_block"
     assert r.retryable is False
@@ -27,7 +31,11 @@ def test_classifies_timeout_as_transient(classify) -> None:
 
 
 def test_classifies_quota_exceeded_as_surface_to_operator(classify) -> None:
-    r = classify(launcher_rc=1, error_text="", log_tail="Error: rate limit exceeded for token quota")
+    r = classify(
+        launcher_rc=1,
+        error_text="",
+        log_tail="Error: rate limit exceeded for token quota",
+    )
     assert r.category == "quota"
     assert r.retryable is False
     assert "quota" in r.explain.lower() or "rate" in r.explain.lower()
@@ -49,13 +57,17 @@ def test_classifies_agent_crash_as_retry_once(classify) -> None:
 
 
 def test_classifies_missing_contract_task_as_permanent_block(classify) -> None:
-    r = classify(launcher_rc=1, error_text="task not found in contract: feat.foo", log_tail="")
+    r = classify(
+        launcher_rc=1, error_text="task not found in contract: feat.foo", log_tail=""
+    )
     assert r.category == "permanent_block"
     assert r.retryable is False
 
 
 def test_unknown_failure_falls_back_to_unknown_class(classify) -> None:
-    r = classify(launcher_rc=42, error_text="", log_tail="some weird unrecognized output")
+    r = classify(
+        launcher_rc=42, error_text="", log_tail="some weird unrecognized output"
+    )
     assert r.category == "unknown"
     # Default policy: retry unknowns once
     assert r.retryable is True
@@ -77,7 +89,9 @@ def test_classifier_returns_explanation_string_for_dashboard(classify) -> None:
         assert isinstance(r.explain, str) and len(r.explain) > 0
 
 
-def test_classifies_codex_chatgpt_account_model_rejection_as_auth_mismatch(classify) -> None:
+def test_classifies_codex_chatgpt_account_model_rejection_as_auth_mismatch(
+    classify,
+) -> None:
     """Codex CLI rejects a model when the operator switches ChatGPT accounts.
 
     Must be auth_mismatch (retryable=True) so the watcher retries after the
@@ -116,7 +130,11 @@ def test_classifies_gemini_resource_exhausted_as_quota(classify) -> None:
     r = classify(launcher_rc=1, error_text="", log_tail=log_tail)
     assert r.category == "quota"
     assert r.retryable is False
-    assert "gemini" in r.explain.lower() or "usage" in r.explain.lower() or "quota" in r.explain.lower()
+    assert (
+        "gemini" in r.explain.lower()
+        or "usage" in r.explain.lower()
+        or "quota" in r.explain.lower()
+    )
 
 
 def test_classifies_gemini_usage_limit_message_as_quota(classify) -> None:
@@ -141,7 +159,11 @@ def test_classifies_gemini_api_key_invalid_as_auth_mismatch(classify) -> None:
     r = classify(launcher_rc=1, error_text="", log_tail=log_tail)
     assert r.category == "auth_mismatch"
     assert r.retryable is True
-    assert "auth" in r.explain.lower() or "key" in r.explain.lower() or "credential" in r.explain.lower()
+    assert (
+        "auth" in r.explain.lower()
+        or "key" in r.explain.lower()
+        or "credential" in r.explain.lower()
+    )
 
 
 def test_classifies_opencode_invalid_api_key_as_auth_mismatch(classify) -> None:
@@ -154,7 +176,9 @@ def test_classifies_opencode_invalid_api_key_as_auth_mismatch(classify) -> None:
 
 def test_classifies_opencode_rate_limit_exceeded_as_quota(classify) -> None:
     """DeepSeek / OpenCode rate_limit_exceeded (underscore form, no space)."""
-    log_tail = '{"error": {"code": "rate_limit_exceeded", "message": "Rate limit reached."}}'
+    log_tail = (
+        '{"error": {"code": "rate_limit_exceeded", "message": "Rate limit reached."}}'
+    )
     r = classify(launcher_rc=1, error_text="", log_tail=log_tail)
     assert r.category == "quota"
     assert r.retryable is False

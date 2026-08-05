@@ -12,8 +12,11 @@ pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="requires bash")
 
 # ── detect.py ────────────────────────────────────────────────────────────────
 
+
 def _run_detect(repo_root, *args):
-    return run_cmd([sys.executable, "-m", "superharness.engine.detect"] + list(args), cwd=repo_root)
+    return run_cmd(
+        [sys.executable, "-m", "superharness.engine.detect"] + list(args), cwd=repo_root
+    )
 
 
 def _run_init_py(cwd, args: list[str] | None = None):
@@ -21,7 +24,9 @@ def _run_init_py(cwd, args: list[str] | None = None):
     env = os.environ.copy()
     env["PYTHONPATH"] = str(REPO_ROOT / "src")
     cmd = [sys.executable, "-m", "superharness.commands.init_project"] + (args or [])
-    return subprocess.run(cmd, cwd=str(cwd), text=True, capture_output=True, env=env, check=False)
+    return subprocess.run(
+        cmd, cwd=str(cwd), text=True, capture_output=True, env=env, check=False
+    )
 
 
 def test_detect_script_is_executable(repo_root) -> None:
@@ -70,7 +75,9 @@ def test_detect_non_git_returns_safe_defaults(repo_root, tmp_path) -> None:
 
 
 def test_detect_project_name_from_package_json(repo_root, tmp_path) -> None:
-    (tmp_path / "package.json").write_text('{"name": "my-node-app", "version": "1.0.0"}')
+    (tmp_path / "package.json").write_text(
+        '{"name": "my-node-app", "version": "1.0.0"}'
+    )
     result = _run_detect(repo_root, "--project", str(tmp_path))
     assert result.returncode == 0, result.stderr
     assert 'project_name: "my-node-app"' in result.stdout
@@ -78,7 +85,7 @@ def test_detect_project_name_from_package_json(repo_root, tmp_path) -> None:
 
 def test_detect_project_name_from_pyproject_toml(repo_root, tmp_path) -> None:
     (tmp_path / "pyproject.toml").write_text(
-        "[project]\nname = \"my-python-app\"\nversion = \"0.1.0\"\n"
+        '[project]\nname = "my-python-app"\nversion = "0.1.0"\n'
     )
     result = _run_detect(repo_root, "--project", str(tmp_path))
     assert result.returncode == 0, result.stderr
@@ -95,7 +102,9 @@ def test_detect_project_name_fallback_to_dirname(repo_root, tmp_path) -> None:
 
 def test_detect_output_flag(repo_root, tmp_path) -> None:
     out_file = tmp_path / "detected.yaml"
-    result = _run_detect(repo_root, "--project", str(tmp_path), "--output", str(out_file))
+    result = _run_detect(
+        repo_root, "--project", str(tmp_path), "--output", str(out_file)
+    )
     assert result.returncode == 0, result.stderr
     assert out_file.exists(), "--output file not created"
     content = out_file.read_text()
@@ -103,6 +112,7 @@ def test_detect_output_flag(repo_root, tmp_path) -> None:
 
 
 # ── init --from-profile ───────────────────────────────────────────────────────
+
 
 def _write_profile(path, **overrides) -> None:
     defaults = {
@@ -117,8 +127,10 @@ def _write_profile(path, **overrides) -> None:
         "status": "active",
     }
     defaults.update(overrides)
-    lines = "\n".join(f"{k}: {v!r}" if isinstance(v, str) else f"{k}: {v}"
-                      for k, v in defaults.items())
+    lines = "\n".join(
+        f"{k}: {v!r}" if isinstance(v, str) else f"{k}: {v}"
+        for k, v in defaults.items()
+    )
     path.write_text(lines + "\n")
 
 
@@ -130,7 +142,9 @@ def test_init_from_profile_creates_files(repo_root, tmp_path) -> None:
     _write_profile(profile)
 
     result = _run_init_py(project, args=["--from-profile", str(profile)])
-    assert result.returncode == 0, f"init --from-profile failed:\n{result.stdout}\n{result.stderr}"
+    assert result.returncode == 0, (
+        f"init --from-profile failed:\n{result.stdout}\n{result.stderr}"
+    )
     assert (project / ".superharness/contract.yaml").exists()
     assert (project / ".superharness/profile.yaml").exists()
 
@@ -148,7 +162,9 @@ def test_init_from_profile_uses_project_name(repo_root, tmp_path) -> None:
     assert "AwesomeApp" in contract
 
 
-def test_init_from_profile_copies_profile_into_superharness(repo_root, tmp_path) -> None:
+def test_init_from_profile_copies_profile_into_superharness(
+    repo_root, tmp_path
+) -> None:
     project = tmp_path / "proj"
     project.mkdir()
     profile = tmp_path / "profile.yaml"
@@ -181,14 +197,19 @@ def test_init_from_profile_source_outside_superharness_dir(repo_root, tmp_path) 
 
 # ── init --detect ─────────────────────────────────────────────────────────────
 
+
 @pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
 def test_init_detect_creates_files(repo_root, tmp_path) -> None:
     project = tmp_path / "proj"
     project.mkdir()
-    (project / "pyproject.toml").write_text('[project]\nname = "detect-test"\nversion = "0.1"\n')
+    (project / "pyproject.toml").write_text(
+        '[project]\nname = "detect-test"\nversion = "0.1"\n'
+    )
 
     result = _run_init_py(project, args=["--detect"])
-    assert result.returncode == 0, f"init --detect failed:\n{result.stdout}\n{result.stderr}"
+    assert result.returncode == 0, (
+        f"init --detect failed:\n{result.stdout}\n{result.stderr}"
+    )
     assert (project / ".superharness/contract.yaml").exists()
 
 
@@ -205,6 +226,7 @@ def test_init_detect_uses_detected_name(repo_root, tmp_path) -> None:
 
 # ── Iter 5 RED: auto_dispatch seeded at init ──────────────────────────────────
 
+
 def test_init_writes_auto_dispatch(repo_root, tmp_path) -> None:
     """init --from-profile must seed auto_dispatch in the resulting profile.yaml."""
     project = tmp_path / "proj"
@@ -213,8 +235,11 @@ def test_init_writes_auto_dispatch(repo_root, tmp_path) -> None:
     # Profile WITHOUT auto_dispatch — init must patch it in
     _write_profile(profile)  # _write_profile does not include auto_dispatch
     import yaml
+
     raw = yaml.safe_load(profile.read_text()) or {}
-    assert "auto_dispatch" not in raw, "precondition: profile must not have auto_dispatch"
+    assert "auto_dispatch" not in raw, (
+        "precondition: profile must not have auto_dispatch"
+    )
 
     _run_init_py(project, args=["--from-profile", str(profile)])
 
@@ -222,5 +247,6 @@ def test_init_writes_auto_dispatch(repo_root, tmp_path) -> None:
     assert result_profile.exists(), ".superharness/profile.yaml was not created"
     doc = yaml.safe_load(result_profile.read_text()) or {}
     assert "auto_dispatch" in doc, (
-        "init must seed auto_dispatch in .superharness/profile.yaml; got keys: " + str(list(doc.keys()))
+        "init must seed auto_dispatch in .superharness/profile.yaml; got keys: "
+        + str(list(doc.keys()))
     )

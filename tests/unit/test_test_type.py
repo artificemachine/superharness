@@ -1,11 +1,12 @@
 """Unit tests for superharness.commands.test_type."""
+
 from __future__ import annotations
 
 import subprocess
 import sys
 import yaml
 from pathlib import Path
-from tests.helpers import seed_sqlite_from_yaml, get_task_from_sqlite
+from tests.helpers import seed_sqlite_from_yaml
 
 
 PYTHON = sys.executable
@@ -27,13 +28,19 @@ def _write_project(tmp_path: Path, *, tasks: str = "") -> Path:
     from superharness.engine.db import get_connection, init_db, transaction
     from superharness.engine.contract_io import _task_row_from_dict
     from superharness.engine import tasks_dao
+
     doc = yaml.safe_load(contract_text) or {}
     conn = get_connection(str(project))
     init_db(conn)
-    for task_dict in (doc.get("tasks") or []):
+    for task_dict in doc.get("tasks") or []:
         if isinstance(task_dict, dict):
             with transaction(conn):
-                tasks_dao.upsert(conn, _task_row_from_dict(task_dict, str(project), "2026-01-01T00:00:00Z"))
+                tasks_dao.upsert(
+                    conn,
+                    _task_row_from_dict(
+                        task_dict, str(project), "2026-01-01T00:00:00Z"
+                    ),
+                )
     conn.commit()
     conn.close()
     seed_sqlite_from_yaml(project)
@@ -46,6 +53,7 @@ def _get_task_sqlite(project: Path, task_id: str) -> dict:
     from superharness.engine.db import get_connection, init_db
     from superharness.engine import tasks_dao
     from dataclasses import asdict
+
     conn = get_connection(str(project))
     init_db(conn)
     row = tasks_dao.get(conn, task_id)
@@ -58,7 +66,9 @@ def _get_task_sqlite(project: Path, task_id: str) -> dict:
 def _run(args: list[str]) -> subprocess.CompletedProcess:
     return subprocess.run(
         [PYTHON, "-m", "superharness.commands.test_type"] + args,
-        capture_output=True, text=True, check=False,
+        capture_output=True,
+        text=True,
+        check=False,
     )
 
 
@@ -259,6 +269,8 @@ def test_hygiene_warns_done_task_with_test_types(tmp_path: Path) -> None:
 
     r = subprocess.run(
         [PYTHON, "-m", "superharness.engine.validate", "--project", str(project)],
-        capture_output=True, text=True, check=False,
+        capture_output=True,
+        text=True,
+        check=False,
     )
     assert "requires test types [unit, e2e]" in r.stdout

@@ -25,6 +25,7 @@ def _contract_file(tmp_path: Path) -> Path:
 
 def _run_contract(repo_root: Path, cmd: str, args: list[str]) -> object:
     import sys
+
     return run_cmd(
         [sys.executable, "-m", "superharness.engine.contract", cmd] + args,
         cwd=repo_root,
@@ -40,7 +41,9 @@ def test_task_exists_true(repo_root, tmp_path) -> None:
 
 def test_task_exists_false(repo_root, tmp_path) -> None:
     f = _contract_file(tmp_path)
-    r = _run_contract(repo_root, "task_exists", ["--file", str(f), "--task", "nonexistent"])
+    r = _run_contract(
+        repo_root, "task_exists", ["--file", str(f), "--task", "nonexistent"]
+    )
     assert r.returncode == 0
     assert r.stdout.strip() == "false"
 
@@ -48,7 +51,9 @@ def test_task_exists_false(repo_root, tmp_path) -> None:
 def test_task_exists_empty_contract(repo_root, tmp_path) -> None:
     f = tmp_path / "empty.yaml"
     f.write_text("id: empty\n")
-    r = _run_contract(repo_root, "task_exists", ["--file", str(f), "--task", "anything"])
+    r = _run_contract(
+        repo_root, "task_exists", ["--file", str(f), "--task", "anything"]
+    )
     assert r.returncode == 0
     assert r.stdout.strip() == "false"
 
@@ -76,7 +81,9 @@ def test_task_status(repo_root, tmp_path) -> None:
 
 def test_task_project_path(repo_root, tmp_path) -> None:
     f = _contract_file(tmp_path)
-    r = _run_contract(repo_root, "task_project_path", ["--file", str(f), "--task", "task-a"])
+    r = _run_contract(
+        repo_root, "task_project_path", ["--file", str(f), "--task", "task-a"]
+    )
     assert r.returncode == 0
     assert r.stdout.strip() == "/some/path"
 
@@ -90,14 +97,18 @@ def test_contract_id(repo_root, tmp_path) -> None:
 
 def test_task_deadline_minutes(repo_root, tmp_path) -> None:
     f = _contract_file(tmp_path)
-    r = _run_contract(repo_root, "task_deadline_minutes", ["--file", str(f), "--task", "task-a"])
+    r = _run_contract(
+        repo_root, "task_deadline_minutes", ["--file", str(f), "--task", "task-a"]
+    )
     assert r.returncode == 0
     assert r.stdout.strip() == "45"
 
 
 def test_task_deadline_minutes_missing(repo_root, tmp_path) -> None:
     f = _contract_file(tmp_path)
-    r = _run_contract(repo_root, "task_deadline_minutes", ["--file", str(f), "--task", "task-b"])
+    r = _run_contract(
+        repo_root, "task_deadline_minutes", ["--file", str(f), "--task", "task-b"]
+    )
     assert r.returncode == 0
     assert r.stdout.strip() == ""
 
@@ -108,7 +119,11 @@ def test_latest_handoff_task(repo_root, tmp_path) -> None:
     (handoff_dir / "h1.yaml").write_text("task: task-a\nto: claude-code\n")
     (handoff_dir / "h2.yaml").write_text("task: task-b\nto: codex-cli\n")
 
-    r = _run_contract(repo_root, "latest_handoff_task", ["--dir", str(handoff_dir), "--to", "codex-cli"])
+    r = _run_contract(
+        repo_root,
+        "latest_handoff_task",
+        ["--dir", str(handoff_dir), "--to", "codex-cli"],
+    )
     assert r.returncode == 0
     assert "task-b" in r.stdout
 
@@ -118,7 +133,11 @@ def test_latest_handoff_task_no_match(repo_root, tmp_path) -> None:
     handoff_dir.mkdir()
     (handoff_dir / "h1.yaml").write_text("task: task-a\nto: claude-code\n")
 
-    r = _run_contract(repo_root, "latest_handoff_task", ["--dir", str(handoff_dir), "--to", "codex-cli"])
+    r = _run_contract(
+        repo_root,
+        "latest_handoff_task",
+        ["--dir", str(handoff_dir), "--to", "codex-cli"],
+    )
     assert r.returncode == 0
     assert r.stdout.strip() == ""
 
@@ -136,14 +155,16 @@ def test_unknown_command(repo_root) -> None:
 
 
 def test_nonexistent_file(repo_root, tmp_path) -> None:
-    r = _run_contract(repo_root, "task_exists", ["--file", str(tmp_path / "nope.yaml"), "--task", "x"])
+    r = _run_contract(
+        repo_root, "task_exists", ["--file", str(tmp_path / "nope.yaml"), "--task", "x"]
+    )
     assert r.returncode == 0
     assert r.stdout.strip() == "false"
 
 
 def test_invalid_tasks_shape_fails(repo_root, tmp_path) -> None:
     f = tmp_path / "bad-shape.yaml"
-    f.write_text("id: bad\n" 'tasks: "not-a-sequence"\n')
+    f.write_text('id: bad\ntasks: "not-a-sequence"\n')
     r = _run_contract(repo_root, "task_exists", ["--file", str(f), "--task", "x"])
     assert r.returncode != 0
     assert "tasks must be a sequence" in r.stderr

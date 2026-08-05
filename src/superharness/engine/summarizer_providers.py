@@ -29,6 +29,7 @@ Prompt template lives at module level so all providers share it; this
 also makes the smoke test cheaper because every provider summarises
 the same fixture context.
 """
+
 from __future__ import annotations
 
 import json
@@ -48,6 +49,7 @@ from superharness.engine.summarizer import (
 from superharness.utils.privacy import strip_private_tags
 
 import logging
+
 logger = logging.getLogger(__name__)
 
 
@@ -99,7 +101,9 @@ def _http_post_json(
         try:
             detail = e.read().decode("utf-8", errors="replace")[:200]
         except Exception as e:
-            logger.warning("summarizer_providers.py unexpected error: %s", e, exc_info=True)
+            logger.warning(
+                "summarizer_providers.py unexpected error: %s", e, exc_info=True
+            )
             pass
         raise SummarizerError(f"HTTP {e.code} from {url}: {detail}") from e
     except urllib.error.URLError as e:
@@ -111,6 +115,7 @@ def _http_post_json(
 # ---------------------------------------------------------------------------
 # Anthropic
 # ---------------------------------------------------------------------------
+
 
 class AnthropicSummarizer:
     DEFAULT_MODEL = "claude-haiku-4-5-20251001"
@@ -156,11 +161,10 @@ class AnthropicSummarizer:
 # Gemini
 # ---------------------------------------------------------------------------
 
+
 class GeminiSummarizer:
     DEFAULT_MODEL = "gemini-2.0-flash"
-    API_URL_TEMPLATE = (
-        "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key}"
-    )
+    API_URL_TEMPLATE = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key}"
 
     def __init__(self, model: str | None = None) -> None:
         self.model = model or self.DEFAULT_MODEL
@@ -195,8 +199,10 @@ class GeminiSummarizer:
 # OpenAI-compatible (OpenAI + OpenRouter share the chat-completions shape)
 # ---------------------------------------------------------------------------
 
+
 class ChatCompletionsSummarizer:
     """Shared base for OpenAI-compatible chat-completions endpoints."""
+
     BASE_URL = ""  # override
     DEFAULT_MODEL = ""  # override
     API_KEY_ENV = ""  # override
@@ -255,6 +261,7 @@ class OpenRouterSummarizer(ChatCompletionsSummarizer):
 # CLI-based summarizers (experimental: subprocess shape, slower)
 # ---------------------------------------------------------------------------
 
+
 class _CLISummarizer:
     """Shared base for summarizers that subprocess a local CLI.
 
@@ -281,7 +288,9 @@ class _CLISummarizer:
     ) -> None:
         self.model = model
         self.binary = binary or self.DEFAULT_BINARY
-        self.subcommand = tuple(subcommand if subcommand is not None else self.DEFAULT_SUBCOMMAND)
+        self.subcommand = tuple(
+            subcommand if subcommand is not None else self.DEFAULT_SUBCOMMAND
+        )
         self.timeout_s = timeout_s if timeout_s is not None else self.DEFAULT_TIMEOUT_S
         if not shutil.which(self.binary):
             raise SummarizerError(f"{self.binary!r} not found in PATH")
@@ -300,14 +309,14 @@ class _CLISummarizer:
                 check=False,
             )
         except subprocess.TimeoutExpired as e:
-            raise SummarizerError(f"{self.binary} timed out after {self.timeout_s}s") from e
+            raise SummarizerError(
+                f"{self.binary} timed out after {self.timeout_s}s"
+            ) from e
         except OSError as e:
             raise SummarizerError(f"{self.binary} invocation failed: {e}") from e
         if result.returncode != 0:
             tail = (result.stderr or "")[:200]
-            raise SummarizerError(
-                f"{self.binary} exit {result.returncode}: {tail}"
-            )
+            raise SummarizerError(f"{self.binary} exit {result.returncode}: {tail}")
         return strip_private_tags(_ANSI_RE.sub("", result.stdout).strip())
 
 
@@ -345,6 +354,7 @@ class ClaudeCodeSummarizer(_CLISummarizer):
 # Generalized one-shot completion (batch / non-interactive callers)
 # ---------------------------------------------------------------------------
 
+
 def complete(
     system: str,
     user: str,
@@ -366,6 +376,7 @@ def complete(
     if model is None:
         try:
             from superharness.engine.model_router import cheap_model
+
             model = cheap_model()
         except Exception:
             model = AnthropicSummarizer.DEFAULT_MODEL
@@ -381,7 +392,9 @@ def complete(
         "anthropic-version": "2023-06-01",
     }
     try:
-        payload = _http_post_json(AnthropicSummarizer.API_URL, body, headers, timeout=timeout)
+        payload = _http_post_json(
+            AnthropicSummarizer.API_URL, body, headers, timeout=timeout
+        )
     except SummarizerError as e:
         logger.warning("complete() provider fault: %s", e)
         return None

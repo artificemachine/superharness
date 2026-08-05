@@ -7,11 +7,10 @@ Acceptance criteria being driven by these tests:
   4. At least two example modules demonstrate the public SDK shape
   5. Existing built-in modules remain supported on the SDK contract
 """
+
 from __future__ import annotations
 
-import importlib
 from pathlib import Path
-from unittest.mock import patch
 
 import pytest
 import yaml
@@ -34,7 +33,10 @@ class TestSDKPublicInterface:
         assert "on_watcher_tick" in LIFECYCLE_EVENTS
 
     def test_sdk_exports_schema_version_constants(self):
-        from superharness.modules.sdk import CURRENT_SCHEMA_VERSION, SUPPORTED_SCHEMA_VERSIONS
+        from superharness.modules.sdk import (
+            CURRENT_SCHEMA_VERSION,
+            SUPPORTED_SCHEMA_VERSIONS,
+        )
 
         assert CURRENT_SCHEMA_VERSION == "1"
         assert "1" in SUPPORTED_SCHEMA_VERSIONS
@@ -117,10 +119,12 @@ class TestManifestValidation:
         from superharness.modules.sdk import ManifestValidationError, validate_manifest
 
         with pytest.raises(ManifestValidationError) as exc_info:
-            validate_manifest({
-                "name": "bad-hook",
-                "hooks": {"on_nonexistent_event": {"action": "foo"}},
-            })
+            validate_manifest(
+                {
+                    "name": "bad-hook",
+                    "hooks": {"on_nonexistent_event": {"action": "foo"}},
+                }
+            )
 
         assert exc_info.value.module_name == "bad-hook"
 
@@ -128,10 +132,12 @@ class TestManifestValidation:
         from superharness.modules.sdk import ManifestValidationError, validate_manifest
 
         with pytest.raises(ManifestValidationError) as exc_info:
-            validate_manifest({
-                "name": "no-action",
-                "hooks": {"on_close": {"priority": "high"}},  # missing action
-            })
+            validate_manifest(
+                {
+                    "name": "no-action",
+                    "hooks": {"on_close": {"priority": "high"}},  # missing action
+                }
+            )
 
         assert exc_info.value.module_name == "no-action"
 
@@ -165,7 +171,9 @@ class TestManifestValidation:
 class TestLoaderValidationIntegration:
     """Loader must validate manifests and skip invalid ones with a logged warning."""
 
-    @pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
+    @pytest.mark.skip(
+        reason="legacy YAML fixture — pending SQLite migration (see PR #208)"
+    )
     def test_loader_skips_invalid_schema_version(self, tmp_path, caplog):
         from superharness.modules.loader import load_modules
 
@@ -183,7 +191,9 @@ class TestLoaderValidationIntegration:
         assert all(m.name != "bad-ver" for m in mods)
         assert any("bad-ver" in r.message for r in caplog.records)
 
-    @pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
+    @pytest.mark.skip(
+        reason="legacy YAML fixture — pending SQLite migration (see PR #208)"
+    )
     def test_loader_skips_unknown_lifecycle_hook(self, tmp_path, caplog):
         from superharness.modules.loader import load_modules
 
@@ -201,7 +211,9 @@ class TestLoaderValidationIntegration:
         assert all(m.name != "bad-hook" for m in mods)
         assert any("bad-hook" in r.message for r in caplog.records)
 
-    @pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
+    @pytest.mark.skip(
+        reason="legacy YAML fixture — pending SQLite migration (see PR #208)"
+    )
     def test_loader_skips_hook_without_action(self, tmp_path, caplog):
         from superharness.modules.loader import load_modules
 
@@ -264,6 +276,7 @@ class TestBuiltinTemplatesCompatibility:
 
     def _get_template_dir(self) -> Path:
         import superharness
+
         return Path(superharness.__file__).parent / "module_templates"
 
     def test_builtin_templates_dir_exists(self):
@@ -285,7 +298,9 @@ class TestBuiltinTemplatesCompatibility:
             except Exception as exc:
                 failures.append(f"{yaml_file.name}: {exc}")
 
-        assert not failures, "Built-in templates failed validation:\n" + "\n".join(failures)
+        assert not failures, "Built-in templates failed validation:\n" + "\n".join(
+            failures
+        )
 
     def test_builtin_templates_have_schema_version(self):
         tdir = self._get_template_dir()
@@ -310,6 +325,7 @@ class TestExampleModules:
 
     def _get_examples_dir(self) -> Path:
         import superharness
+
         return Path(superharness.__file__).parent / "module_templates" / "examples"
 
     def test_examples_directory_exists(self):
@@ -336,7 +352,9 @@ class TestExampleModules:
             except Exception as exc:
                 failures.append(f"{yaml_file.name}: {exc}")
 
-        assert not failures, "Example modules failed validation:\n" + "\n".join(failures)
+        assert not failures, "Example modules failed validation:\n" + "\n".join(
+            failures
+        )
 
     def test_example_modules_have_all_required_fields(self):
         edir = self._get_examples_dir()
@@ -346,7 +364,9 @@ class TestExampleModules:
             assert isinstance(data, dict), f"{yaml_file.name} is not a YAML dict"
             assert "name" in data, f"{yaml_file.name} missing 'name'"
             assert "description" in data, f"{yaml_file.name} missing 'description'"
-            assert "schema_version" in data, f"{yaml_file.name} missing 'schema_version'"
+            assert "schema_version" in data, (
+                f"{yaml_file.name} missing 'schema_version'"
+            )
             assert "hooks" in data, f"{yaml_file.name} missing 'hooks'"
 
     def test_example_modules_can_be_loaded_as_manifest(self):

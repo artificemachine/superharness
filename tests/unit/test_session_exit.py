@@ -11,6 +11,7 @@ to exercise in CI: task stopping, handoff writing, ledger, and the
 no-op short-circuits. The pkill block is verified structurally
 (src inspection) rather than executed.
 """
+
 from __future__ import annotations
 
 import sys
@@ -46,11 +47,14 @@ def _setup_project(tmp_path: Path, *, task_status: str = "in_progress") -> Path:
     )
     (harness / "ledger.md").write_text("# Ledger\n\n")
     from tests.helpers import seed_sqlite_from_yaml
+
     seed_sqlite_from_yaml(project)
     return project
 
 
-def test_session_exit_stops_in_progress_claude_task(repo_root: Path, tmp_path: Path) -> None:
+def test_session_exit_stops_in_progress_claude_task(
+    repo_root: Path, tmp_path: Path
+) -> None:
     """The hook must actually flip the SQLite row to status=stopped.
 
     Regression for the silent-failure bug fixed 2026-08-03 (issue #92):
@@ -65,13 +69,16 @@ def test_session_exit_stops_in_progress_claude_task(repo_root: Path, tmp_path: P
     assert result.returncode == 0, result.stderr
 
     from tests.helpers import get_task_from_sqlite
+
     task = get_task_from_sqlite(project, "feat-001")
     assert task is not None, "task feat-001 missing from SQLite"
     assert task["status"] == "stopped", f"Expected stopped, got {task['status']}"
     assert task.get("stopped_at"), "stopped_at must be set on the stopped transition"
 
 
-def test_session_exit_writes_handoff_with_session_exit_phase(repo_root: Path, tmp_path: Path) -> None:
+def test_session_exit_writes_handoff_with_session_exit_phase(
+    repo_root: Path, tmp_path: Path
+) -> None:
     """Handoff YAMLs from session-exit.sh must be distinguishable from
     session-stop.sh's: filename uses the `-session-exit-` infix and the
     `phase:` field is `session_exit`. This is how an operator forensically
@@ -81,7 +88,9 @@ def test_session_exit_writes_handoff_with_session_exit_phase(repo_root: Path, tm
     result = run_bash(script, cwd=project, env={"SUPERHARNESS_NO_AUTO_INSTALL": "1"})
     assert result.returncode == 0, result.stderr
 
-    handoffs = sorted((project / ".superharness" / "handoffs").glob("feat-001-session-exit-*.yaml"))
+    handoffs = sorted(
+        (project / ".superharness" / "handoffs").glob("feat-001-session-exit-*.yaml")
+    )
     assert len(handoffs) == 1, f"expected one session-exit handoff, got: {handoffs}"
     handoff = yaml.safe_load(handoffs[0].read_text())
     assert handoff["task"] == "feat-001"
@@ -117,6 +126,7 @@ def test_session_exit_skips_non_claude_tasks(repo_root: Path, tmp_path: Path) ->
     )
     (harness / "ledger.md").write_text("# Ledger\n\n")
     from tests.helpers import seed_sqlite_from_yaml
+
     seed_sqlite_from_yaml(project)
 
     script = repo_root / "adapters" / "claude-code" / "hooks" / "session-exit.sh"
@@ -124,12 +134,17 @@ def test_session_exit_skips_non_claude_tasks(repo_root: Path, tmp_path: Path) ->
     assert result.returncode == 0, result.stderr
 
     from tests.helpers import get_task_from_sqlite
+
     task = get_task_from_sqlite(project, "feat-codex")
     assert task is not None
-    assert task["status"] == "in_progress", "session-exit must not stop non-claude tasks"
+    assert task["status"] == "in_progress", (
+        "session-exit must not stop non-claude tasks"
+    )
 
 
-def test_session_exit_noop_without_superharness_dir(repo_root: Path, tmp_path: Path) -> None:
+def test_session_exit_noop_without_superharness_dir(
+    repo_root: Path, tmp_path: Path
+) -> None:
     """In a plain directory with no .superharness/, the hook must exit 0
     and write nothing. This is the path that fires for every Claude
     session whose project isn't superharness-managed."""

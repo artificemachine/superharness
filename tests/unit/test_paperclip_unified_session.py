@@ -1,4 +1,5 @@
 """Tests for unified session model — discussions write shadow inbox rows."""
+
 from __future__ import annotations
 
 import pytest
@@ -30,13 +31,15 @@ def test_enqueue_with_discussion_type(conn):
     )
     assert row.id == "disc-1-r1-claude"
     # Verify the type column is stored
-    raw = conn.execute("SELECT type FROM inbox WHERE id=?", ("disc-1-r1-claude",)).fetchone()
+    raw = conn.execute(
+        "SELECT type FROM inbox WHERE id=?", ("disc-1-r1-claude",)
+    ).fetchone()
     assert raw is not None
     assert raw["type"] == "discussion"
 
 
 def test_enqueue_default_type_is_task(conn):
-    row = inbox_dao.enqueue(
+    inbox_dao.enqueue(
         conn,
         id="task-item-1",
         task_id="t-abc",

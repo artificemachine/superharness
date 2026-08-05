@@ -1,19 +1,23 @@
 """shux insights — task/dispatch/agent breakdown from SQLite."""
+
 from __future__ import annotations
 
 import json
 import os
-import sys
 
 
 def main(argv: list[str] | None = None) -> None:
     import argparse
-    p = argparse.ArgumentParser(prog="insights", description="Show task and dispatch analytics")
+
+    p = argparse.ArgumentParser(
+        prog="insights", description="Show task and dispatch analytics"
+    )
     p.add_argument("--project", "-p", default=os.getcwd())
     p.add_argument("--json", action="store_true", help="Output raw JSON")
     opts = p.parse_args(argv)
 
     from superharness.engine.insights import get_insights
+
     data = get_insights(os.path.realpath(opts.project))
 
     if opts.json:
@@ -50,7 +54,7 @@ def _print_insights(data: dict) -> None:
     launched = dispatch.get("launched", 0)
     failed_d = dispatch.get("failed", 0)
     total = launched + failed_d
-    rate = f"{launched/total*100:.0f}%" if total else "n/a"
+    rate = f"{launched / total * 100:.0f}%" if total else "n/a"
     print(f"  launched  {launched}   failed  {failed_d}   success rate  {rate}")
 
     print("\n── top failures ───────────────────────")
@@ -75,7 +79,9 @@ def _print_insights(data: dict) -> None:
             in_tok = row.get("input_tokens", 0)
             out_tok = row.get("output_tokens", 0)
             tok = f"in={in_tok} out={out_tok}" if (in_tok or out_tok) else "tokens=n/a"
-            print(f"  {provider:<14} calls={calls}  ok={successes}  fail={failures}  {tok}")
+            print(
+                f"  {provider:<14} calls={calls}  ok={successes}  fail={failures}  {tok}"
+            )
     else:
         print("  no summarizer calls recorded")
 
@@ -87,7 +93,9 @@ def _print_insights(data: dict) -> None:
             in_tok = totals.get("total_input_tokens", 0)
             out_tok = totals.get("total_output_tokens", 0)
             tasks = totals.get("task_count", 0)
-            print(f"  {agent:<20} tasks={tasks}  in={in_tok}  out={out_tok}  cost=${cost:.4f}")
+            print(
+                f"  {agent:<20} tasks={tasks}  in={in_tok}  out={out_tok}  cost=${cost:.4f}"
+            )
     else:
         print("  no usage data recorded")
 

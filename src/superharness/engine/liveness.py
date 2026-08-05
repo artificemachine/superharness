@@ -9,6 +9,7 @@ of introducing a second, parallel source of truth.
 
 See docs/PLAN-steal-omnigent.md iteration 2.
 """
+
 from __future__ import annotations
 
 import sqlite3

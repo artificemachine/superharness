@@ -5,6 +5,7 @@ escalation chain: if reviewer A doesn't respond, advance to reviewer B,
 then to operator. Today the lifecycle rule for review_requested just
 reverts to report_ready, which loses the escalation context.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -17,26 +18,37 @@ from tests.helpers import seed_sqlite_from_yaml
 
 
 def _write_contract(project: Path, tasks: list[dict]) -> None:
-    (project / ".superharness" / "contract.yaml").write_text(yaml.dump({"tasks": tasks}))
+    (project / ".superharness" / "contract.yaml").write_text(
+        yaml.dump({"tasks": tasks})
+    )
     seed_sqlite_from_yaml(project)
 
 
 def _read_contract(project: Path) -> dict:
     from superharness.engine import state_reader
+
     return {"tasks": state_reader.get_tasks(str(project))}
 
 
-def test_review_with_chain_advances_to_next_reviewer_on_timeout(clean_harness: Path) -> None:
+def test_review_with_chain_advances_to_next_reviewer_on_timeout(
+    clean_harness: Path,
+) -> None:
     from superharness.engine.review_escalation import escalate_stale_reviews
 
-    _write_contract(clean_harness, [{
-        "id": "feat.foo", "owner": "claude-code",
-        "status": "review_requested",
-        "review_requested_at": past_iso(121),
-        "review_chain": ["codex-cli", "gemini-cli"],
-        "review_chain_index": 0,
-        "review_target": "codex-cli",
-    }])
+    _write_contract(
+        clean_harness,
+        [
+            {
+                "id": "feat.foo",
+                "owner": "claude-code",
+                "status": "review_requested",
+                "review_requested_at": past_iso(121),
+                "review_chain": ["codex-cli", "gemini-cli"],
+                "review_chain_index": 0,
+                "review_target": "codex-cli",
+            }
+        ],
+    )
     n = escalate_stale_reviews(str(clean_harness))
     assert n == 1
     doc = _read_contract(clean_harness)
@@ -49,14 +61,20 @@ def test_review_with_chain_advances_to_next_reviewer_on_timeout(clean_harness: P
 def test_review_with_chain_exhausted_escalates_to_operator(clean_harness: Path) -> None:
     from superharness.engine.review_escalation import escalate_stale_reviews
 
-    _write_contract(clean_harness, [{
-        "id": "feat.foo", "owner": "claude-code",
-        "status": "review_requested",
-        "review_requested_at": past_iso(121),
-        "review_chain": ["codex-cli", "gemini-cli"],
-        "review_chain_index": 1,
-        "review_target": "gemini-cli",
-    }])
+    _write_contract(
+        clean_harness,
+        [
+            {
+                "id": "feat.foo",
+                "owner": "claude-code",
+                "status": "review_requested",
+                "review_requested_at": past_iso(121),
+                "review_chain": ["codex-cli", "gemini-cli"],
+                "review_chain_index": 1,
+                "review_target": "gemini-cli",
+            }
+        ],
+    )
     n = escalate_stale_reviews(str(clean_harness))
     assert n == 1
     doc = _read_contract(clean_harness)
@@ -68,14 +86,20 @@ def test_review_with_chain_exhausted_escalates_to_operator(clean_harness: Path) 
 def test_review_within_timeout_is_unchanged(clean_harness: Path) -> None:
     from superharness.engine.review_escalation import escalate_stale_reviews
 
-    _write_contract(clean_harness, [{
-        "id": "feat.foo", "owner": "claude-code",
-        "status": "review_requested",
-        "review_requested_at": past_iso(60),
-        "review_chain": ["codex-cli", "gemini-cli"],
-        "review_chain_index": 0,
-        "review_target": "codex-cli",
-    }])
+    _write_contract(
+        clean_harness,
+        [
+            {
+                "id": "feat.foo",
+                "owner": "claude-code",
+                "status": "review_requested",
+                "review_requested_at": past_iso(60),
+                "review_chain": ["codex-cli", "gemini-cli"],
+                "review_chain_index": 0,
+                "review_target": "codex-cli",
+            }
+        ],
+    )
     n = escalate_stale_reviews(str(clean_harness))
     assert n == 0
     doc = _read_contract(clean_harness)
@@ -87,12 +111,18 @@ def test_review_without_chain_falls_back_to_operator(clean_harness: Path) -> Non
     """No review_chain field means immediate operator escalation on timeout."""
     from superharness.engine.review_escalation import escalate_stale_reviews
 
-    _write_contract(clean_harness, [{
-        "id": "feat.foo", "owner": "claude-code",
-        "status": "review_requested",
-        "review_requested_at": past_iso(121),
-        # no review_chain
-    }])
+    _write_contract(
+        clean_harness,
+        [
+            {
+                "id": "feat.foo",
+                "owner": "claude-code",
+                "status": "review_requested",
+                "review_requested_at": past_iso(121),
+                # no review_chain
+            }
+        ],
+    )
     n = escalate_stale_reviews(str(clean_harness))
     assert n == 1
     doc = _read_contract(clean_harness)
@@ -100,7 +130,9 @@ def test_review_without_chain_falls_back_to_operator(clean_harness: Path) -> Non
 
 
 @pytest.mark.regression
-def test_review_escalation_dual_mode_writes_contract_yaml(clean_harness: Path, monkeypatch) -> None:
+def test_review_escalation_dual_mode_writes_contract_yaml(
+    clean_harness: Path, monkeypatch
+) -> None:
     """STATE_BACKEND=dual: escalation must mirror to contract.yaml, not just SQLite.
 
     Regression: the else-branch of escalate_stale_reviews() referenced
@@ -113,16 +145,23 @@ def test_review_escalation_dual_mode_writes_contract_yaml(clean_harness: Path, m
     """
     monkeypatch.setenv("STATE_BACKEND", "dual")
 
-    _write_contract(clean_harness, [{
-        "id": "feat.foo", "owner": "claude-code",
-        "status": "review_requested",
-        "review_requested_at": past_iso(121),
-        "review_chain": ["codex-cli", "gemini-cli"],
-        "review_chain_index": 0,
-        "review_target": "codex-cli",
-    }])
+    _write_contract(
+        clean_harness,
+        [
+            {
+                "id": "feat.foo",
+                "owner": "claude-code",
+                "status": "review_requested",
+                "review_requested_at": past_iso(121),
+                "review_chain": ["codex-cli", "gemini-cli"],
+                "review_chain_index": 0,
+                "review_target": "codex-cli",
+            }
+        ],
+    )
 
     from superharness.engine.review_escalation import escalate_stale_reviews
+
     n = escalate_stale_reviews(str(clean_harness))
     assert n == 1  # must not silently no-op via the swallowed NameError
 

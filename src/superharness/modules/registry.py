@@ -1,4 +1,5 @@
 """Module registry — enable, disable, list, and query modules."""
+
 from __future__ import annotations
 
 import logging

@@ -17,10 +17,22 @@ def _make_task(db_conn, task_id="t1"):
 
 def test_append_and_get_history(db_conn):
     _make_task(db_conn)
-    handoffs_dao.append(db_conn, task_id="t1", phase="plan", status="plan_proposed",
-                        from_agent="claude-code", now=T0)
-    handoffs_dao.append(db_conn, task_id="t1", phase="plan", status="plan_approved",
-                        from_agent="owner", now=T1)
+    handoffs_dao.append(
+        db_conn,
+        task_id="t1",
+        phase="plan",
+        status="plan_proposed",
+        from_agent="claude-code",
+        now=T0,
+    )
+    handoffs_dao.append(
+        db_conn,
+        task_id="t1",
+        phase="plan",
+        status="plan_approved",
+        from_agent="owner",
+        now=T1,
+    )
 
     history = handoffs_dao.get_history(db_conn, "t1")
     assert len(history) == 2
@@ -30,9 +42,15 @@ def test_append_and_get_history(db_conn):
 
 def test_get_latest(db_conn):
     _make_task(db_conn)
-    handoffs_dao.append(db_conn, task_id="t1", phase="plan", status="plan_proposed", now=T0)
-    handoffs_dao.append(db_conn, task_id="t1", phase="plan", status="plan_approved", now=T1)
-    handoffs_dao.append(db_conn, task_id="t1", phase="report", status="report_ready", now=T2)
+    handoffs_dao.append(
+        db_conn, task_id="t1", phase="plan", status="plan_proposed", now=T0
+    )
+    handoffs_dao.append(
+        db_conn, task_id="t1", phase="plan", status="plan_approved", now=T1
+    )
+    handoffs_dao.append(
+        db_conn, task_id="t1", phase="report", status="report_ready", now=T2
+    )
 
     latest_plan = handoffs_dao.get_latest(db_conn, "t1", "plan")
     assert latest_plan is not None

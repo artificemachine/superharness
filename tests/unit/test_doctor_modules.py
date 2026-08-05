@@ -1,16 +1,21 @@
 """Tests for doctor module health section."""
+
 from __future__ import annotations
 
 import sys
+import subprocess
 from pathlib import Path
 
 
 from tests.helpers import REPO_ROOT, seed_sqlite_from_yaml
 
 
-def _run_python(args: list[str], *, env: dict | None = None) -> "subprocess.CompletedProcess[str]":
+def _run_python(
+    args: list[str], *, env: dict | None = None
+) -> "subprocess.CompletedProcess[str]":
     import os
     import subprocess
+
     merged_env = os.environ.copy()
     merged_env["PYTHONPATH"] = str(REPO_ROOT / "src")
     if env:
@@ -57,9 +62,7 @@ class TestDoctorModules:
         (modules_dir / "obsidian.yaml").write_text(
             "name: obsidian\nenabled: true\ndetect:\n  env: OBSIDIAN_VAULT\n"
         )
-        (modules_dir / "security.yaml").write_text(
-            "name: security\nenabled: true\n"
-        )
+        (modules_dir / "security.yaml").write_text("name: security\nenabled: true\n")
         (modules_dir / "ntfy.yaml").write_text(
             "name: ntfy\nenabled: true\ndetect:\n  env: NTFY_TOPIC\n"
         )
@@ -81,8 +84,7 @@ class TestDoctorModules:
 
         # Run doctor with TELEGRAM_BOT_TOKEN unset
         result = _run_python(
-            ["--project", str(project)],
-            env={"TELEGRAM_BOT_TOKEN": None}
+            ["--project", str(project)], env={"TELEGRAM_BOT_TOKEN": None}
         )
         assert "WARN module:telegram — TELEGRAM_BOT_TOKEN not set" in result.stdout
 

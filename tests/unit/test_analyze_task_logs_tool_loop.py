@@ -10,11 +10,11 @@ the ledger audit trail for every tool-loop block, and fell through into
 the staleness checks below instead of `continue`-ing past them. Zero test
 coverage on this branch let it ship undetected.
 """
+
 from __future__ import annotations
 
 import os
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
 
 import pytest
 
@@ -34,18 +34,42 @@ def test_tool_loop_block_records_ledger_entry(tmp_path, monkeypatch):
     conn = get_connection(str(project))
     init_db(conn)
 
-    old = (datetime.now(timezone.utc) - timedelta(minutes=30)).isoformat().replace("+00:00", "Z")
-    tasks_dao.upsert(conn, TaskRow(
-        id="t-loop-1", title="Tool loop test", owner="claude-code", status="in_progress",
-        effort="medium", project_path=str(project), development_method="tdd",
-        acceptance_criteria=[], test_types=[], out_of_scope=[], definition_of_done=[],
-        context=None, tdd=None, version=1, created_at=old,
-    ))
+    old = (
+        (datetime.now(timezone.utc) - timedelta(minutes=30))
+        .isoformat()
+        .replace("+00:00", "Z")
+    )
+    tasks_dao.upsert(
+        conn,
+        TaskRow(
+            id="t-loop-1",
+            title="Tool loop test",
+            owner="claude-code",
+            status="in_progress",
+            effort="medium",
+            project_path=str(project),
+            development_method="tdd",
+            acceptance_criteria=[],
+            test_types=[],
+            out_of_scope=[],
+            definition_of_done=[],
+            context=None,
+            tdd=None,
+            version=1,
+            created_at=old,
+        ),
+    )
     conn.commit()
     inbox_dao.enqueue(
-        conn, id="inbox-1", task_id="t-loop-1", target_agent="claude-code", now=old,
+        conn,
+        id="inbox-1",
+        task_id="t-loop-1",
+        target_agent="claude-code",
+        now=old,
     )
-    inbox_dao.update_status(conn, "inbox-1", from_status="pending", to_status="launched", now=old)
+    inbox_dao.update_status(
+        conn, "inbox-1", from_status="pending", to_status="launched", now=old
+    )
     conn.commit()
 
     log_file = launcher_logs / "t-loop-1_claude-code.log"
@@ -55,20 +79,29 @@ def test_tool_loop_block_records_ledger_entry(tmp_path, monkeypatch):
     os.utime(log_file, (old_ts, old_ts))
 
     import superharness.engine.loop_detector as loop_detector
+
     monkeypatch.setattr(
-        loop_detector, "detect_loop",
-        lambda log_path, window=None: {"loop_detected": True, "block": True,
-                                        "reason": "repeated identical tool call",
-                                        "pattern": "test-pattern", "count": 9},
+        loop_detector,
+        "detect_loop",
+        lambda log_path, window=None: {
+            "loop_detected": True,
+            "block": True,
+            "reason": "repeated identical tool call",
+            "pattern": "test-pattern",
+            "count": 9,
+        },
     )
 
     import superharness.engine.state_writer as state_writer
+
     monkeypatch.setattr(state_writer, "set_task_status", lambda *a, **k: None)
 
     from superharness.commands.inbox_watch import _analyze_task_logs
+
     _analyze_task_logs(str(project))  # must not raise NameError
 
     from superharness.engine import ledger_dao
+
     entries = ledger_dao.get_recent(conn, limit=20)
     assert any(e.action == "block_loop" for e in entries), (
         "expected a block_loop ledger entry, got: " + repr(entries)

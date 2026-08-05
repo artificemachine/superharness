@@ -3,6 +3,7 @@
 Validates the contract data from SQLite against the Pydantic Contract schema.
 Exits 0 if clean, non-zero with a structured error report on any violation.
 """
+
 from __future__ import annotations
 
 import os
@@ -23,6 +24,7 @@ def validate_contract(project_dir: str | None = None) -> int:
         return 1
 
     from superharness.engine.state_reader import get_contract_doc
+
     try:
         doc = get_contract_doc(project_dir)
     except Exception as exc:
@@ -36,11 +38,16 @@ def validate_contract(project_dir: str | None = None) -> int:
     try:
         contract = Contract.model_validate(doc)
         task_count = len(contract.tasks)
-        print(f"[OK] {project_dir}: valid ({task_count} task{'s' if task_count != 1 else ''})")
+        print(
+            f"[OK] {project_dir}: valid ({task_count} task{'s' if task_count != 1 else ''})"
+        )
         return 0
     except ValidationError as exc:
         errors = exc.errors()
-        print(f"[ERROR] {len(errors)} schema violation(s) in contract data:", file=sys.stderr)
+        print(
+            f"[ERROR] {len(errors)} schema violation(s) in contract data:",
+            file=sys.stderr,
+        )
         for err in errors:
             loc = ".".join(str(x) for x in err["loc"])
             print(f"  {loc}: {err['msg']}", file=sys.stderr)
@@ -82,11 +89,14 @@ def _main_json(project_dir: str | None) -> None:
 
     harness_dir = os.path.join(project_dir, ".superharness")
     if not os.path.isdir(harness_dir):
-        result["errors"].append({"type": "not_found", "msg": f"project state not found: {harness_dir}"})
+        result["errors"].append(
+            {"type": "not_found", "msg": f"project state not found: {harness_dir}"}
+        )
         print(json.dumps(result))
         sys.exit(1)
 
     from superharness.engine.state_reader import get_contract_doc
+
     try:
         doc = get_contract_doc(project_dir)
     except Exception as exc:
@@ -101,10 +111,12 @@ def _main_json(project_dir: str | None) -> None:
         sys.exit(0)
     except ValidationError as exc:
         for err in exc.errors():
-            result["errors"].append({
-                "loc": list(err["loc"]),
-                "msg": err["msg"],
-                "type": err["type"],
-            })
+            result["errors"].append(
+                {
+                    "loc": list(err["loc"]),
+                    "msg": err["msg"],
+                    "type": err["type"],
+                }
+            )
         print(json.dumps(result))
         sys.exit(len(exc.errors()))

@@ -13,12 +13,11 @@ B. operator_memory observe-and-promote: after observing the same
 C. Auto-archive stopped tasks idle >7 days. Pure hygiene — keeps the
    Active Tasks list honest and lets `shux contract` show only live work.
 """
+
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-
-import pytest
 
 
 def _make_project(tmp_path: Path) -> Path:
@@ -29,9 +28,15 @@ def _make_project(tmp_path: Path) -> Path:
     return tmp_path
 
 
-def _seed_task(project_dir: Path, task_id: str, *, status: str,
-               workflow: str | None = None, owner: str = "claude-code",
-               stopped_at: str | None = None) -> None:
+def _seed_task(
+    project_dir: Path,
+    task_id: str,
+    *,
+    status: str,
+    workflow: str | None = None,
+    owner: str = "claude-code",
+    stopped_at: str | None = None,
+) -> None:
     from superharness.engine.db import get_connection, init_db
     from superharness.engine import tasks_dao
 
@@ -39,17 +44,41 @@ def _seed_task(project_dir: Path, task_id: str, *, status: str,
     init_db(conn)
     now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     row = tasks_dao.TaskRow(
-        id=task_id, title=f"Test {task_id}", owner=owner, status=status,
-        effort="medium", project_path=str(project_dir), development_method=None,
-        acceptance_criteria=[], test_types=[], out_of_scope=[],
-        definition_of_done=[], context=None, tdd=None, version=1,
-        created_at=now, updated_at=now,
-        plan_proposed_at=None, plan_approved_at=None, in_progress_at=None,
-        report_ready_at=None, review_requested_at=None,
-        done_at=None, cancelled_at=None, blocked_by=[],
-        verified=False, verified_at=None, verified_by=None, deadline_minutes=None,
-        failed_at=None, stopped_at=stopped_at, failed_reason=None,
-        archived_at=None, archived_reason=None, model_tier=None, pause_reason=None,
+        id=task_id,
+        title=f"Test {task_id}",
+        owner=owner,
+        status=status,
+        effort="medium",
+        project_path=str(project_dir),
+        development_method=None,
+        acceptance_criteria=[],
+        test_types=[],
+        out_of_scope=[],
+        definition_of_done=[],
+        context=None,
+        tdd=None,
+        version=1,
+        created_at=now,
+        updated_at=now,
+        plan_proposed_at=None,
+        plan_approved_at=None,
+        in_progress_at=None,
+        report_ready_at=None,
+        review_requested_at=None,
+        done_at=None,
+        cancelled_at=None,
+        blocked_by=[],
+        verified=False,
+        verified_at=None,
+        verified_by=None,
+        deadline_minutes=None,
+        failed_at=None,
+        stopped_at=stopped_at,
+        failed_reason=None,
+        archived_at=None,
+        archived_reason=None,
+        model_tier=None,
+        pause_reason=None,
         workflow=workflow,
     )
     tasks_dao.upsert(conn, row)
@@ -67,6 +96,7 @@ def _seed_task(project_dir: Path, task_id: str, *, status: str,
 # Fix A: workflow-aware auto-bootstrap
 # ---------------------------------------------------------------------------
 
+
 class TestAutoBootstrapWorkflowAware:
     def test_skips_quick_workflow_task(self, tmp_path):
         """quick workflow has plan_proposed NOT in allowed dispatch set
@@ -81,7 +111,9 @@ class TestAutoBootstrapWorkflowAware:
 
         bootstrapped = _auto_bootstrap_empty_tasks(str(proj))
 
-        assert bootstrapped == 0, "quick-workflow tasks must NOT be bootstrapped (plan_proposed isn't in allowed dispatch set)"
+        assert bootstrapped == 0, (
+            "quick-workflow tasks must NOT be bootstrapped (plan_proposed isn't in allowed dispatch set)"
+        )
 
     def test_skips_review_workflow_task(self, tmp_path):
         """review workflow's allowed set is {todo, in_progress, review_requested, review_failed}."""
@@ -121,6 +153,7 @@ class TestAutoBootstrapWorkflowAware:
 # ---------------------------------------------------------------------------
 # Fix B: operator_memory observe-and-promote
 # ---------------------------------------------------------------------------
+
 
 class TestOperatorMemoryPromotion:
     def test_promotes_after_threshold_observations(self, tmp_path):
@@ -199,6 +232,7 @@ class TestOperatorMemoryPromotion:
 # Fix C: auto-archive stopped >7 days
 # ---------------------------------------------------------------------------
 
+
 class TestAutoArchiveStoppedTasks:
     def test_archives_task_stopped_more_than_7d(self, tmp_path):
         """A task in status='stopped' with stopped_at > 7 days ago should be
@@ -216,14 +250,23 @@ class TestAutoArchiveStoppedTasks:
     def test_does_not_archive_recently_stopped_task(self, tmp_path):
         """Reconciler must not touch a task stopped less than 7 days ago."""
         from superharness.engine.lifecycle_rules import (
-            LIFECYCLE_RULES, _scan_contract as reconcile_contract,
+            LIFECYCLE_RULES,
+            _scan_contract as reconcile_contract,
         )
+
         rule = next(r for r in LIFECYCLE_RULES if r.state == "stopped")
 
         proj = _make_project(tmp_path)
-        recent = (datetime.now(timezone.utc) - timedelta(days=2)).strftime("%Y-%m-%dT%H:%M:%SZ")
-        _seed_task(proj, "task.recent-stop", status="stopped",
-                   workflow="implementation", stopped_at=recent)
+        recent = (datetime.now(timezone.utc) - timedelta(days=2)).strftime(
+            "%Y-%m-%dT%H:%M:%SZ"
+        )
+        _seed_task(
+            proj,
+            "task.recent-stop",
+            status="stopped",
+            workflow="implementation",
+            stopped_at=recent,
+        )
 
         # Run the reconciler with just the stopped rule
         archived_count = reconcile_contract(str(proj), [rule], profile={})
@@ -233,14 +276,23 @@ class TestAutoArchiveStoppedTasks:
     def test_archives_old_stopped_task(self, tmp_path):
         """Reconciler archives a task stopped >7 days ago."""
         from superharness.engine.lifecycle_rules import (
-            LIFECYCLE_RULES, _scan_contract as reconcile_contract,
+            LIFECYCLE_RULES,
+            _scan_contract as reconcile_contract,
         )
+
         rule = next(r for r in LIFECYCLE_RULES if r.state == "stopped")
 
         proj = _make_project(tmp_path)
-        old = (datetime.now(timezone.utc) - timedelta(days=10)).strftime("%Y-%m-%dT%H:%M:%SZ")
-        _seed_task(proj, "task.old-stop", status="stopped",
-                   workflow="implementation", stopped_at=old)
+        old = (datetime.now(timezone.utc) - timedelta(days=10)).strftime(
+            "%Y-%m-%dT%H:%M:%SZ"
+        )
+        _seed_task(
+            proj,
+            "task.old-stop",
+            status="stopped",
+            workflow="implementation",
+            stopped_at=old,
+        )
 
         archived_count = reconcile_contract(str(proj), [rule], profile={})
 

@@ -7,6 +7,7 @@ Adapted from Hermes agent MEMORY.md pattern. Superharness adaptation:
 - Agents append to project memory during sessions
 - Auto-promotion from project → global after N occurrences (Iteration 3)
 """
+
 from __future__ import annotations
 
 import json
@@ -15,7 +16,6 @@ import os
 import re
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -49,8 +49,8 @@ def _prune_if_over_limit(filepath: str) -> None:
 
     lines = content.splitlines()
     # Keep header lines (starting with #)
-    header = [l for l in lines if l.startswith("#")]
-    body = [l for l in lines if not l.startswith("#") and l.strip()]
+    header = [line for line in lines if line.startswith("#")]
+    body = [line for line in lines if not line.startswith("#") and line.strip()]
 
     # Trim from the beginning (oldest first) until under limit
     while body and len("\n".join(header + body)) + len(header) > MEMORY_FILE_MAX_CHARS:
@@ -58,9 +58,13 @@ def _prune_if_over_limit(filepath: str) -> None:
 
     result = "\n".join(header + [""] + body) + "\n"
     Path(filepath).write_text(result, encoding="utf-8")
-    if len(body) < len([l for l in lines if not l.startswith("#") and l.strip()]):
-        logger.info("Pruned memory file %s: %d → %d chars",
-                     os.path.basename(filepath), len(content), len(result))
+    if len(body) < len([line for line in lines if not line.startswith("#") and line.strip()]):
+        logger.info(
+            "Pruned memory file %s: %d → %d chars",
+            os.path.basename(filepath),
+            len(content),
+            len(result),
+        )
 
 
 def global_memory_dir() -> str:
@@ -81,7 +85,10 @@ def _ensure_default_files(dirpath: str, filenames: tuple[str, ...]) -> None:
     for fname in filenames:
         fpath = os.path.join(dirpath, fname)
         if not os.path.isfile(fpath):
-            Path(fpath).write_text(f"# {fname.replace('.md', '').replace('_', ' ').title()}\n\n", encoding="utf-8")
+            Path(fpath).write_text(
+                f"# {fname.replace('.md', '').replace('_', ' ').title()}\n\n",
+                encoding="utf-8",
+            )
 
 
 def ensure_global_memory() -> str:
@@ -121,7 +128,9 @@ def append(project_dir: str, filename: str, content: str) -> None:
         _cap_index(fpath)
     else:
         _prune_if_over_limit(fpath)
-    logger.info("Agent memory appended to %s/%s", os.path.basename(project_dir), filename)
+    logger.info(
+        "Agent memory appended to %s/%s", os.path.basename(project_dir), filename
+    )
 
 
 def append_global_override(override_dir: str, filename: str, content: str) -> None:
@@ -129,7 +138,9 @@ def append_global_override(override_dir: str, filename: str, content: str) -> No
     os.makedirs(override_dir, exist_ok=True)
     fpath = os.path.join(override_dir, filename)
     if not os.path.isfile(fpath):
-        Path(fpath).write_text(f"# {filename.replace('.md', '').title()}\n\n", encoding="utf-8")
+        Path(fpath).write_text(
+            f"# {filename.replace('.md', '').title()}\n\n", encoding="utf-8"
+        )
     entry = _prepend_timestamp(content.strip()) + "\n"
     with open(fpath, "a", encoding="utf-8") as f:
         f.write(entry)
@@ -148,7 +159,7 @@ def _read_memory_file(filepath: str) -> str:
     except Exception:
         return ""
     # Skip header lines (starting with #)
-    content_lines = [l for l in lines if not l.startswith("#") and l.strip()]
+    content_lines = [line for line in lines if not line.startswith("#") and line.strip()]
     return "\n".join(content_lines)
 
 
@@ -219,7 +230,7 @@ def apply_lessons(lessons, project_dir: str, *, target_dir: str | None = None) -
     entries: list[list] = []
     if os.path.isfile(fpath):
         all_lines = Path(fpath).read_text(encoding="utf-8").splitlines()
-        hdr = [l for l in all_lines if l.startswith("#")]
+        hdr = [line for line in all_lines if line.startswith("#")]
         if hdr:
             header_lines = hdr + [""]
         for raw in all_lines:
@@ -268,14 +279,14 @@ def _cap_index(filepath: str) -> None:
     except Exception:
         return
 
-    header = [l for l in all_lines if l.startswith("#")]
-    body = [l for l in all_lines if l.strip() and not l.startswith("#")]
+    header = [line for line in all_lines if line.startswith("#")]
+    body = [line for line in all_lines if line.strip() and not line.startswith("#")]
     if not header:
         header = ["# Pitfalls"]
     header_block = header + [""]
 
     base_bytes = len(("\n".join(header_block)).encode()) + 1  # trailing newline
-    total_bytes = base_bytes + sum(len(l.encode()) + 1 for l in body)
+    total_bytes = base_bytes + sum(len(line.encode()) + 1 for line in body)
     if len(body) <= MAX_INDEX_LINES and total_bytes <= MAX_INDEX_BYTES:
         return  # under both caps — leave untouched
 
@@ -294,24 +305,30 @@ def _cap_index(filepath: str) -> None:
 
     final = list(manual)
     cur_lines = len(final)
-    cur_bytes = base_bytes + sum(len(l.encode()) + 1 for l in final)
+    cur_bytes = base_bytes + sum(len(line.encode()) + 1 for line in final)
     manual_over = cur_lines > MAX_INDEX_LINES or cur_bytes > MAX_INDEX_BYTES
     if manual_over:
         logger.warning(
             "pitfalls index exceeds cap on manual lines alone (%d lines); "
-            "keeping manual, dropping all distilled", cur_lines
+            "keeping manual, dropping all distilled",
+            cur_lines,
         )
     else:
         for raw, _conf, _date in distilled:
             add_bytes = len(raw.encode()) + 1
-            if cur_lines + 1 <= MAX_INDEX_LINES and cur_bytes + add_bytes <= MAX_INDEX_BYTES:
+            if (
+                cur_lines + 1 <= MAX_INDEX_LINES
+                and cur_bytes + add_bytes <= MAX_INDEX_BYTES
+            ):
                 final.append(raw)
                 cur_lines += 1
                 cur_bytes += add_bytes
             else:
                 break  # sorted best-first; everything after is worse
 
-    Path(filepath).write_text("\n".join(header_block) + "\n".join(final) + "\n", encoding="utf-8")
+    Path(filepath).write_text(
+        "\n".join(header_block) + "\n".join(final) + "\n", encoding="utf-8"
+    )
 
 
 def _deduplicate_content(content: str) -> str:
@@ -321,10 +338,11 @@ def _deduplicate_content(content: str) -> str:
     """
     if not content:
         return ""
-    lines = [l.strip() for l in content.splitlines() if l.strip()]
+    lines = [line.strip() for line in content.splitlines() if line.strip()]
     if not lines:
         return ""
     from collections import Counter
+
     counts = Counter(lines)
     result = []
     for line, count in counts.most_common():
@@ -410,7 +428,9 @@ def _load_project_roots() -> list[str]:
         return []
 
 
-def _count_pattern_across_all_projects(filename: str, pattern: str, *, global_override: str | None = None) -> int:
+def _count_pattern_across_all_projects(
+    filename: str, pattern: str, *, global_override: str | None = None
+) -> int:
     """Count pattern occurrences across all known project memory directories."""
     total = 0
     gdir = global_override or GLOBAL_MEMORY_DIR
@@ -436,13 +456,17 @@ def _count_pattern_across_all_projects(filename: str, pattern: str, *, global_ov
     return total
 
 
-def _count_pattern_across_sibling_projects(project_dir: str, filename: str, pattern: str, *, global_override: str | None = None) -> int:
+def _count_pattern_across_sibling_projects(
+    project_dir: str, filename: str, pattern: str, *, global_override: str | None = None
+) -> int:
     """Count pattern occurrences across sibling project directories + global.
 
     When global_override is set (test mode), skips sibling scanning to avoid
     cross-test contamination from other pytest temp directories.
     """
-    total = _count_pattern_across_all_projects(filename, pattern, global_override=global_override)
+    total = _count_pattern_across_all_projects(
+        filename, pattern, global_override=global_override
+    )
 
     # Skip sibling scan in test mode (global_override set) — prevents
     # counting patterns from other pytest temp directories as false positives.
@@ -492,18 +516,24 @@ def promote_to_global(
     os.makedirs(gdir, exist_ok=True)
     gpath = os.path.join(gdir, filename)
     if not os.path.isfile(gpath):
-        Path(gpath).write_text(f"# {filename.replace('.md', '').title()}\n\n", encoding="utf-8")
+        Path(gpath).write_text(
+            f"# {filename.replace('.md', '').title()}\n\n", encoding="utf-8"
+        )
 
     promoted_any = False
 
     try:
-        lines = [l for l in Path(fpath).read_text(encoding="utf-8").splitlines()
-                 if l.strip() and not l.startswith("#")]
+        lines = [
+            line
+            for line in Path(fpath).read_text(encoding="utf-8").splitlines()
+            if line.strip() and not line.startswith("#")
+        ]
     except Exception:
         return False
 
     # Collect unique patterns with their counts
     from collections import Counter
+
     stripped = [line.strip() for line in lines]
     pattern_counts = Counter(stripped)
 
@@ -526,8 +556,12 @@ def promote_to_global(
         with open(gpath, "a", encoding="utf-8") as f:
             f.write(pattern + "\n")
         _prune_if_over_limit(gpath)
-        logger.info("Promoted pattern to global memory (count=%d across %d): %s",
-                    effective_count, cross_count, pattern[:80])
+        logger.info(
+            "Promoted pattern to global memory (count=%d across %d): %s",
+            effective_count,
+            cross_count,
+            pattern[:80],
+        )
         promoted_any = True
 
     return promoted_any
@@ -545,6 +579,7 @@ def promote_all_project_memory(project_dir: str) -> int:
 # ---------------------------------------------------------------------------
 # Project roots management — config file for cross-project scanning
 # ---------------------------------------------------------------------------
+
 
 def list_project_roots() -> list[str]:
     """Return the configured project root directories."""

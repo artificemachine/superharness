@@ -6,15 +6,14 @@ Covers:
 - task status_update gate enforcement for done transition
 - --force bypass logs to ledger
 """
+
 from __future__ import annotations
 
-import os
-import tempfile
 
 import pytest
 import yaml
 
-from superharness.engine.subtask_gate import GateResult, evaluate_subtask_gate
+from superharness.engine.subtask_gate import evaluate_subtask_gate
 
 
 # ---------------------------------------------------------------------------
@@ -22,7 +21,10 @@ from superharness.engine.subtask_gate import GateResult, evaluate_subtask_gate
 # ---------------------------------------------------------------------------
 
 
-pytestmark = pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
+pytestmark = pytest.mark.skip(
+    reason="legacy YAML fixture — pending SQLite migration (see PR #208)"
+)
+
 
 def _sub(status: str, sub_id: str = "T-1.1") -> dict:
     return {"id": sub_id, "title": "sub", "status": status}
@@ -37,7 +39,11 @@ class TestEvaluateSubtaskGate:
         assert result.source == "none"
 
     def test_task_opts_in(self):
-        task = {"id": "T-1", "require_subtask_resolution": True, "subtasks": [_sub("pending")]}
+        task = {
+            "id": "T-1",
+            "require_subtask_resolution": True,
+            "subtasks": [_sub("pending")],
+        }
         result = evaluate_subtask_gate(task, {})
         assert result.enabled is True
         assert len(result.blocking) == 1
@@ -50,13 +56,21 @@ class TestEvaluateSubtaskGate:
         assert result.source == "profile"
 
     def test_profile_wins_over_task_false(self):
-        task = {"id": "T-1", "require_subtask_resolution": False, "subtasks": [_sub("pending")]}
+        task = {
+            "id": "T-1",
+            "require_subtask_resolution": False,
+            "subtasks": [_sub("pending")],
+        }
         result = evaluate_subtask_gate(task, {"require_subtask_resolution": True})
         assert result.enabled is True
         assert result.source == "profile"
 
     def test_task_can_opt_in_when_profile_off(self):
-        task = {"id": "T-1", "require_subtask_resolution": True, "subtasks": [_sub("pending")]}
+        task = {
+            "id": "T-1",
+            "require_subtask_resolution": True,
+            "subtasks": [_sub("pending")],
+        }
         result = evaluate_subtask_gate(task, {"require_subtask_resolution": False})
         assert result.enabled is True
         assert result.source == "task"
@@ -157,6 +171,7 @@ def _base_task(subtasks: list, require: bool | None = None) -> dict:
 class TestCloseTaskGate:
     def test_gate_off_by_default_allows_close_with_open_subtasks(self, tmp_path):
         from superharness.commands.close import close_task
+
         task = _base_task([_sub("pending")])
         cf = _make_harness(tmp_path, task)
         rc = close_task(cf, "T-1", "claude-code", "done")
@@ -164,6 +179,7 @@ class TestCloseTaskGate:
 
     def test_gate_on_blocks_close_with_open_subtask(self, tmp_path, capsys):
         from superharness.commands.close import close_task
+
         task = _base_task([_sub("pending")], require=True)
         cf = _make_harness(tmp_path, task)
         rc = close_task(cf, "T-1", "claude-code", "done")
@@ -172,13 +188,17 @@ class TestCloseTaskGate:
 
     def test_gate_on_allows_close_when_all_resolved(self, tmp_path):
         from superharness.commands.close import close_task
-        task = _base_task([_sub("done", "T-1.1"), _sub("cancelled", "T-1.2")], require=True)
+
+        task = _base_task(
+            [_sub("done", "T-1.1"), _sub("cancelled", "T-1.2")], require=True
+        )
         cf = _make_harness(tmp_path, task)
         rc = close_task(cf, "T-1", "claude-code", "done")
         assert rc == 0
 
     def test_profile_gate_blocks_even_when_task_flag_absent(self, tmp_path, capsys):
         from superharness.commands.close import close_task
+
         task = _base_task([_sub("pending")])
         cf = _make_harness(tmp_path, task, profile={"require_subtask_resolution": True})
         rc = close_task(cf, "T-1", "claude-code", "done")
@@ -188,14 +208,23 @@ class TestCloseTaskGate:
 
     def test_cancel_remaining_cancels_open_subtasks_and_closes(self, tmp_path):
         from superharness.commands.close import close_task
+
         task = _base_task(
-            [_sub("pending", "T-1.1"), _sub("in_progress", "T-1.2"), _sub("done", "T-1.3")],
+            [
+                _sub("pending", "T-1.1"),
+                _sub("in_progress", "T-1.2"),
+                _sub("done", "T-1.3"),
+            ],
             require=True,
         )
         cf = _make_harness(tmp_path, task)
         rc = close_task(
-            cf, "T-1", "claude-code", "done",
-            cancel_remaining=True, cancel_reason="scope reduced",
+            cf,
+            "T-1",
+            "claude-code",
+            "done",
+            cancel_remaining=True,
+            cancel_reason="scope reduced",
         )
         assert rc == 0
         doc = yaml.safe_load(open(cf))
@@ -206,11 +235,18 @@ class TestCloseTaskGate:
 
     def test_cancel_remaining_writes_ledger_lines(self, tmp_path):
         from superharness.commands.close import close_task
-        task = _base_task([_sub("pending", "T-1.1"), _sub("pending", "T-1.2")], require=True)
+
+        task = _base_task(
+            [_sub("pending", "T-1.1"), _sub("pending", "T-1.2")], require=True
+        )
         cf = _make_harness(tmp_path, task)
         close_task(
-            cf, "T-1", "claude-code", "done",
-            cancel_remaining=True, cancel_reason="no longer needed",
+            cf,
+            "T-1",
+            "claude-code",
+            "done",
+            cancel_remaining=True,
+            cancel_reason="no longer needed",
         )
         ledger = (tmp_path / ".superharness" / "ledger.md").read_text()
         assert ledger.count("SUBTASK_CANCEL") == 2
@@ -219,17 +255,23 @@ class TestCloseTaskGate:
 
     def test_cancel_remaining_without_reason_fails(self, tmp_path, capsys):
         from superharness.commands.close import close_task
+
         task = _base_task([_sub("pending")], require=True)
         cf = _make_harness(tmp_path, task)
         rc = close_task(
-            cf, "T-1", "claude-code", "done",
-            cancel_remaining=True, cancel_reason="",
+            cf,
+            "T-1",
+            "claude-code",
+            "done",
+            cancel_remaining=True,
+            cancel_reason="",
         )
         assert rc != 0
         assert "cancel-reason" in capsys.readouterr().err
 
     def test_force_bypasses_gate(self, tmp_path):
         from superharness.commands.close import close_task
+
         task = _base_task([_sub("pending")], require=True)
         cf = _make_harness(tmp_path, task)
         rc = close_task(cf, "T-1", "claude-code", "done", force=True)
@@ -237,6 +279,7 @@ class TestCloseTaskGate:
 
     def test_force_logs_warning_to_ledger(self, tmp_path):
         from superharness.commands.close import close_task
+
         task = _base_task([_sub("pending", "T-1.1")], require=True)
         cf = _make_harness(tmp_path, task)
         close_task(cf, "T-1", "claude-code", "done", force=True)
@@ -246,6 +289,7 @@ class TestCloseTaskGate:
 
     def test_error_message_names_blocking_subtasks(self, tmp_path, capsys):
         from superharness.commands.close import close_task
+
         task = _base_task(
             [_sub("pending", "T-1.1"), _sub("in_progress", "T-1.2")],
             require=True,
@@ -265,6 +309,7 @@ class TestCloseTaskGate:
 class TestTaskStatusUpdateGate:
     def test_gate_off_by_default_allows_done(self, tmp_path):
         from superharness.commands.task import status_update
+
         task = {
             "id": "T-1",
             "title": "t",
@@ -278,6 +323,7 @@ class TestTaskStatusUpdateGate:
 
     def test_gate_on_blocks_done_with_open_subtask(self, tmp_path, capsys):
         from superharness.commands.task import status_update
+
         task = {
             "id": "T-1",
             "title": "t",
@@ -293,6 +339,7 @@ class TestTaskStatusUpdateGate:
 
     def test_gate_on_allows_done_when_subtasks_resolved(self, tmp_path):
         from superharness.commands.task import status_update
+
         task = {
             "id": "T-1",
             "title": "t",

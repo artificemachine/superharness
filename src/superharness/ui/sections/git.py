@@ -1,4 +1,5 @@
 """Git & tracking section — reads/writes team_size and git_mode in profile.yaml."""
+
 from __future__ import annotations
 
 import subprocess
@@ -8,7 +9,7 @@ from superharness.ui.prompts import print_header, print_info
 from superharness.ui.sections.base import run_section
 
 _TEAM_SIZE_CHOICES = ["solo", "small", "large"]
-_GIT_MODE_CHOICES  = ["team", "solo"]
+_GIT_MODE_CHOICES = ["team", "solo"]
 
 
 def run(project_dir: Path, non_interactive: bool = False) -> None:
@@ -19,7 +20,7 @@ def run(project_dir: Path, non_interactive: bool = False) -> None:
 
     is_git = _is_git_repo(project_dir)
     current_team_size = read_field(project_dir, "team_size") or "solo"
-    current_git_mode  = read_field(project_dir, "git_mode") or "team"
+    current_git_mode = read_field(project_dir, "git_mode") or "team"
 
     print_info(f"Git repo:  {'yes' if is_git else 'no'}")
     print_info(f"Team size: {current_team_size}")
@@ -52,12 +53,14 @@ def run(project_dir: Path, non_interactive: bool = False) -> None:
     # Delegate gitignore work to the existing onboard helper
     try:
         from superharness.commands.onboard import _step_git_track
+
         _step_git_track(project_dir, {}, git_mode)
     except Exception as exc:  # pragma: no cover
         print_info(f"Note: could not update .gitignore: {exc}")
 
 
 # ---------------------------------------------------------------------------
+
 
 def _is_git_repo(project_dir: Path) -> bool:
     try:

@@ -1,11 +1,11 @@
 """Tests for cost estimator engine."""
+
 from __future__ import annotations
 
 import pytest
 
 from superharness.engine.cost_estimator import (
     PRICING,
-    CostEstimate,
     estimate_subtask_cost,
     estimate_task_cost,
     tier_to_model_id,
@@ -20,10 +20,16 @@ from superharness.engine.cost_estimator import (
 class TestPricing:
     def test_all_models_have_pricing(self):
         expected = {
-            "claude-opus-4-8", "claude-opus-4-8[1m]",
-            "claude-opus-4-7", "claude-opus-4-7[1m]", "claude-opus-4-6",
-            "claude-sonnet-4-6", "claude-haiku-4-5-20251001",
-            "flash", "pro", "ultra",
+            "claude-opus-4-8",
+            "claude-opus-4-8[1m]",
+            "claude-opus-4-7",
+            "claude-opus-4-7[1m]",
+            "claude-opus-4-6",
+            "claude-sonnet-4-6",
+            "claude-haiku-4-5-20251001",
+            "flash",
+            "pro",
+            "ultra",
         }
         assert expected == set(PRICING.keys())
 
@@ -99,7 +105,9 @@ class TestEstimateSubtaskCost:
 
     def test_custom_io_ratio(self):
         # 80% input, 20% output (default is 60/40)
-        est = estimate_subtask_cost("standard", estimated_tokens=100000, input_ratio=0.8)
+        est = estimate_subtask_cost(
+            "standard", estimated_tokens=100000, input_ratio=0.8
+        )
         # More input-heavy should be cheaper (input costs less than output)
         est_default = estimate_subtask_cost("standard", estimated_tokens=100000)
         assert est.estimated_cost_usd < est_default.estimated_cost_usd
@@ -155,4 +163,6 @@ class TestEstimateTaskCost:
         opus_subtasks = [{"model_tier": "max", "estimated_tokens": 50000}] * 3
         haiku_total = estimate_task_cost(haiku_subtasks)
         opus_total = estimate_task_cost(opus_subtasks)
-        assert haiku_total.total_estimated_cost_usd < opus_total.total_estimated_cost_usd
+        assert (
+            haiku_total.total_estimated_cost_usd < opus_total.total_estimated_cost_usd
+        )

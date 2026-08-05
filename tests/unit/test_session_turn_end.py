@@ -14,13 +14,13 @@ lifecycle).
 These tests pin that turn-safe contract so a future edit cannot
 silently widen the hook into a per-turn destructive handler.
 """
+
 from __future__ import annotations
 
 import sys
 from pathlib import Path
 
 import pytest
-import yaml
 
 from tests.helpers import run_bash
 
@@ -67,7 +67,9 @@ def test_turn_end_appends_ledger_line(repo_root: Path, tmp_path: Path) -> None:
     assert "session-progress.md" in ledger
 
 
-def test_turn_end_overwrites_not_appends_snapshot(repo_root: Path, tmp_path: Path) -> None:
+def test_turn_end_overwrites_not_appends_snapshot(
+    repo_root: Path, tmp_path: Path
+) -> None:
     """Snapshot must be overwritten on each turn — appending would let it
     grow unbounded across a long session (Stop fires every turn)."""
     project = _setup_project(tmp_path)
@@ -75,16 +77,26 @@ def test_turn_end_overwrites_not_appends_snapshot(repo_root: Path, tmp_path: Pat
     run_bash(script, cwd=project)
     run_bash(script, cwd=project)
     content = (project / ".superharness" / "session-progress.md").read_text()
-    assert content.count("# Session Progress") == 1, "snapshot must be overwritten, not appended"
+    assert content.count("# Session Progress") == 1, (
+        "snapshot must be overwritten, not appended"
+    )
     assert content.count("Last updated:") == 1
 
 
-def test_turn_end_surfaces_pending_discussion_prompt(repo_root: Path, tmp_path: Path) -> None:
+def test_turn_end_surfaces_pending_discussion_prompt(
+    repo_root: Path, tmp_path: Path
+) -> None:
     """When a round prompt file exists in
     .superharness/discussions/<id>/round-N-claude-code.prompt.md, the
     hook must surface it on stdout so the agent picks it up next turn."""
     project = _setup_project(tmp_path)
-    disc_dir = project / ".superharness" / "discussions" / "disc-42" / "round-1-claude-code.prompt.md"
+    disc_dir = (
+        project
+        / ".superharness"
+        / "discussions"
+        / "disc-42"
+        / "round-1-claude-code.prompt.md"
+    )
     disc_dir.parent.mkdir(parents=True)
     disc_dir.write_text("# Round 1 prompt\nWhat's the verdict?\n")
 
@@ -96,7 +108,9 @@ def test_turn_end_surfaces_pending_discussion_prompt(repo_root: Path, tmp_path: 
     assert "shux discuss submit" in result.stdout, "must surface the submit command"
 
 
-def test_turn_end_no_discussion_dir_is_noop_for_prompts(repo_root: Path, tmp_path: Path) -> None:
+def test_turn_end_no_discussion_dir_is_noop_for_prompts(
+    repo_root: Path, tmp_path: Path
+) -> None:
     """No discussions/ dir → no PENDING DISCUSSION output, but snapshot still written."""
     project = _setup_project(tmp_path)
     script = repo_root / "adapters" / "claude-code" / "hooks" / "session-turn-end.sh"
@@ -106,7 +120,9 @@ def test_turn_end_no_discussion_dir_is_noop_for_prompts(repo_root: Path, tmp_pat
     assert (project / ".superharness" / "session-progress.md").exists()
 
 
-def test_turn_end_noop_without_superharness_dir(repo_root: Path, tmp_path: Path) -> None:
+def test_turn_end_noop_without_superharness_dir(
+    repo_root: Path, tmp_path: Path
+) -> None:
     """No .superharness/ → exit 0, write nothing."""
     project = tmp_path / "plain"
     project.mkdir()
@@ -132,14 +148,21 @@ def test_turn_end_must_not_contain_destructive_side_effects(repo_root: Path) -> 
     forbidden = [
         (r"state_writer\.set_task_status\(", "task auto-stop is session-exit's job"),
         (r"yaml\.safe_dump\(\s*handoff", "handoff YAML writes are session-exit's job"),
-        (r"-m\s+superharness\.engine\.inbox\s+set_status", "inbox pause is session-exit's job"),
-        (r"^\s*pkill\s+-TERM", "MCP cleanup is session-exit's job — would kill tools mid-session"),
+        (
+            r"-m\s+superharness\.engine\.inbox\s+set_status",
+            "inbox pause is session-exit's job",
+        ),
+        (
+            r"^\s*pkill\s+-TERM",
+            "MCP cleanup is session-exit's job — would kill tools mid-session",
+        ),
     ]
     import re
+
     violations = []
     for pattern, reason in forbidden:
         if re.search(pattern, src, re.MULTILINE):
             violations.append(f"matched /{pattern}/: {reason}")
-    assert not violations, (
-        "session-turn-end.sh must stay turn-safe.\n  " + "\n  ".join(violations)
+    assert not violations, "session-turn-end.sh must stay turn-safe.\n  " + "\n  ".join(
+        violations
     )

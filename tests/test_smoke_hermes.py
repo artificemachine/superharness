@@ -3,16 +3,16 @@
 Verifies the full cycle: agent writes memory → watcher injects → loop detected →
 task blocked → pattern promoted → cross-project learning.
 """
+
 from __future__ import annotations
 
 import os
 import tempfile
 from pathlib import Path
 
-import pytest
-
 
 # ── Memory Cycle: agent writes → watcher injects → context includes it ─────
+
 
 def test_memory_cycle_end_to_end(tmp_path: Path) -> None:
     """Full cycle: agent writes memory, watcher injects into dispatch context."""
@@ -54,6 +54,7 @@ def test_memory_context_injected_into_hint(tmp_path: Path) -> None:
 
 # ── Loop Guard Cycle: log with loops → detected → task blocked ────────────
 
+
 def test_loop_guard_cycle_end_to_end() -> None:
     """Full cycle: create log with loops, detect, guard escalates to block."""
     from superharness.engine.loop_detector import detect_loop, LoopGuard
@@ -73,8 +74,12 @@ def test_loop_guard_cycle_end_to_end() -> None:
         # LoopGuard escalates across cycles
         guard = LoopGuard(td)
         warn_result = {
-            "loop_detected": True, "warn": True, "block": False,
-            "failure_loop": False, "pattern": "grep", "count": 3,
+            "loop_detected": True,
+            "warn": True,
+            "block": False,
+            "failure_loop": False,
+            "pattern": "grep",
+            "count": 3,
             "reason": "grep called 3 consecutive times",
         }
 
@@ -115,6 +120,7 @@ def test_clean_log_does_not_trigger_guard() -> None:
 
 # ── Promotion Cycle: project → global → cross-project learning ─────────────
 
+
 def test_promotion_cycle_end_to_end(tmp_path: Path) -> None:
     """Full cycle: project A learns pattern → promoted → project B sees it."""
     from superharness.engine.agent_memory import (
@@ -153,6 +159,7 @@ def test_promotion_cycle_end_to_end(tmp_path: Path) -> None:
         # Simulate watcher injecting global memory into project B's dispatch
         # Use a monkeypatched global dir
         import superharness.engine.agent_memory as am
+
         original = am.GLOBAL_MEMORY_DIR
         try:
             am.GLOBAL_MEMORY_DIR = global_override
@@ -188,6 +195,7 @@ def test_promotion_excludes_project_specific_patterns(tmp_path: Path) -> None:
 
 # ── Integration: all mechanisms work together ───────────────────────────────
 
+
 def test_full_self_improvement_cycle(tmp_path: Path) -> None:
     """End-to-end: agent writes → watcher detects → promotes → cross-project."""
     from superharness.engine.agent_memory import (
@@ -217,12 +225,21 @@ def test_full_self_improvement_cycle(tmp_path: Path) -> None:
         assert action["action"] == "block"
 
         # Agent writes another learning about the blocked pattern
-        append(project_dir, "pitfalls.md",
-               "subprocess called 5 consecutive times — blocked by watcher")
-        append(project_dir, "pitfalls.md",
-               "subprocess called 5 consecutive times — blocked by watcher")
-        append(project_dir, "pitfalls.md",
-               "subprocess called 5 consecutive times — blocked by watcher")
+        append(
+            project_dir,
+            "pitfalls.md",
+            "subprocess called 5 consecutive times — blocked by watcher",
+        )
+        append(
+            project_dir,
+            "pitfalls.md",
+            "subprocess called 5 consecutive times — blocked by watcher",
+        )
+        append(
+            project_dir,
+            "pitfalls.md",
+            "subprocess called 5 consecutive times — blocked by watcher",
+        )
 
         # 3. Promote to global (3 occurrences)
         with tempfile.TemporaryDirectory() as global_override:
@@ -233,6 +250,7 @@ def test_full_self_improvement_cycle(tmp_path: Path) -> None:
 
             # 4. Cross-project: another project sees the promoted pattern
             import superharness.engine.agent_memory as am
+
             original = am.GLOBAL_MEMORY_DIR
             try:
                 am.GLOBAL_MEMORY_DIR = global_override
@@ -250,8 +268,11 @@ def test_full_self_improvement_cycle(tmp_path: Path) -> None:
 def test_cross_project_promotion_multiple_projects(tmp_path: Path) -> None:
     """Pattern seen once each across 3 different projects should promote."""
     from superharness.engine.agent_memory import (
-        append, ensure_project_memory, _count_pattern_across_sibling_projects,
-        PROMOTION_THRESHOLD, promote_to_global,
+        append,
+        ensure_project_memory,
+        _count_pattern_across_sibling_projects,
+        PROMOTION_THRESHOLD,
+        promote_to_global,
     )
 
     pattern = "2026-05-20: cross-project pattern — use async/await for I/O"
@@ -270,11 +291,14 @@ def test_cross_project_promotion_multiple_projects(tmp_path: Path) -> None:
 
     # Promotion — use real global dir via monkeypatch to avoid pollution
     import superharness.engine.agent_memory as am
+
     with tempfile.TemporaryDirectory() as global_override:
         original = am.GLOBAL_MEMORY_DIR
         try:
             am.GLOBAL_MEMORY_DIR = global_override
             result = promote_to_global(str(proj_a), "pitfalls.md")
-            assert result is True, f"Cross-project promotion should work (count={total})"
+            assert result is True, (
+                f"Cross-project promotion should work (count={total})"
+            )
         finally:
             am.GLOBAL_MEMORY_DIR = original

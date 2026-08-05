@@ -6,6 +6,7 @@ real ~/.claude/projects/ transcripts (SIDE-EFFECT FENCE).
 
 See docs/PLAN-steal-omnigent.md iteration 7.
 """
+
 from __future__ import annotations
 
 import json
@@ -41,12 +42,14 @@ def test_tail_reads_new_lines_from_offset(tmp_path):
 
     offset_after_line2 = len((line1 + line2).encode())
     from superharness.engine.transcript_tail import _set_cursor
+
     _set_cursor(conn, "d1", str(transcript), offset_after_line2)
 
     emitted = tail_step(conn, "d1", transcript)
     assert emitted == 1  # only line3 is a tool_use line after the cursor
 
     from superharness.engine.transcript_tail import _get_cursor
+
     cursor = _get_cursor(conn, "d1")
     assert cursor.byte_offset == len((line1 + line2 + line3).encode())
     conn.close()
@@ -86,8 +89,11 @@ def test_partial_last_line_not_consumed(tmp_path):
     assert emitted == 1  # only the complete line delivered
 
     from superharness.engine.transcript_tail import _get_cursor
+
     cursor = _get_cursor(conn, "d1")
-    assert cursor.byte_offset == len(complete_line.encode())  # partial bytes not consumed
+    assert cursor.byte_offset == len(
+        complete_line.encode()
+    )  # partial bytes not consumed
 
     # Complete the second line and tail again — it must now be delivered exactly once.
     with open(transcript, "a") as f:
@@ -108,7 +114,9 @@ def test_truncated_file_resets_cursor(tmp_path, caplog):
     init_db(conn)
 
     transcript = tmp_path / "session.jsonl"
-    long_line = json.dumps({"type": "tool_use", "name": "Bash", "pad": "x" * 200}) + "\n"
+    long_line = (
+        json.dumps({"type": "tool_use", "name": "Bash", "pad": "x" * 200}) + "\n"
+    )
     _write_lines(transcript, [long_line])
     tail_step(conn, "d1", transcript)  # advances cursor past long_line
 
@@ -119,7 +127,10 @@ def test_truncated_file_resets_cursor(tmp_path, caplog):
     with caplog.at_level(logging.WARNING):
         emitted = tail_step(conn, "d1", transcript)
     assert emitted == 1  # re-read from offset 0 after reset
-    assert any("truncat" in rec.message.lower() or "reset" in rec.message.lower() for rec in caplog.records)
+    assert any(
+        "truncat" in rec.message.lower() or "reset" in rec.message.lower()
+        for rec in caplog.records
+    )
     conn.close()
 
 
@@ -199,6 +210,7 @@ def test_select_transcript_returns_none_when_no_match(tmp_path):
 # Watcher-cycle wiring (docs/PLAN-steal-omnigent.md iteration 7)
 # ---------------------------------------------------------------------------
 
+
 def test_transcript_tail_disabled_by_default_is_noop(clean_harness):
     """Flag off by default: no-op, no dispatch_cursors row created."""
     from superharness.commands.inbox_watch import _run_transcript_tail_if_enabled
@@ -232,18 +244,39 @@ def test_watcher_cycle_tail_step_lands_events_when_enabled(clean_harness, monkey
     conn = get_connection(project_dir)
     try:
         init_db(conn)
-        tasks_dao.upsert(conn, tasks_dao.TaskRow(
-            id="t1", title="T", owner="claude-code", status="in_progress",
-            effort=None, project_path=project_dir, development_method=None,
-            acceptance_criteria=[], test_types=[], out_of_scope=[],
-            definition_of_done=[], context=None, tdd=None,
-            version=1, created_at="2026-01-01T00:00:00Z", blocked_by=[],
-        ))
+        tasks_dao.upsert(
+            conn,
+            tasks_dao.TaskRow(
+                id="t1",
+                title="T",
+                owner="claude-code",
+                status="in_progress",
+                effort=None,
+                project_path=project_dir,
+                development_method=None,
+                acceptance_criteria=[],
+                test_types=[],
+                out_of_scope=[],
+                definition_of_done=[],
+                context=None,
+                tdd=None,
+                version=1,
+                created_at="2026-01-01T00:00:00Z",
+                blocked_by=[],
+            ),
+        )
         conn.commit()
-        inbox_dao.enqueue(conn, id="i1", task_id="t1", target_agent="claude-code",
-                           now="2026-01-01T00:00:00Z")
+        inbox_dao.enqueue(
+            conn,
+            id="i1",
+            task_id="t1",
+            target_agent="claude-code",
+            now="2026-01-01T00:00:00Z",
+        )
         conn.commit()
-        inbox_dao.claim_next(conn, target_agent="claude-code", pid=1234, now="2026-01-01T00:01:00Z")
+        inbox_dao.claim_next(
+            conn, target_agent="claude-code", pid=1234, now="2026-01-01T00:01:00Z"
+        )
         conn.commit()
     finally:
         conn.close()
@@ -255,7 +288,9 @@ def test_watcher_cycle_tail_step_lands_events_when_enabled(clean_harness, monkey
     # ensure mtime is after launched_at ("2026-01-01T00:01:00Z" is in the
     # past relative to "now", so any freshly-written fixture file qualifies)
 
-    monkeypatch.setattr(inbox_watch, "_claude_transcript_dir", lambda project_dir: str(fixture_dir))
+    monkeypatch.setattr(
+        inbox_watch, "_claude_transcript_dir", lambda project_dir: str(fixture_dir)
+    )
 
     events.configure(project_dir)
     inbox_watch._run_transcript_tail_if_enabled(project_dir)

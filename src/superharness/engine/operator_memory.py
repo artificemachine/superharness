@@ -9,6 +9,7 @@ This module gives it a memory layer so it can:
 Schema: a single `operator_memory` table added to the existing
 `.superharness/state.sqlite3` database.
 """
+
 from __future__ import annotations
 
 import sqlite3
@@ -59,7 +60,10 @@ class OperatorMemory:
             self._conn.row_factory = sqlite3.Row
             # Network-aware journal mode (WAL corrupts on NFS); mirrors get_connection.
             from superharness.engine.db import _resolve_journal_mode
-            self._conn.execute(f"PRAGMA journal_mode={_resolve_journal_mode(self._db_path)}")
+
+            self._conn.execute(
+                f"PRAGMA journal_mode={_resolve_journal_mode(self._db_path)}"
+            )
             self._conn.execute("PRAGMA foreign_keys=ON")
             self._conn.execute("PRAGMA busy_timeout=5000")
         return self._conn
@@ -114,7 +118,7 @@ class OperatorMemory:
             )
 
         now = _now_utc()
-        cursor = conn.execute(
+        conn.execute(
             """INSERT INTO operator_memory
                (pattern_signature, resolution, confidence, hit_count, miss_count,
                 created_at, last_used_at)
@@ -223,7 +227,9 @@ class OperatorMemory:
         ).fetchone()
         if row is None:
             try:
-                resolution = (error_snippet.splitlines()[0] if error_snippet else "")[:200]
+                resolution = (error_snippet.splitlines()[0] if error_snippet else "")[
+                    :200
+                ]
                 self.record_new(signature, resolution or "unclassified failure")
             except ValueError:
                 pass  # race: another process beat us to it

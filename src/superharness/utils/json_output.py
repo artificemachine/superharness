@@ -14,6 +14,7 @@ Contract:
 Callers MUST NOT also print human output when --json is set, since that would
 pollute stdout.
 """
+
 from __future__ import annotations
 
 import json

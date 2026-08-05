@@ -1,4 +1,5 @@
 """Tests for _has_sqlite_db XDG awareness — Iteration 5, state isolation."""
+
 from __future__ import annotations
 
 import os
@@ -28,6 +29,7 @@ def test_has_sqlite_db_true_when_xdg_path_exists(monkeypatch, tmp_path):
     _touch_db(resolve_xdg_state_db_path(project))
 
     from superharness.engine.state_reader import _has_sqlite_db
+
     assert _has_sqlite_db(project) is True
 
 
@@ -39,6 +41,7 @@ def test_has_sqlite_db_true_when_legacy_path_exists(monkeypatch, tmp_path):
     _touch_db(legacy)
 
     from superharness.engine.state_reader import _has_sqlite_db
+
     assert _has_sqlite_db(project) is True
 
 
@@ -49,6 +52,7 @@ def test_has_sqlite_db_refuses_override_with_legacy_state(monkeypatch, tmp_path)
     _touch_db(legacy)
 
     from superharness.engine.state_reader import _has_sqlite_db
+
     with pytest.raises(StateDatabaseConflictError):
         _has_sqlite_db(project)
 
@@ -61,4 +65,5 @@ def test_has_sqlite_db_false_when_neither_exists(monkeypatch, tmp_path):
     os.makedirs(project)
 
     from superharness.engine.state_reader import _has_sqlite_db
+
     assert _has_sqlite_db(project) is False

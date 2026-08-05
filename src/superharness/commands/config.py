@@ -4,6 +4,7 @@ Usage:
   shux config get <key>              # e.g. budget.daily_limit, default_model
   shux config set <key> <value>      # e.g. budget.daily_limit 5.00
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -13,6 +14,7 @@ import click
 import yaml
 
 import logging
+
 logger = logging.getLogger(__name__)
 
 
@@ -93,7 +95,7 @@ def config_get(key: str, project: Optional[str]) -> None:
     doc = _load_profile(project_dir)
     val = _get_nested(doc, key)
     if val is None:
-        click.echo(f"(not set)")
+        click.echo("(not set)")
     else:
         click.echo(str(val))
 

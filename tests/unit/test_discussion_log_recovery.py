@@ -41,9 +41,12 @@ def _submission_path(tmp_path) -> str:
 # Happy-path: fenced code block
 # ---------------------------------------------------------------------------
 
+
 class TestFencedBlock:
     def test_recovers_yaml_from_fenced_code_block(self, tmp_path):
-        block = yaml.dump(VALID_SUBMISSION, allow_unicode=True, default_flow_style=False)
+        block = yaml.dump(
+            VALID_SUBMISSION, allow_unicode=True, default_flow_style=False
+        )
         log = _make_log(
             tmp_path,
             "Some preamble\n```yaml\n" + block + "```\nTrailing garbage\n",
@@ -57,13 +60,17 @@ class TestFencedBlock:
         assert recovered["round"] == ROUND
 
     def test_recovers_yaml_from_yml_fenced_block(self, tmp_path):
-        block = yaml.dump(VALID_SUBMISSION, allow_unicode=True, default_flow_style=False)
+        block = yaml.dump(
+            VALID_SUBMISSION, allow_unicode=True, default_flow_style=False
+        )
         log = _make_log(tmp_path, "```yml\n" + block + "```\n")
         out = _submission_path(tmp_path)
         assert _recover_yaml_from_log(log, out, DISC_ID, ROUND, AGENT) is True
 
     def test_creates_parent_directories(self, tmp_path):
-        block = yaml.dump(VALID_SUBMISSION, allow_unicode=True, default_flow_style=False)
+        block = yaml.dump(
+            VALID_SUBMISSION, allow_unicode=True, default_flow_style=False
+        )
         log = _make_log(tmp_path, "```yaml\n" + block + "```\n")
         deep = str(tmp_path / "a" / "b" / "c" / "submission.yaml")
         assert _recover_yaml_from_log(log, deep, DISC_ID, ROUND, AGENT) is True
@@ -73,6 +80,7 @@ class TestFencedBlock:
 # ---------------------------------------------------------------------------
 # Happy-path: raw YAML output (no fenced block)
 # ---------------------------------------------------------------------------
+
 
 class TestRawOutput:
     def test_recovers_yaml_from_raw_output(self, tmp_path):
@@ -87,9 +95,7 @@ class TestRawOutput:
         old["verdict"] = "disagree"
         new = dict(VALID_SUBMISSION)
         new["verdict"] = "agree"
-        content = (
-            yaml.dump(old) + "\nSome noise\n" + yaml.dump(new)
-        )
+        content = yaml.dump(old) + "\nSome noise\n" + yaml.dump(new)
         log = _make_log(tmp_path, content)
         out = _submission_path(tmp_path)
         _recover_yaml_from_log(log, out, DISC_ID, ROUND, AGENT)
@@ -100,6 +106,7 @@ class TestRawOutput:
 # ---------------------------------------------------------------------------
 # Validation: wrong field values are rejected
 # ---------------------------------------------------------------------------
+
 
 class TestValidation:
     def test_rejects_wrong_discussion_id(self, tmp_path):
@@ -144,6 +151,7 @@ class TestValidation:
 # Resilience: corrupt / missing input
 # ---------------------------------------------------------------------------
 
+
 class TestResilience:
     def test_corrupt_yaml_block_skipped_raw_fallback_used(self, tmp_path):
         good_raw = yaml.dump(VALID_SUBMISSION)
@@ -156,7 +164,10 @@ class TestResilience:
 
     def test_missing_log_returns_false(self, tmp_path):
         out = _submission_path(tmp_path)
-        assert _recover_yaml_from_log("/nonexistent/path.log", out, DISC_ID, ROUND, AGENT) is False
+        assert (
+            _recover_yaml_from_log("/nonexistent/path.log", out, DISC_ID, ROUND, AGENT)
+            is False
+        )
 
     def test_empty_log_returns_false(self, tmp_path):
         log = _make_log(tmp_path, "")
@@ -173,8 +184,12 @@ class TestResilience:
         new = dict(VALID_SUBMISSION, verdict="agree")
         log = _make_log(
             tmp_path,
-            "```yaml\n" + yaml.dump(old) + "```\n"
-            + "```yaml\n" + yaml.dump(new) + "```\n",
+            "```yaml\n"
+            + yaml.dump(old)
+            + "```\n"
+            + "```yaml\n"
+            + yaml.dump(new)
+            + "```\n",
         )
         out = _submission_path(tmp_path)
         _recover_yaml_from_log(log, out, DISC_ID, ROUND, AGENT)

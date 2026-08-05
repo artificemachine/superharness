@@ -3,11 +3,13 @@
 Records which skills are used by which agents, on which tasks, and with
 what outcome. Provides aggregated insights for optimization.
 """
+
 from __future__ import annotations
 
 from datetime import datetime, timezone
 
 import logging
+
 logger = logging.getLogger(__name__)
 
 
@@ -21,6 +23,7 @@ def record_skill_usage(
     """Record a skill usage event."""
     try:
         from superharness.engine.db import get_connection, init_db
+
         conn = get_connection(project_dir)
         try:
             init_db(conn)
@@ -36,8 +39,13 @@ def record_skill_usage(
             """)
             conn.execute(
                 "INSERT INTO skill_usage (skill, agent, task_id, outcome, created_at) VALUES (?, ?, ?, ?, ?)",
-                (skill, agent, task_id, outcome,
-                 datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")),
+                (
+                    skill,
+                    agent,
+                    task_id,
+                    outcome,
+                    datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                ),
             )
             conn.commit()
         finally:
@@ -54,6 +62,7 @@ def get_skill_insights(project_dir: str) -> list[dict]:
     """
     try:
         from superharness.engine.db import get_connection, init_db
+
         conn = get_connection(project_dir)
         try:
             init_db(conn)

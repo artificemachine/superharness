@@ -6,6 +6,7 @@ Prevents the class of bugs where:
 - Multiple dist-info directories for superharness coexist in site-packages,
   causing importlib.metadata to return an unpredictable version
 """
+
 from __future__ import annotations
 
 import site
@@ -58,7 +59,7 @@ def test_no_duplicate_dist_info() -> None:
     """
     dist_infos = _superharness_dist_infos()
     assert len(dist_infos) <= 1, (
-        f"Multiple superharness dist-info directories found — stale install:\n"
+        "Multiple superharness dist-info directories found — stale install:\n"
         + "\n".join(f"  {p}" for p in dist_infos)
         + "\nFix: run scripts/dev-reinstall.sh"
     )

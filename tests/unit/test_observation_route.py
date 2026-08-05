@@ -4,6 +4,7 @@ The route is implemented as a pure function (path, conn) -> (payload, status)
 so it can be unit-tested without spinning up the dashboard HTTP server.
 The dashboard handler just delegates to this function.
 """
+
 from __future__ import annotations
 
 import pytest

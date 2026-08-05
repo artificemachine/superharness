@@ -24,12 +24,12 @@ guard didn't cover this specific test-writing mistake). This class
 generalizes the check: no test run may leave a NEW com.superharness.*
 label behind, whatever the cause.
 """
+
 from __future__ import annotations
 
 import os
 import subprocess
 import sys
-import textwrap
 from pathlib import Path
 
 import pytest
@@ -41,6 +41,7 @@ REPO_ROOT = Path(__file__).parent.parent.parent
 # Bug A — session-start.sh must skip launchd auto-install under
 # SUPERHARNESS_NO_AUTO_INSTALL=1
 # ---------------------------------------------------------------------------
+
 
 def test_session_start_skips_launchd_when_no_auto_install_set(tmp_path):
     """session-start.sh must NOT invoke ensure-launchd-inbox-watcher.sh
@@ -81,13 +82,18 @@ def test_session_start_no_launchctl_when_opt_out(tmp_path, monkeypatch):
     fake_launchctl.chmod(0o755)
 
     env = os.environ.copy()
-    env["PATH"] = f"{fake_bin}:{env.get('PATH','')}"
+    env["PATH"] = f"{fake_bin}:{env.get('PATH', '')}"
     env["SUPERHARNESS_NO_AUTO_INSTALL"] = "1"
 
     script = REPO_ROOT / "adapters" / "claude-code" / "hooks" / "session-start.sh"
     subprocess.run(
-        ["bash", str(script)], cwd=str(project), env=env,
-        capture_output=True, text=True, check=False, timeout=10,
+        ["bash", str(script)],
+        cwd=str(project),
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=10,
     )
 
     assert not sentinel.exists(), (
@@ -100,6 +106,7 @@ def test_session_start_no_launchctl_when_opt_out(tmp_path, monkeypatch):
 # Bug B — daemon log must not call rc=0 a "crash"
 # ---------------------------------------------------------------------------
 
+
 def test_daemon_log_distinguishes_clean_exit_from_crash():
     """The daemon monitor must log rc=0 as a clean exit, not a crash.
 
@@ -107,7 +114,9 @@ def test_daemon_log_distinguishes_clean_exit_from_crash():
     log message) out of daemon.py's generated-script string into a real
     module, commands/daemon_monitor.py — updated to read from there.
     """
-    daemon_monitor_py = REPO_ROOT / "src" / "superharness" / "commands" / "daemon_monitor.py"
+    daemon_monitor_py = (
+        REPO_ROOT / "src" / "superharness" / "commands" / "daemon_monitor.py"
+    )
     src = daemon_monitor_py.read_text()
     # The monitor must branch on exit code, not log every exit as a crash.
     has_branch = (
@@ -126,6 +135,7 @@ def test_daemon_log_distinguishes_clean_exit_from_crash():
 # Bug C — service_installer must surface install failures on stderr
 # ---------------------------------------------------------------------------
 
+
 def test_install_launchd_prints_error_on_failure(tmp_path, capsys, monkeypatch):
     """_install_launchd must print to stderr when the install script fails,
     not silently return False — otherwise users see 'Watcher worker is ready'
@@ -141,7 +151,9 @@ def test_install_launchd_prints_error_on_failure(tmp_path, capsys, monkeypatch):
     scripts_dir = tmp_path / "scripts"
     scripts_dir.mkdir()
     fail_script = scripts_dir / "install-launchd-inbox-watcher.sh"
-    fail_script.write_text("#!/bin/bash\necho 'simulated install failure' >&2\nexit 7\n")
+    fail_script.write_text(
+        "#!/bin/bash\necho 'simulated install failure' >&2\nexit 7\n"
+    )
     fail_script.chmod(0o755)
 
     project = tmp_path / "proj"
@@ -150,9 +162,15 @@ def test_install_launchd_prints_error_on_failure(tmp_path, capsys, monkeypatch):
     worker.mkdir()
 
     ok = service_installer._install_launchd(
-        project_dir=project, worker_dir=worker, scripts_dir=scripts_dir,
-        interval=15, recover_timeout=3, recover_action="retry",
-        launcher_timeout=180, to="both", codex_bypass=False,
+        project_dir=project,
+        worker_dir=worker,
+        scripts_dir=scripts_dir,
+        interval=15,
+        recover_timeout=3,
+        recover_action="retry",
+        launcher_timeout=180,
+        to="both",
+        codex_bypass=False,
     )
 
     captured = capsys.readouterr()
@@ -173,6 +191,7 @@ def test_install_launchd_prints_error_on_failure(tmp_path, capsys, monkeypatch):
 # TestNoLaunchdLabelLeaks — PLAN-superharness-L5.md iteration 5
 # ---------------------------------------------------------------------------
 
+
 class TestNoLaunchdLabelLeaks:
     def test_leaked_label_detected(self):
         before = {"com.superharness.inbox.myproject", "com.apple.something"}
@@ -192,6 +211,7 @@ class TestNoLaunchdLabelLeaks:
         install_tests = REPO_ROOT / "tests" / "unit" / "test_install_scripts.py"
         src = install_tests.read_text()
         import re
+
         # Split into individual test function bodies.
         funcs = re.split(r"\ndef (test_\w+)", src)[1:]
         offenders = []
@@ -221,7 +241,9 @@ class TestNoLaunchdLabelLeaks:
 
 def find_leaked_labels(before: set[str], after: set[str]) -> set[str]:
     """Return superharness launchd labels present in `after` but not `before`."""
-    return {label for label in (after - before) if label.startswith("com.superharness.")}
+    return {
+        label for label in (after - before) if label.startswith("com.superharness.")
+    }
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -244,12 +266,15 @@ def _launchd_label_snapshot():
 
 def _has_launchctl() -> bool:
     import shutil
+
     return shutil.which("launchctl") is not None
 
 
 def _current_labels() -> set[str]:
     try:
-        result = subprocess.run(["launchctl", "list"], capture_output=True, text=True, timeout=10)
+        result = subprocess.run(
+            ["launchctl", "list"], capture_output=True, text=True, timeout=10
+        )
     except Exception:
         return set()
     labels = set()

@@ -1,11 +1,12 @@
 """Tests for ntfy module (TDD — RED → GREEN → REFACTOR)."""
+
 from __future__ import annotations
 
 import pytest
+
 pytest.importorskip("requests")
 
 from unittest.mock import Mock, patch
-
 
 
 class TestNtfyModule:
@@ -112,9 +113,14 @@ class TestNtfyModule:
         # Mock environment variable
         with patch.dict("os.environ", {"NTFY_TOPIC": "test-topic"}):
             # Mock requests.post to simulate connection error
-            with patch("requests.post", side_effect=ConnectionError("Server unreachable")):
+            with patch(
+                "requests.post", side_effect=ConnectionError("Server unreachable")
+            ):
                 result = ntfy_send(context, settings)
 
             # Should skip gracefully without crashing
             assert result["success"] is False
-            assert "skipped" in result or "unreachable" in result.get("message", "").lower()
+            assert (
+                "skipped" in result
+                or "unreachable" in result.get("message", "").lower()
+            )

@@ -49,9 +49,7 @@ def create(
     # SET NULL upfront — tasks() may be created later (or may live only in
     # YAML before migration). The FK is intentionally nullable.
     if task_id:
-        exists = conn.execute(
-            "SELECT 1 FROM tasks WHERE id = ?", (task_id,)
-        ).fetchone()
+        exists = conn.execute("SELECT 1 FROM tasks WHERE id = ?", (task_id,)).fetchone()
         if not exists:
             task_id = None
     try:
@@ -130,10 +128,14 @@ def add_round(
         ).fetchone()
         return _row_to_round(row)
     except sqlite3.Error as e:
-        raise StateError(f"Failed to add round to discussion '{discussion_id}': {e}") from e
+        raise StateError(
+            f"Failed to add round to discussion '{discussion_id}': {e}"
+        ) from e
 
 
-def get_rounds(conn: sqlite3.Connection, discussion_id: str) -> list[DiscussionRoundRow]:
+def get_rounds(
+    conn: sqlite3.Connection, discussion_id: str
+) -> list[DiscussionRoundRow]:
     rows = conn.execute(
         "SELECT * FROM discussion_rounds WHERE discussion_id = ? ORDER BY round_number, created_at",
         (discussion_id,),
@@ -193,9 +195,11 @@ def register_yaml_submission(
     try:
         try:
             from superharness.engine.yaml_helpers import safe_load
+
             data = safe_load(yaml_path)
         except Exception:
             import yaml as _yaml
+
             with open(yaml_path) as _f:
                 data = _yaml.safe_load(_f)
         if not isinstance(data, dict):
@@ -208,7 +212,12 @@ def register_yaml_submission(
         valid_verdicts = {"agree", "disagree", "partial", "consensus", "abstain"}
         if verdict not in valid_verdicts:
             import re as _vre
-            matches = [v for v in sorted(valid_verdicts) if _vre.search(r'\b' + _vre.escape(v) + r'\b', verdict)]
+
+            matches = [
+                v
+                for v in sorted(valid_verdicts)
+                if _vre.search(r"\b" + _vre.escape(v) + r"\b", verdict)
+            ]
             if len(matches) >= 3:
                 # All three main options present → copied the prompt verbatim.
                 # Reject instead of silently normalizing — we don't know which
@@ -217,7 +226,10 @@ def register_yaml_submission(
                     "register_yaml_submission: disc=%s round=%d agent=%s — "
                     "rejected prompt-copy verdict '%s' (all options present, "
                     "cannot disambiguate)",
-                    disc_id, round_, agent, verdict,
+                    disc_id,
+                    round_,
+                    agent,
+                    verdict,
                 )
                 return False
             elif len(matches) == 0:
@@ -225,7 +237,10 @@ def register_yaml_submission(
                 _log.warning(
                     "register_yaml_submission: disc=%s round=%d agent=%s — "
                     "rejected invalid verdict '%s'",
-                    disc_id, round_, agent, verdict,
+                    disc_id,
+                    round_,
+                    agent,
+                    verdict,
                 )
                 return False
             else:
@@ -233,7 +248,11 @@ def register_yaml_submission(
                 _log.warning(
                     "register_yaml_submission: disc=%s round=%d agent=%s — "
                     "rejected ambiguous verdict '%s' (matches: %s)",
-                    disc_id, round_, agent, verdict, matches,
+                    disc_id,
+                    round_,
+                    agent,
+                    verdict,
+                    matches,
                 )
                 return False
         position = str(data.get("position") or "")
@@ -248,7 +267,10 @@ def register_yaml_submission(
         )
         _log.info(
             "Registered YAML submission: disc=%s round=%d agent=%s verdict=%s",
-            disc_id, round_, agent, verdict,
+            disc_id,
+            round_,
+            agent,
+            verdict,
         )
         return True
     except Exception as e:

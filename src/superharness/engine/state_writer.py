@@ -20,12 +20,12 @@ from datetime import datetime, timezone
 import yaml
 
 import logging
+
 logger = logging.getLogger(__name__)
 
 
 def _is_running_tests() -> bool:
     """Return True if running inside a pytest session."""
-    import sys
     return "pytest" in sys.modules or os.environ.get("PYTEST_CURRENT_TEST") is not None
 
 
@@ -33,7 +33,9 @@ def _now_utc() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-_ACTIVE_WORK_STATES = frozenset({"in_progress", "launched", "running", "waiting_input", "pending_user_approval"})
+_ACTIVE_WORK_STATES = frozenset(
+    {"in_progress", "launched", "running", "waiting_input", "pending_user_approval"}
+)
 
 
 def _ensure_active_inbox(project_dir: str, task_id: str, owner: str, now: str) -> None:
@@ -45,6 +47,7 @@ def _ensure_active_inbox(project_dir: str, task_id: str, owner: str, now: str) -
     try:
         from superharness.engine.db import get_connection, init_db
         from superharness.engine import inbox_dao
+
         conn = get_connection(project_dir)
         try:
             init_db(conn)
@@ -54,15 +57,26 @@ def _ensure_active_inbox(project_dir: str, task_id: str, owner: str, now: str) -
             ).fetchone()
             if not existing or existing[0] == 0:
                 import uuid
+
                 iid = f"auto-{uuid.uuid4().hex[:6]}"
-                inbox_dao.enqueue(conn, id=iid, task_id=task_id,
-                    target_agent=owner, priority=2, max_retries=3,
-                    project_path=project_dir, plan_only=False, now=now)
+                inbox_dao.enqueue(
+                    conn,
+                    id=iid,
+                    task_id=task_id,
+                    target_agent=owner,
+                    priority=2,
+                    max_retries=3,
+                    project_path=project_dir,
+                    plan_only=False,
+                    now=now,
+                )
                 conn.commit()
         finally:
             conn.close()
     except Exception as e:
         logger.warning("state_writer unexpected error: %s", e, exc_info=True)
+
+
 def set_task_status(
     project_dir: str,
     task_id: str,
@@ -93,6 +107,7 @@ def set_task_status(
             # tests that seed contract.yaml then call set_task_status work.
             try:
                 from superharness.engine.state_reader import _ensure_ingested
+
                 _ensure_ingested(project_dir)
                 task_row = tasks_dao.get(conn, task_id)
             except Exception as e:
@@ -112,6 +127,7 @@ def set_task_status(
         if not force:
             try:
                 from superharness.engine.next_action import validate_status_transition
+
                 validate_status_transition(task_row.status, status)
             except ValueError as e:
                 logger.warning("status transition rejected: %s: %s", task_id, e)
@@ -120,12 +136,24 @@ def set_task_status(
         changes = {"status": status, "updated_at": now}
 
         # Lifecycle timestamps
-        ts_map = {"plan_proposed": "plan_proposed_at", "plan_approved": "plan_approved_at", "in_progress": "in_progress_at", "report_ready": "report_ready_at", "done": "done_at", "failed": "failed_at", "stopped": "stopped_at", "archived": "archived_at", "waiting_input": "updated_at"}
-        if status in ts_map: changes[ts_map[status]] = now
+        ts_map = {
+            "plan_proposed": "plan_proposed_at",
+            "plan_approved": "plan_approved_at",
+            "in_progress": "in_progress_at",
+            "report_ready": "report_ready_at",
+            "done": "done_at",
+            "failed": "failed_at",
+            "stopped": "stopped_at",
+            "archived": "archived_at",
+            "waiting_input": "updated_at",
+        }
+        if status in ts_map:
+            changes[ts_map[status]] = now
 
         # Contract lock: freeze acceptance_criteria + tdd at plan_approved time
         if status == "plan_approved" and not task_row.contract_locked_at:
             import json as _json
+
             snapshot = {
                 "acceptance_criteria": task_row.acceptance_criteria,
                 "tdd": task_row.tdd,
@@ -146,8 +174,14 @@ def set_task_status(
         # Write event stream
         try:
             from superharness.engine.event_stream import write_event
-            write_event(project_dir, "status_change", task_id=task_id,
-                        from_status=task_row.status, to_status=status)
+
+            write_event(
+                project_dir,
+                "status_change",
+                task_id=task_id,
+                from_status=task_row.status,
+                to_status=status,
+            )
         except Exception as e:
             logger.warning("state_writer unexpected error: %s", e, exc_info=True)
         # Typed telemetry event (additive, SQLite-backed; see engine/events.py).
@@ -155,9 +189,14 @@ def set_task_status(
         # this process — never spawns a background thread on its own.
         try:
             from superharness.engine import events
-            events.emit(events.TaskTransition(
-                task_id=task_id, from_status=task_row.status, to_status=status,
-            ))
+
+            events.emit(
+                events.TaskTransition(
+                    task_id=task_id,
+                    from_status=task_row.status,
+                    to_status=status,
+                )
+            )
         except Exception as e:
             logger.warning("state_writer unexpected error: %s", e, exc_info=True)
         # Auto-capture observation snapshot on report_ready transition.
@@ -168,17 +207,23 @@ def set_task_status(
         if status == "report_ready":
             try:
                 from superharness.engine.observation_capture import capture_observation
-                capture_observation(conn, task_id, "report_ready", project_dir=project_dir)
+
+                capture_observation(
+                    conn, task_id, "report_ready", project_dir=project_dir
+                )
             except Exception as e:
                 logger.warning("state_writer unexpected error: %s", e, exc_info=True)
         # Guard: active states must have matching inbox item
         if status in _ACTIVE_WORK_STATES:
-            _ensure_active_inbox(project_dir, task_id, task_row.owner or "claude-code", now)
+            _ensure_active_inbox(
+                project_dir, task_id, task_row.owner or "claude-code", now
+            )
 
         # I5.4: Auto-record review on terminal statuses
         if status in ("done", "review_passed", "failed", "stopped"):
             try:
                 from superharness.engine.behavioral import record_review
+
                 record_review(project_dir, task_id, status)
             except Exception as e:
                 logger.warning("Failed to auto-record review for %s: %s", task_id, e)
@@ -189,6 +234,8 @@ def set_task_status(
         return False
     finally:
         conn.close()
+
+
 def set_inbox_status(
     project_dir: str,
     item_id: str,
@@ -210,7 +257,8 @@ def set_inbox_status(
         # Extract reason for update_status (handles timestamps natively)
         reason = fields.get("failed_reason")
         inbox_dao.update_status(
-            conn, item_id,
+            conn,
+            item_id,
             from_status=row.status,
             to_status=status,
             now=now,
@@ -218,23 +266,48 @@ def set_inbox_status(
         )
 
         # Mirror additional fields (map YAML names → SQLite names, filter valid columns)
-        _COLUMN_MAP = {"task": "task_id", "to": "target_agent", "project": "project_path"}
-        _VALID_COLUMNS = frozenset({
-            "task_id", "target_agent", "project_path",
-            "priority", "retry_count", "max_retries", "pid",
-            "plan_only", "failed_reason", "created_at", "launched_at",
-            "last_heartbeat", "paused_at", "failed_at", "done_at",
-        })
+        _COLUMN_MAP = {
+            "task": "task_id",
+            "to": "target_agent",
+            "project": "project_path",
+        }
+        _VALID_COLUMNS = frozenset(
+            {
+                "task_id",
+                "target_agent",
+                "project_path",
+                "priority",
+                "retry_count",
+                "max_retries",
+                "pid",
+                "plan_only",
+                "failed_reason",
+                "created_at",
+                "launched_at",
+                "last_heartbeat",
+                "paused_at",
+                "failed_at",
+                "done_at",
+            }
+        )
         db_fields: dict[str, object] = {}
         for k, v in fields.items():
             col = _COLUMN_MAP.get(k, k)
-            if col in _VALID_COLUMNS and col not in ("status", "failed_reason", "failed_at", "done_at", "paused_at", "launched_at"):
+            if col in _VALID_COLUMNS and col not in (
+                "status",
+                "failed_reason",
+                "failed_at",
+                "done_at",
+                "paused_at",
+                "launched_at",
+            ):
                 db_fields[col] = v
         if db_fields:
             inbox_dao.set_fields(conn, item_id, **db_fields)
 
         conn.commit()
         from superharness.engine.sqlite_only import is_sqlite_only
+
         if not is_sqlite_only():
             _export_inbox_yaml(project_dir)
         return True
@@ -243,6 +316,8 @@ def set_inbox_status(
         return False
     finally:
         conn.close()
+
+
 def _export_contract_yaml(project_dir: str) -> None:
     """Regenerate contract.yaml from the current SQLite state (export only).
 
@@ -251,14 +326,18 @@ def _export_contract_yaml(project_dir: str) -> None:
     """
     try:
         from superharness.engine.sqlite_only import is_sqlite_only
+
         if is_sqlite_only():
             return  # SQLite is SoT — YAML is not needed for runtime
         from superharness.engine import state_reader, contract_io
+
         doc = state_reader.get_contract_doc(project_dir)
         contract_path = os.path.join(project_dir, ".superharness", "contract.yaml")
         contract_io.write_contract(contract_path, doc)
     except Exception as e:
         logger.warning("state_writer unexpected error: %s", e, exc_info=True)
+
+
 def _export_inbox_yaml(project_dir: str) -> None:
     """Regenerate inbox.yaml from the current SQLite state (export only).
 
@@ -267,16 +346,22 @@ def _export_inbox_yaml(project_dir: str) -> None:
     """
     try:
         from superharness.engine.sqlite_only import is_sqlite_only
+
         if is_sqlite_only():
             return  # SQLite is SoT — YAML is not needed for runtime
         from superharness.engine import state_reader
+
         items = state_reader.get_inbox_items(project_dir)
         inbox_path = os.path.join(project_dir, ".superharness", "inbox.yaml")
         with open(inbox_path, "w", encoding="utf-8") as f:
-            f.write("# Delegation inbox\n# status: pending|launched|running|done|failed|stale\n")
+            f.write(
+                "# Delegation inbox\n# status: pending|launched|running|done|failed|stale\n"
+            )
             yaml.dump(items, f, default_flow_style=False, sort_keys=True)
     except Exception as e:
         logger.warning("state_writer unexpected error: %s", e, exc_info=True)
+
+
 def write_handoff_to_db(
     project_dir: str,
     content: dict,
@@ -302,28 +387,42 @@ def write_handoff_to_db(
         status = content.get("status") or "report_ready"
         frm = content.get("from") or content.get("from_agent")
         to = content.get("to") or content.get("to_agent")
-        created = (content.get("date") or content.get("closed_at")
-                   or content.get("created_at") or now_iso())
+        created = (
+            content.get("date")
+            or content.get("closed_at")
+            or content.get("created_at")
+            or now_iso()
+        )
         try:
-            body = yaml.dump(content, default_flow_style=False,
-                             allow_unicode=True, sort_keys=False)
+            body = yaml.dump(
+                content, default_flow_style=False, allow_unicode=True, sort_keys=False
+            )
         except Exception:
             body = str(content)
 
         with managed_connection(project_dir) as conn:
             # Stub the task row if it doesn't exist (FK guard).
-            if str(tid) and not conn.execute(
-                "SELECT 1 FROM tasks WHERE id = ?", (str(tid),)
-            ).fetchone():
+            if (
+                str(tid)
+                and not conn.execute(
+                    "SELECT 1 FROM tasks WHERE id = ?", (str(tid),)
+                ).fetchone()
+            ):
                 conn.execute(
                     "INSERT OR IGNORE INTO tasks (id, title, status, project_path, created_at, version)"
                     " VALUES (?, ?, 'todo', ?, ?, 1)",
                     (str(tid), str(tid), str(project_dir), str(created)),
                 )
             handoffs_dao.append(
-                conn, task_id=str(tid), phase=str(ph), status=str(status),
-                from_agent=frm, to_agent=to, content=body,
-                metadata=content, now=str(created),
+                conn,
+                task_id=str(tid),
+                phase=str(ph),
+                status=str(status),
+                from_agent=frm,
+                to_agent=to,
+                content=body,
+                metadata=content,
+                now=str(created),
             )
 
             # Self-reported usage (optional): agents with no programmatic usage
@@ -335,9 +434,13 @@ def write_handoff_to_db(
             )
             if has_usage:
                 from superharness.engine import usage_dao
+
                 usage_dao.record(
-                    conn, task_id=str(tid), agent=str(frm) if frm else "unknown",
-                    source="handoff", model=content.get("model"),
+                    conn,
+                    task_id=str(tid),
+                    agent=str(frm) if frm else "unknown",
+                    source="handoff",
+                    model=content.get("model"),
                     input_tokens=content.get("input_tokens"),
                     output_tokens=content.get("output_tokens"),
                     cost_usd=content.get("cost_usd"),
@@ -362,8 +465,10 @@ def backfill_handoffs_from_yaml(project_dir: str) -> dict[str, int]:
 
     counts = {"added": 0, "skipped_dup": 0, "skipped_orphan": 0, "errors": 0}
     handoffs_dir = os.path.join(project_dir, ".superharness", "handoffs")
-    files = sorted(_glob.glob(os.path.join(handoffs_dir, "*.yaml"))
-                   + _glob.glob(os.path.join(handoffs_dir, "*.yml")))
+    files = sorted(
+        _glob.glob(os.path.join(handoffs_dir, "*.yaml"))
+        + _glob.glob(os.path.join(handoffs_dir, "*.yml"))
+    )
     if not files:
         return counts
 
@@ -377,8 +482,12 @@ def backfill_handoffs_from_yaml(project_dir: str) -> dict[str, int]:
                     continue
                 tid = str(content.get("task") or content.get("task_id") or "")
                 phase = str(content.get("phase") or "report")
-                created = str(content.get("date") or content.get("closed_at")
-                              or content.get("created_at") or now_iso())
+                created = str(
+                    content.get("date")
+                    or content.get("closed_at")
+                    or content.get("created_at")
+                    or now_iso()
+                )
                 if tid not in known_tasks:
                     counts["skipped_orphan"] += 1
                     continue
@@ -390,16 +499,24 @@ def backfill_handoffs_from_yaml(project_dir: str) -> dict[str, int]:
                     counts["skipped_dup"] += 1
                     continue
                 try:
-                    body = yaml.dump(content, default_flow_style=False,
-                                     allow_unicode=True, sort_keys=False)
+                    body = yaml.dump(
+                        content,
+                        default_flow_style=False,
+                        allow_unicode=True,
+                        sort_keys=False,
+                    )
                 except Exception:
                     body = str(content)
                 handoffs_dao.append(
-                    conn, task_id=tid, phase=phase,
+                    conn,
+                    task_id=tid,
+                    phase=phase,
                     status=str(content.get("status") or "report_ready"),
                     from_agent=content.get("from") or content.get("from_agent"),
                     to_agent=content.get("to") or content.get("to_agent"),
-                    content=body, metadata=content, now=created,
+                    content=body,
+                    metadata=content,
+                    now=created,
                 )
                 counts["added"] += 1
             except Exception as e:
@@ -415,7 +532,7 @@ def backfill_ledger_from_yaml(project_dir: str) -> dict[str, int]:
     Returns counts: {added, skipped_dup, errors}.
     """
     import re as _re
-    from superharness.engine.db import managed_connection, now_iso
+    from superharness.engine.db import managed_connection
     from superharness.engine import ledger_dao
 
     counts = {"added": 0, "skipped_dup": 0, "errors": 0}
@@ -460,8 +577,9 @@ def backfill_ledger_from_yaml(project_dir: str) -> dict[str, int]:
                 if dup:
                     counts["skipped_dup"] += 1
                     continue
-                ledger_dao.record(conn, agent=agent, action=action,
-                                  details=None, now=ts)
+                ledger_dao.record(
+                    conn, agent=agent, action=action, details=None, now=ts
+                )
                 counts["added"] += 1
             except Exception as e:
                 logger.warning("backfill_ledger_from_yaml: line failed: %s", e)
@@ -492,27 +610,58 @@ def upsert_handoff(project_dir: str, handoff_id: str, content: dict) -> bool:
         return False
 
 
-
-
-_KNOWN_TASK_COLS = frozenset({
-    "title", "owner", "effort", "project_path",
-    "development_method", "acceptance_criteria", "test_types",
-    "out_of_scope", "definition_of_done", "context", "tdd",
-    "created_at", "updated_at", "plan_proposed_at",
-    "plan_approved_at", "in_progress_at", "report_ready_at",
-    "review_requested_at", "done_at", "cancelled_at",
-    "blocked_by_raw", "parent_id", "verified",
-    "verified_at", "verified_by", "deadline_minutes",
-    "failed_at", "stopped_at", "failed_reason", "archived_at",
-    "archived_reason", "model_tier", "pause_reason", "worktree_path",
-    "workflow", "require_tdd", "estimated_minutes",
-    "locked_contract", "contract_locked_at",
-})
+_KNOWN_TASK_COLS = frozenset(
+    {
+        "title",
+        "owner",
+        "effort",
+        "project_path",
+        "development_method",
+        "acceptance_criteria",
+        "test_types",
+        "out_of_scope",
+        "definition_of_done",
+        "context",
+        "tdd",
+        "created_at",
+        "updated_at",
+        "plan_proposed_at",
+        "plan_approved_at",
+        "in_progress_at",
+        "report_ready_at",
+        "review_requested_at",
+        "done_at",
+        "cancelled_at",
+        "blocked_by_raw",
+        "parent_id",
+        "verified",
+        "verified_at",
+        "verified_by",
+        "deadline_minutes",
+        "failed_at",
+        "stopped_at",
+        "failed_reason",
+        "archived_at",
+        "archived_reason",
+        "model_tier",
+        "pause_reason",
+        "worktree_path",
+        "workflow",
+        "require_tdd",
+        "estimated_minutes",
+        "locked_contract",
+        "contract_locked_at",
+    }
+)
 # Fields to skip entirely — either handled elsewhere or not real task columns.
-_SKIP_TASK_FIELDS = frozenset({"id", "status", "version", "blocked_by", "depends_on", "extras_json"})
+_SKIP_TASK_FIELDS = frozenset(
+    {"id", "status", "version", "blocked_by", "depends_on", "extras_json"}
+)
 
 
-def _mirror_task_to_sqlite(project_dir: str, task_id: str, status: str, **fields) -> None:
+def _mirror_task_to_sqlite(
+    project_dir: str, task_id: str, status: str, **fields
+) -> None:
     """Best-effort SQLite sync from state_writer.
 
     Unknown fields (not real task columns) are merged into extras_json so
@@ -522,6 +671,7 @@ def _mirror_task_to_sqlite(project_dir: str, task_id: str, status: str, **fields
         import json as _j
         from superharness.engine.db import get_connection, init_db
         from superharness.engine import tasks_dao
+
         conn = get_connection(project_dir)
         try:
             init_db(conn)
@@ -529,7 +679,15 @@ def _mirror_task_to_sqlite(project_dir: str, task_id: str, status: str, **fields
             if row:
                 now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
                 changes: dict = {"status": status, "updated_at": now}
-                ts_map = {"plan_proposed": "plan_proposed_at", "plan_approved": "plan_approved_at", "in_progress": "in_progress_at", "report_ready": "report_ready_at", "done": "done_at", "failed": "failed_at", "stopped": "stopped_at"}
+                ts_map = {
+                    "plan_proposed": "plan_proposed_at",
+                    "plan_approved": "plan_approved_at",
+                    "in_progress": "in_progress_at",
+                    "report_ready": "report_ready_at",
+                    "done": "done_at",
+                    "failed": "failed_at",
+                    "stopped": "stopped_at",
+                }
                 if status in ts_map:
                     changes[ts_map[status]] = now
                 # Separate known columns from extras
@@ -548,7 +706,9 @@ def _mirror_task_to_sqlite(project_dir: str, task_id: str, status: str, **fields
                         try:
                             existing_extras = _j.loads(row.extras_json) or {}
                         except Exception as e:
-                            logger.warning("state_writer unexpected error: %s", e, exc_info=True)
+                            logger.warning(
+                                "state_writer unexpected error: %s", e, exc_info=True
+                            )
                     existing_extras.update(extras)
                     changes["extras_json"] = _j.dumps(existing_extras)
                 tasks_dao.update(conn, task_id, version=row.version, changes=changes)
@@ -557,7 +717,11 @@ def _mirror_task_to_sqlite(project_dir: str, task_id: str, status: str, **fields
             conn.close()
     except Exception as e:
         logger.warning("state_writer unexpected error: %s", e, exc_info=True)
-def _mirror_inbox_to_sqlite(project_dir: str, item_id: str, status: str, **fields) -> None:
+
+
+def _mirror_inbox_to_sqlite(
+    project_dir: str, item_id: str, status: str, **fields
+) -> None:
     """Best-effort SQLite sync for inbox items from state_writer.
 
     Maps YAML field names (task, to, project) to SQLite column names
@@ -570,16 +734,31 @@ def _mirror_inbox_to_sqlite(project_dir: str, item_id: str, status: str, **field
         "project": "project_path",
     }
     # Valid SQLite inbox columns (prevents SQL errors from extraneous keys)
-    _VALID_COLUMNS = frozenset({
-        "task_id", "target_agent", "project_path", "status",
-        "priority", "retry_count", "max_retries", "pid",
-        "plan_only", "failed_reason", "created_at", "launched_at",
-        "last_heartbeat", "paused_at", "failed_at", "done_at",
-    })
+    _VALID_COLUMNS = frozenset(
+        {
+            "task_id",
+            "target_agent",
+            "project_path",
+            "status",
+            "priority",
+            "retry_count",
+            "max_retries",
+            "pid",
+            "plan_only",
+            "failed_reason",
+            "created_at",
+            "launched_at",
+            "last_heartbeat",
+            "paused_at",
+            "failed_at",
+            "done_at",
+        }
+    )
 
     try:
         from superharness.engine.db import get_connection, init_db
         from superharness.engine import inbox_dao
+
         conn = get_connection(project_dir)
         try:
             init_db(conn)
@@ -589,7 +768,8 @@ def _mirror_inbox_to_sqlite(project_dir: str, item_id: str, status: str, **field
                 # Extract reason for update_status (it handles timestamps natively)
                 reason = fields.get("failed_reason")
                 inbox_dao.update_status(
-                    conn, item_id,
+                    conn,
+                    item_id,
                     from_status=row.status,
                     to_status=status,
                     now=now,
@@ -599,7 +779,14 @@ def _mirror_inbox_to_sqlite(project_dir: str, item_id: str, status: str, **field
                 db_fields: dict[str, object] = {}
                 for k, v in fields.items():
                     col = _COLUMN_MAP.get(k, k)
-                    if col in _VALID_COLUMNS and col not in ("status", "failed_reason", "failed_at", "done_at", "paused_at", "launched_at"):
+                    if col in _VALID_COLUMNS and col not in (
+                        "status",
+                        "failed_reason",
+                        "failed_at",
+                        "done_at",
+                        "paused_at",
+                        "launched_at",
+                    ):
                         db_fields[col] = v
                 if db_fields:
                     inbox_dao.set_fields(conn, item_id, **db_fields)
@@ -608,6 +795,8 @@ def _mirror_inbox_to_sqlite(project_dir: str, item_id: str, status: str, **field
             conn.close()
     except Exception as e:
         logger.warning("state_writer unexpected error: %s", e, exc_info=True)
+
+
 def mirror_task_dict(project_dir: str, task: dict) -> None:
     """Public API to mirror a task dictionary to SQLite."""
     if not isinstance(task, dict):

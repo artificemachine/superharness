@@ -4,12 +4,12 @@ Uses query() for one-shot task dispatch and ClaudeSDKClient for
 stateful sessions. Provides an alternative to subprocess calls
 to the claude CLI.
 """
+
 from __future__ import annotations
 
 import asyncio
 import logging
 import os
-import sys
 from pathlib import Path
 from typing import Any
 
@@ -19,9 +19,13 @@ logger = logging.getLogger(__name__)
 def _find_latest_session(project_dir: str) -> str | None:
     """Find the most recent Claude session ID for a project directory."""
     import glob
+
     safe_path = project_dir.replace("/", "-").replace("\\", "-").replace(":", "-")
     session_dir = os.path.join(
-        os.path.expanduser("~"), ".claude", "projects", safe_path,
+        os.path.expanduser("~"),
+        ".claude",
+        "projects",
+        safe_path,
     )
     if not os.path.isdir(session_dir):
         return None
@@ -40,7 +44,9 @@ def _find_latest_session(project_dir: str) -> str | None:
 
 
 def _start_jsonl_tailer(
-    project_dir: str, log_handle: Any, poll_interval: float = 1.0,
+    project_dir: str,
+    log_handle: Any,
+    poll_interval: float = 1.0,
 ) -> tuple[Any, Any]:
     """Tail the newest Claude session JSONL and pipe assistant text to log_handle.
 
@@ -57,7 +63,10 @@ def _start_jsonl_tailer(
         # Find Claude project session dir
         safe_path = project_dir.replace("/", "-").replace("\\", "-").replace(":", "-")
         session_dir = os.path.join(
-            os.path.expanduser("~"), ".claude", "projects", safe_path,
+            os.path.expanduser("~"),
+            ".claude",
+            "projects",
+            safe_path,
         )
         # Wait briefly for session file to appear
         jsonl_file = None
@@ -101,7 +110,9 @@ def _start_jsonl_tailer(
                             if text:
                                 log_handle.write(text + "\n")
                                 log_handle.flush()
-                        elif isinstance(block, dict) and block.get("type") == "tool_use":
+                        elif (
+                            isinstance(block, dict) and block.get("type") == "tool_use"
+                        ):
                             name = block.get("name", "")
                             if name:
                                 log_handle.write(f"[tool: {name}]\n")
@@ -116,22 +127,23 @@ def _start_jsonl_tailer(
 
 class BudgetExceededError(Exception):
     """Raised when SDK runner exceeds max_budget_usd."""
+
     pass
 
 
-from superharness.engine.config_loader import load_yaml_config
+from superharness.engine.config_loader import load_yaml_config  # noqa: E402
 
 MODEL_PRICING: dict[str, dict[str, float]] = {
-    "claude-opus-4-8":      {"input": 5.00,  "output": 25.00},
-    "claude-opus-4-8[1m]":  {"input": 5.00,  "output": 25.00},
-    "claude-opus-4-7":      {"input": 5.00,  "output": 25.00},
-    "claude-opus-4-7[1m]":  {"input": 5.00,  "output": 25.00},
-    "claude-opus-4-6":      {"input": 5.00,  "output": 25.00},
-    "claude-sonnet-4-6":    {"input": 3.00,  "output": 15.00},
+    "claude-opus-4-8": {"input": 5.00, "output": 25.00},
+    "claude-opus-4-8[1m]": {"input": 5.00, "output": 25.00},
+    "claude-opus-4-7": {"input": 5.00, "output": 25.00},
+    "claude-opus-4-7[1m]": {"input": 5.00, "output": 25.00},
+    "claude-opus-4-6": {"input": 5.00, "output": 25.00},
+    "claude-sonnet-4-6": {"input": 3.00, "output": 15.00},
     "claude-haiku-4-5-20251001": {"input": 0.25, "output": 1.25},
-    "flash":                {"input": 0.10,  "output": 0.40},
-    "pro":                  {"input": 1.25,  "output": 5.00},
-    "ultra":                {"input": 15.00, "output": 75.00},
+    "flash": {"input": 0.10, "output": 0.40},
+    "pro": {"input": 1.25, "output": 5.00},
+    "ultra": {"input": 15.00, "output": 75.00},
 }
 # Keep private alias for backwards compat with internal callers
 _MODEL_PRICING = MODEL_PRICING
@@ -150,26 +162,37 @@ def _load_pricing(project_dir: str | None = None) -> dict[str, dict[str, float]]
         bundled_filename="engine/models.yaml",
         project_dir=project_dir,
         project_filename="models.yaml",
-        fallback={"pricing": MODEL_PRICING}
+        fallback={"pricing": MODEL_PRICING},
     )
     pricing = config.get("pricing", MODEL_PRICING)
-    
+
     if project_dir is None:
         _cached_pricing = pricing
     return pricing
 
 
-def _calculate_cost(model: str | None, input_tokens: int, output_tokens: int, project_dir: str | None = None) -> float:
+def _calculate_cost(
+    model: str | None,
+    input_tokens: int,
+    output_tokens: int,
+    project_dir: str | None = None,
+) -> float:
     """Calculate cost in USD for given token usage."""
     pricing_map = _load_pricing(project_dir)
-    pricing = pricing_map.get(model or "", pricing_map.get("claude-sonnet-4-6", MODEL_PRICING["claude-sonnet-4-6"]))
-    return (input_tokens / 1_000_000) * pricing["input"] + (output_tokens / 1_000_000) * pricing["output"]
+    pricing = pricing_map.get(
+        model or "",
+        pricing_map.get("claude-sonnet-4-6", MODEL_PRICING["claude-sonnet-4-6"]),
+    )
+    return (input_tokens / 1_000_000) * pricing["input"] + (
+        output_tokens / 1_000_000
+    ) * pricing["output"]
 
 
 def _try_import_sdk() -> bool:
     """Check if claude_agent_sdk is available."""
     try:
         import claude_agent_sdk  # noqa: F401
+
         return True
     except ImportError:
         return False
@@ -225,7 +248,7 @@ class SDKRunner:
         Raises:
             BudgetExceededError: If max_budget_usd exceeded
         """
-        from claude_agent_sdk import query, ClaudeAgentOptions, ResultMessage, StreamEvent
+        from claude_agent_sdk import query, ClaudeAgentOptions, ResultMessage
 
         options = ClaudeAgentOptions()
         if self.model:
@@ -257,7 +280,8 @@ class SDKRunner:
         tailer_thread = None
         if log_handle:
             tailer_stop, tailer_thread = _start_jsonl_tailer(
-                str(self.project_dir), log_handle,
+                str(self.project_dir),
+                log_handle,
             )
 
         async def _run() -> str:
@@ -268,7 +292,13 @@ class SDKRunner:
                 if isinstance(event, ResultMessage):
                     result_text = event.result or ""
                     if event.usage:
-                        usage = event.usage if isinstance(event.usage, dict) else vars(event.usage) if hasattr(event.usage, '__dict__') else {}
+                        usage = (
+                            event.usage
+                            if isinstance(event.usage, dict)
+                            else vars(event.usage)
+                            if hasattr(event.usage, "__dict__")
+                            else {}
+                        )
                         input_tokens += usage.get("input_tokens", 0)
                         output_tokens += usage.get("output_tokens", 0)
             return result_text or "".join(text_parts)
@@ -289,7 +319,10 @@ class SDKRunner:
         self.total_output_tokens += output_tokens
         self.total_cost_usd += run_cost
 
-        if self.max_budget_usd is not None and self.total_cost_usd > self.max_budget_usd:
+        if (
+            self.max_budget_usd is not None
+            and self.total_cost_usd > self.max_budget_usd
+        ):
             raise BudgetExceededError(
                 f"Budget exceeded: ${self.total_cost_usd:.4f} > ${self.max_budget_usd:.4f}"
             )

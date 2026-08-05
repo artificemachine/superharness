@@ -12,10 +12,21 @@ T0 = "2026-01-01T00:00:00Z"
 
 def _task(id, status="todo", title="T", owner=None):
     return TaskRow(
-        id=id, title=title, owner=owner, status=status, effort=None,
-        project_path=None, development_method=None, acceptance_criteria=[],
-        test_types=[], out_of_scope=[], definition_of_done=[],
-        context=None, tdd=None, version=1, created_at=T0,
+        id=id,
+        title=title,
+        owner=owner,
+        status=status,
+        effort=None,
+        project_path=None,
+        development_method=None,
+        acceptance_criteria=[],
+        test_types=[],
+        out_of_scope=[],
+        definition_of_done=[],
+        context=None,
+        tdd=None,
+        version=1,
+        created_at=T0,
         blocked_by=[],
     )
 
@@ -32,9 +43,7 @@ def test_parity_clean(db_conn, tmp_path):
     project_dir = str(tmp_path)
 
     tasks_dao.upsert(db_conn, _task("t1"))
-    (sh_dir / "contract.yaml").write_text(
-        yaml.dump({"tasks": [{"id": "t1"}]})
-    )
+    (sh_dir / "contract.yaml").write_text(yaml.dump({"tasks": [{"id": "t1"}]}))
 
     report = parity.check_parity(db_conn, project_dir)
     task_drift = next(d for d in report.drifts if d.table == "tasks")
@@ -49,9 +58,7 @@ def test_parity_drift_only_in_db(db_conn, tmp_path):
 
     tasks_dao.upsert(db_conn, _task("t1"))
     tasks_dao.upsert(db_conn, _task("t2"))
-    (sh_dir / "contract.yaml").write_text(
-        yaml.dump({"tasks": [{"id": "t1"}]})
-    )
+    (sh_dir / "contract.yaml").write_text(yaml.dump({"tasks": [{"id": "t1"}]}))
 
     report = parity.check_parity(db_conn, project_dir)
     task_drift = next(d for d in report.drifts if d.table == "tasks")
@@ -83,9 +90,7 @@ def test_heal_enqueues_ops(db_conn, tmp_path):
     tasks_dao.upsert(db_conn, _task("t1"))
     tasks_dao.upsert(db_conn, _task("t2"))
     # Only t1 in YAML
-    (sh_dir / "contract.yaml").write_text(
-        yaml.dump({"tasks": [{"id": "t1"}]})
-    )
+    (sh_dir / "contract.yaml").write_text(yaml.dump({"tasks": [{"id": "t1"}]}))
 
     report = parity.check_parity(db_conn, project_dir)
     enqueued = parity.heal_parity(db_conn, project_dir, report)
@@ -102,11 +107,15 @@ def test_parity_covers_handoffs(db_conn, tmp_path):
 
     # Task must exist in DB (handoffs FK-reference tasks)
     tasks_dao.upsert(db_conn, _task("t1"))
-    (sh_dir / "contract.yaml").write_text(yaml.dump({"tasks": [{"id": "t1", "title": "T"}]}))
+    (sh_dir / "contract.yaml").write_text(
+        yaml.dump({"tasks": [{"id": "t1", "title": "T"}]})
+    )
 
     # Write a handoff file (YAML-only, no DB row)
     (handoffs_dir / "plan-t1-20260101.yaml").write_text(
-        yaml.dump({"task": "t1", "phase": "plan", "status": "plan_proposed", "date": T0})
+        yaml.dump(
+            {"task": "t1", "phase": "plan", "status": "plan_proposed", "date": T0}
+        )
     )
 
     report = parity.check_parity(db_conn, project_dir)
@@ -123,7 +132,8 @@ def test_parity_covers_failures(db_conn, tmp_path):
     # DB-only failure row
     db_conn.execute(
         "INSERT INTO failures (task_id, agent, pattern, error_snippet, created_at)"
-        " VALUES ('t1','claude-code','timeout','err',?)", (T0,)
+        " VALUES ('t1','claude-code','timeout','err',?)",
+        (T0,),
     )
     db_conn.commit()
     (sh_dir / "failures.yaml").write_text(yaml.dump({"failures": []}))
@@ -139,11 +149,18 @@ def test_parity_covers_decisions(db_conn, tmp_path):
     project_dir = str(tmp_path)
 
     (sh_dir / "decisions.yaml").write_text(
-        yaml.dump({
-            "decisions": [
-                {"agent": "claude-code", "task": "t1", "decision": "use sqlite", "date": T0}
-            ]
-        })
+        yaml.dump(
+            {
+                "decisions": [
+                    {
+                        "agent": "claude-code",
+                        "task": "t1",
+                        "decision": "use sqlite",
+                        "date": T0,
+                    }
+                ]
+            }
+        )
     )
 
     report = parity.check_parity(db_conn, project_dir)
@@ -161,11 +178,17 @@ def test_parity_subtask_nested_in_yaml(db_conn, tmp_path):
     tasks_dao.upsert(db_conn, _task("parent"))
     tasks_dao.upsert(db_conn, _task("sub1"))
     (sh_dir / "contract.yaml").write_text(
-        yaml.dump({
-            "tasks": [
-                {"id": "parent", "title": "Parent", "subtasks": [{"id": "sub1", "title": "Sub"}]}
-            ]
-        })
+        yaml.dump(
+            {
+                "tasks": [
+                    {
+                        "id": "parent",
+                        "title": "Parent",
+                        "subtasks": [{"id": "sub1", "title": "Sub"}],
+                    }
+                ]
+            }
+        )
     )
 
     report = parity.check_parity(db_conn, project_dir)
@@ -203,7 +226,9 @@ def test_heal_parity_is_idempotent(db_conn, tmp_path):
     tasks_dao.upsert(db_conn, _task("t1"))
     tasks_dao.upsert(db_conn, _task("t2"))
     # Use explicit title/status matching the DB row to avoid triggering mismatched drift
-    (sh_dir / "contract.yaml").write_text(yaml.dump({"tasks": [{"id": "t1", "title": "T", "status": "todo"}]}))
+    (sh_dir / "contract.yaml").write_text(
+        yaml.dump({"tasks": [{"id": "t1", "title": "T", "status": "todo"}]})
+    )
 
     report = parity.check_parity(db_conn, project_dir)
     parity.heal_parity(db_conn, project_dir, report)
@@ -279,12 +304,24 @@ def test_parity_clean_after_orchestrator_subtask_normalisation(db_conn, tmp_path
 
     # Seed a parent task (top-level, status="todo")
     tasks_dao.upsert(db_conn, _task("parent"))
-    contract_path.write_text(yaml.dump({"tasks": [{"id": "parent", "title": "T", "status": "todo"}]}))
+    contract_path.write_text(
+        yaml.dump({"tasks": [{"id": "parent", "title": "T", "status": "todo"}]})
+    )
 
     # Simulate orchestrator output: subtasks with NO explicit status field
     raw_subtasks = [
-        {"id": "parent.0", "title": "Sub 0", "model_tier": "standard", "estimated_tokens": 30000},
-        {"id": "parent.1", "title": "Sub 1", "model_tier": "max", "estimated_tokens": 50000},
+        {
+            "id": "parent.0",
+            "title": "Sub 0",
+            "model_tier": "standard",
+            "estimated_tokens": 30000,
+        },
+        {
+            "id": "parent.1",
+            "title": "Sub 1",
+            "model_tier": "max",
+            "estimated_tokens": 50000,
+        },
     ]
 
     # Mimic _write_subtasks_to_contract normalisation (status="pending", owner="claude-code")
@@ -296,12 +333,19 @@ def test_parity_clean_after_orchestrator_subtask_normalisation(db_conn, tmp_path
         normalised.append(st)
 
     # Write nested subtasks into contract.yaml
-    doc = {"tasks": [{"id": "parent", "title": "T", "status": "todo", "subtasks": normalised}]}
+    doc = {
+        "tasks": [
+            {"id": "parent", "title": "T", "status": "todo", "subtasks": normalised}
+        ]
+    }
     contract_path.write_text(yaml.dump(doc))
 
     # Mimic _sqlite_mirror_orchestrate: upsert subtasks with default status="pending"
     for st in raw_subtasks:
-        tasks_dao.upsert(db_conn, _task(st["id"], status="pending", title=st["title"], owner="claude-code"))
+        tasks_dao.upsert(
+            db_conn,
+            _task(st["id"], status="pending", title=st["title"], owner="claude-code"),
+        )
 
     report = parity.check_parity(db_conn, project_dir)
     task_drift = next(d for d in report.drifts if d.table == "tasks")
@@ -314,8 +358,16 @@ def test_parity_clean_after_orchestrator_subtask_normalisation(db_conn, tmp_path
 
 # _heal_handoffs_db_to_yaml: DB→YAML direction for handoff drift
 
-def _insert_handoff(conn, task_id, phase="report", status="report_ready",
-                    from_agent="claude-code", to_agent="owner", created_at=T0):
+
+def _insert_handoff(
+    conn,
+    task_id,
+    phase="report",
+    status="report_ready",
+    from_agent="claude-code",
+    to_agent="owner",
+    created_at=T0,
+):
     conn.execute(
         "INSERT INTO handoffs (task_id, phase, status, from_agent, to_agent, created_at)"
         " VALUES (?,?,?,?,?,?)",
@@ -487,8 +539,12 @@ def test_sqlite_tick_heals_parity_after_drain(tmp_path):
     unhealthy_report = MagicMock()
     unhealthy_report.healthy = False
 
-    with patch("superharness.engine.parity.check_parity", return_value=unhealthy_report) as mock_check, \
-         patch("superharness.engine.parity.heal_parity", return_value=1) as mock_heal:
+    with (
+        patch(
+            "superharness.engine.parity.check_parity", return_value=unhealthy_report
+        ) as mock_check,
+        patch("superharness.engine.parity.heal_parity", return_value=1) as mock_heal,
+    ):
         _sqlite_tick(str(tmp_path), "2026-01-01T00:00:00Z")
 
     mock_check.assert_called_once()

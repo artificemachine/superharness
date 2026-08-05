@@ -4,9 +4,9 @@ Logs every summarizer invocation: provider name, model, success, and
 optional token usage. Used for both cross-process rate limiting (count
 recent calls per provider) and cost tracking surfaced via insights.
 """
+
 from __future__ import annotations
 
-import time
 
 import pytest
 
@@ -39,8 +39,13 @@ def test_summarizer_calls_table_exists(conn):
 def test_summarizer_calls_columns(conn):
     cols = {r["name"] for r in conn.execute("PRAGMA table_info(summarizer_calls)")}
     assert {
-        "id", "provider", "model", "called_at",
-        "success", "input_tokens", "output_tokens",
+        "id",
+        "provider",
+        "model",
+        "called_at",
+        "success",
+        "input_tokens",
+        "output_tokens",
     }.issubset(cols)
 
 
@@ -103,14 +108,18 @@ def test_count_in_window_only_counts_success(conn):
 def test_count_in_window_include_failures_opt_in(conn):
     summarizer_calls.record_call(conn, provider="anthropic", success=True)
     summarizer_calls.record_call(conn, provider="anthropic", success=False)
-    assert summarizer_calls.count_in_window(
-        conn, "anthropic", window_seconds=3600, include_failures=True
-    ) == 2
+    assert (
+        summarizer_calls.count_in_window(
+            conn, "anthropic", window_seconds=3600, include_failures=True
+        )
+        == 2
+    )
 
 
 def test_index_on_provider_called_at(conn):
     names = {
-        r["name"] for r in conn.execute(
+        r["name"]
+        for r in conn.execute(
             "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='summarizer_calls'"
         )
     }

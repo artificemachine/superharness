@@ -2,6 +2,7 @@
 sites (`_pid_is_running`, correct-but-duplicated; `_pid_alive`, broken with no
 Windows branch) must both route through the process seam.
 """
+
 from __future__ import annotations
 
 import os
@@ -34,7 +35,9 @@ def test_watcher_pid_is_running_uses_the_seam(monkeypatch):
         return False
 
     def _fail_if_called(pid, sig):
-        raise AssertionError("inbox_watch._pid_is_running must not call os.kill directly")
+        raise AssertionError(
+            "inbox_watch._pid_is_running must not call os.kill directly"
+        )
 
     monkeypatch.setattr("superharness.engine.process.pid_alive", _recorder)
     monkeypatch.setattr(os, "kill", _fail_if_called)

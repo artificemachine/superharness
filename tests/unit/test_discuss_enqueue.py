@@ -2,13 +2,18 @@
 
 Tests via subprocess: python3 -m superharness.commands.discuss
 """
+
 from __future__ import annotations
 
 import sqlite3
 import subprocess
 import sys
 from pathlib import Path
-from tests.helpers import seed_sqlite_from_yaml, get_task_from_sqlite, seed_sqlite_handoff, seed_sqlite_heartbeat
+from tests.helpers import (
+    seed_sqlite_from_yaml,
+    seed_sqlite_handoff,
+    seed_sqlite_heartbeat,
+)
 
 import pytest
 
@@ -17,14 +22,14 @@ pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="requires bash")
 PYTHON = sys.executable
 
 INBOX_HEADER = (
-    "# Delegation inbox\n"
-    "# status: pending|launched|running|done|failed|stale\n"
+    "# Delegation inbox\n# status: pending|launched|running|done|failed|stale\n"
 )
 
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_project(tmp_path: Path) -> Path:
     project = tmp_path / "proj"
@@ -43,6 +48,7 @@ def _make_project(tmp_path: Path) -> Path:
 
     # Mock heartbeats for participants (v1.69.5 requirement)
     from datetime import datetime, timezone
+
     now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
     seed_sqlite_heartbeat(project, agent="watcher", status="alive", now=now)
     seed_sqlite_heartbeat(project, agent="claude-code", status="alive", now=now)
@@ -64,14 +70,20 @@ def _run_discuss(args: list[str]) -> subprocess.CompletedProcess:
 # Tests
 # ---------------------------------------------------------------------------
 
+
 def test_discuss_start_creates_discussion(tmp_path: Path) -> None:
     project = _make_project(tmp_path)
-    r = _run_discuss([
-        "start",
-        "--project", str(project),
-        "--topic", "Test discussion",
-        "--max-rounds", "2",
-    ])
+    r = _run_discuss(
+        [
+            "start",
+            "--project",
+            str(project),
+            "--topic",
+            "Test discussion",
+            "--max-rounds",
+            "2",
+        ]
+    )
     assert r.returncode == 0, r.stderr
     assert "Discussion started:" in r.stdout
     assert "Topic: Test discussion" in r.stdout
@@ -85,12 +97,17 @@ def test_discuss_start_creates_discussion(tmp_path: Path) -> None:
 @pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
 def test_discuss_start_enqueues_round1(tmp_path: Path) -> None:
     project = _make_project(tmp_path)
-    r = _run_discuss([
-        "start",
-        "--project", str(project),
-        "--topic", "Round 1 test",
-        "--max-rounds", "3",
-    ])
+    r = _run_discuss(
+        [
+            "start",
+            "--project",
+            str(project),
+            "--topic",
+            "Round 1 test",
+            "--max-rounds",
+            "3",
+        ]
+    )
     assert r.returncode == 0, r.stderr
     assert "Enqueued round 1 for claude-code" in r.stdout
     assert "Enqueued round 1 for codex-cli" in r.stdout
@@ -132,7 +149,10 @@ def test_discuss_approve_approves_handoff(tmp_path: Path) -> None:
     # Seed SQLite (source of truth) with task + inbox + handoff state
     seed_sqlite_from_yaml(project)
     seed_sqlite_handoff(
-        project, "approval-task", phase="report", status="pending_user_approval",
+        project,
+        "approval-task",
+        phase="report",
+        status="pending_user_approval",
         content=(
             "task: approval-task\nto: codex-cli\ndate: 2026-03-11\n"
             "status: pending_user_approval\n"
@@ -140,28 +160,38 @@ def test_discuss_approve_approves_handoff(tmp_path: Path) -> None:
         ),
         now="2026-03-11T00:00:00Z",
     )
-    r = _run_discuss([
-        "approve",
-        "--project", str(project),
-        "--task", "approval-task",
-        "--by", "owner",
-        "--note", "Approved in test",
-    ])
+    r = _run_discuss(
+        [
+            "approve",
+            "--project",
+            str(project),
+            "--task",
+            "approval-task",
+            "--by",
+            "owner",
+            "--note",
+            "Approved in test",
+        ]
+    )
     assert r.returncode == 0, r.stderr
     assert "Approved" in r.stdout or "approved" in r.stdout.lower()
     # Approval gate is in SQLite (source of truth); YAML is export-only.
     import sqlite3 as _sql
+
     db = _sql.connect(str(project / ".superharness" / "state.sqlite3"))
     approved_row = db.execute(
         "SELECT metadata FROM handoffs WHERE task_id='approval-task' AND status='approved' LIMIT 1"
     ).fetchone()
     db.close()
-    assert approved_row is not None, "No approved handoff found in SQLite after cmd_approve"
+    assert approved_row is not None, (
+        "No approved handoff found in SQLite after cmd_approve"
+    )
 
 
 # ---------------------------------------------------------------------------
 # Participant floor: max(2, available-1) — prevents minimum-meeting reflex
 # ---------------------------------------------------------------------------
+
 
 class TestParticipantFloor:
     """Tests for the participant floor rule in discuss.py (max(2, available-1))."""
@@ -197,6 +227,7 @@ class TestWatcherIsAlive:
         conn = sqlite3.connect(str(db_path))
         conn.row_factory = sqlite3.Row
         from superharness.engine.db import init_db
+
         init_db(conn)
         conn.commit()
         return conn
@@ -204,6 +235,7 @@ class TestWatcherIsAlive:
     def test_watcher_alive_with_recent_heartbeat(self, tmp_path):
         """When watcher has a recent heartbeat, _watcher_is_alive returns True."""
         from superharness.commands.discuss import _watcher_is_alive
+
         conn = self._setup_db(tmp_path)
         conn.execute(
             "INSERT INTO agent_heartbeats (agent, status, written_at, updated_at, created_at) "
@@ -217,11 +249,13 @@ class TestWatcherIsAlive:
         """No watcher heartbeat → _watcher_is_alive returns False."""
         self._setup_db(tmp_path).close()
         from superharness.commands.discuss import _watcher_is_alive
+
         assert _watcher_is_alive(str(tmp_path)) is False
 
     def test_watcher_not_alive_when_zombie(self, tmp_path):
         """Zombie watcher heartbeat → _watcher_is_alive returns False."""
         from superharness.commands.discuss import _watcher_is_alive
+
         conn = self._setup_db(tmp_path)
         conn.execute(
             "INSERT INTO agent_heartbeats (agent, status, written_at, updated_at, created_at) "

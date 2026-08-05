@@ -17,6 +17,7 @@ Public API:
     telegram_is_configured() / send_via_telegram_direct(text)
     send_notification(text)           — tries relay first, then direct bot
 """
+
 from __future__ import annotations
 
 import json
@@ -26,7 +27,6 @@ import shutil
 import stat
 import subprocess
 from pathlib import Path
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -83,26 +83,37 @@ def _write_env_file_merge(path: Path, updates: dict[str, str]) -> None:
 
 # ----- Relay backend -------------------------------------------------------
 
+
 def load_credentials() -> dict[str, str]:
     """Load relay credentials (file + env-var fallback)."""
     env = _read_env_file(credentials_path())
     return {
-        "relay_token": env.get("SUPERHARNESS_RELAY_TOKEN",
-                               os.environ.get("SUPERHARNESS_RELAY_TOKEN", "")),
-        "relay_ssh_host": env.get("SUPERHARNESS_RELAY_SSH_HOST",
-                                  os.environ.get("SUPERHARNESS_RELAY_SSH_HOST", "")),
-        "relay_dest": env.get("SUPERHARNESS_RELAY_DEST",
-                              os.environ.get("SUPERHARNESS_RELAY_DEST", "telegram")),
+        "relay_token": env.get(
+            "SUPERHARNESS_RELAY_TOKEN", os.environ.get("SUPERHARNESS_RELAY_TOKEN", "")
+        ),
+        "relay_ssh_host": env.get(
+            "SUPERHARNESS_RELAY_SSH_HOST",
+            os.environ.get("SUPERHARNESS_RELAY_SSH_HOST", ""),
+        ),
+        "relay_dest": env.get(
+            "SUPERHARNESS_RELAY_DEST",
+            os.environ.get("SUPERHARNESS_RELAY_DEST", "telegram"),
+        ),
     }
 
 
-def save_credentials(relay_ssh_host: str, relay_token: str, relay_dest: str = "telegram") -> None:
+def save_credentials(
+    relay_ssh_host: str, relay_token: str, relay_dest: str = "telegram"
+) -> None:
     """Persist relay credentials (mode 0600). Merges with existing file content."""
-    _write_env_file_merge(credentials_path(), {
-        "SUPERHARNESS_RELAY_SSH_HOST": relay_ssh_host,
-        "SUPERHARNESS_RELAY_TOKEN": relay_token,
-        "SUPERHARNESS_RELAY_DEST": relay_dest,
-    })
+    _write_env_file_merge(
+        credentials_path(),
+        {
+            "SUPERHARNESS_RELAY_SSH_HOST": relay_ssh_host,
+            "SUPERHARNESS_RELAY_TOKEN": relay_token,
+            "SUPERHARNESS_RELAY_DEST": relay_dest,
+        },
+    )
 
 
 def is_configured() -> bool:
@@ -116,23 +127,31 @@ relay_is_configured = is_configured  # alias for the dual-backend API
 
 # ----- Direct Telegram bot backend -----------------------------------------
 
+
 def load_telegram_credentials() -> dict[str, str]:
     """Load direct-bot credentials (file + env-var fallback)."""
     env = _read_env_file(credentials_path())
     return {
-        "bot_token": env.get("SUPERHARNESS_TELEGRAM_BOT_TOKEN",
-                             os.environ.get("SUPERHARNESS_TELEGRAM_BOT_TOKEN", "")),
-        "chat_id":   env.get("SUPERHARNESS_TELEGRAM_CHAT_ID",
-                             os.environ.get("SUPERHARNESS_TELEGRAM_CHAT_ID", "")),
+        "bot_token": env.get(
+            "SUPERHARNESS_TELEGRAM_BOT_TOKEN",
+            os.environ.get("SUPERHARNESS_TELEGRAM_BOT_TOKEN", ""),
+        ),
+        "chat_id": env.get(
+            "SUPERHARNESS_TELEGRAM_CHAT_ID",
+            os.environ.get("SUPERHARNESS_TELEGRAM_CHAT_ID", ""),
+        ),
     }
 
 
 def save_telegram_credentials(bot_token: str, chat_id: str) -> None:
     """Persist direct-bot credentials (mode 0600)."""
-    _write_env_file_merge(credentials_path(), {
-        "SUPERHARNESS_TELEGRAM_BOT_TOKEN": bot_token,
-        "SUPERHARNESS_TELEGRAM_CHAT_ID": chat_id,
-    })
+    _write_env_file_merge(
+        credentials_path(),
+        {
+            "SUPERHARNESS_TELEGRAM_BOT_TOKEN": bot_token,
+            "SUPERHARNESS_TELEGRAM_CHAT_ID": chat_id,
+        },
+    )
 
 
 def telegram_is_configured() -> bool:
@@ -143,23 +162,32 @@ def telegram_is_configured() -> bool:
 
 # ----- ntfy.sh backend -----------------------------------------------------
 
+
 def load_ntfy_credentials() -> dict[str, str]:
     """Load ntfy.sh credentials (file + env-var fallback)."""
     env = _read_env_file(credentials_path())
     return {
-        "ntfy_topic": env.get("SUPERHARNESS_NTFY_TOPIC",
-                              os.environ.get("SUPERHARNESS_NTFY_TOPIC", "")),
-        "ntfy_server": env.get("SUPERHARNESS_NTFY_SERVER",
-                               os.environ.get("SUPERHARNESS_NTFY_SERVER", "https://ntfy.sh")),
+        "ntfy_topic": env.get(
+            "SUPERHARNESS_NTFY_TOPIC", os.environ.get("SUPERHARNESS_NTFY_TOPIC", "")
+        ),
+        "ntfy_server": env.get(
+            "SUPERHARNESS_NTFY_SERVER",
+            os.environ.get("SUPERHARNESS_NTFY_SERVER", "https://ntfy.sh"),
+        ),
     }
 
 
-def save_ntfy_credentials(ntfy_topic: str, ntfy_server: str = "https://ntfy.sh") -> None:
+def save_ntfy_credentials(
+    ntfy_topic: str, ntfy_server: str = "https://ntfy.sh"
+) -> None:
     """Persist ntfy.sh credentials (mode 0600)."""
-    _write_env_file_merge(credentials_path(), {
-        "SUPERHARNESS_NTFY_TOPIC": ntfy_topic,
-        "SUPERHARNESS_NTFY_SERVER": ntfy_server,
-    })
+    _write_env_file_merge(
+        credentials_path(),
+        {
+            "SUPERHARNESS_NTFY_TOPIC": ntfy_topic,
+            "SUPERHARNESS_NTFY_SERVER": ntfy_server,
+        },
+    )
 
 
 def ntfy_is_configured() -> bool:
@@ -171,6 +199,7 @@ def ntfy_is_configured() -> bool:
 # ---------------------------------------------------------------------------
 # Outbound notification
 # ---------------------------------------------------------------------------
+
 
 def send_notification(
     text: str,
@@ -204,7 +233,8 @@ def send_notification(
     )
     cmd = [
         "ssh",
-        "-o", "ConnectTimeout=5",
+        "-o",
+        "ConnectTimeout=5",
         relay_ssh_host,
         remote_cmd,
     ]
@@ -247,6 +277,7 @@ def send_notification_from_config(text: str) -> bool:
 # Direct Telegram bot — fallback when no relay is configured
 # ---------------------------------------------------------------------------
 
+
 def send_via_telegram_direct(
     text: str,
     *,
@@ -270,7 +301,9 @@ def send_via_telegram_direct(
     url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
     data = urllib.parse.urlencode({"chat_id": chat_id, "text": text}).encode("utf-8")
     req = urllib.request.Request(
-        url, data=data, method="POST",
+        url,
+        data=data,
+        method="POST",
         headers={"Content-Type": "application/x-www-form-urlencoded"},
     )
     try:
@@ -284,12 +317,15 @@ def send_via_telegram_direct(
 def send_via_telegram_direct_from_config(text: str) -> bool:
     """Convenience wrapper: loads direct-bot credentials and sends."""
     c = load_telegram_credentials()
-    return send_via_telegram_direct(text, bot_token=c["bot_token"], chat_id=c["chat_id"])
+    return send_via_telegram_direct(
+        text, bot_token=c["bot_token"], chat_id=c["chat_id"]
+    )
 
 
 # ---------------------------------------------------------------------------
 # ntfy.sh backend — self-hostable, no third-party dependency
 # ---------------------------------------------------------------------------
+
 
 def send_via_ntfy(
     text: str,
@@ -329,6 +365,7 @@ def send_via_ntfy_from_config(text: str) -> bool:
 # Unified dispatch — relay → telegram → ntfy (priority order)
 # ---------------------------------------------------------------------------
 
+
 def dispatch_notification(text: str) -> tuple[bool, str]:
     """Try every configured backend in priority order, falling through on failure.
 
@@ -355,6 +392,7 @@ def dispatch_notification(text: str) -> tuple[bool, str]:
 # Inbound inbox read (for relay-based gateway listener)
 # ---------------------------------------------------------------------------
 
+
 def read_inbox(
     *,
     relay_token: str = "",
@@ -378,7 +416,8 @@ def read_inbox(
     )
     cmd = [
         "ssh",
-        "-o", "ConnectTimeout=5",
+        "-o",
+        "ConnectTimeout=5",
         relay_ssh_host,
         remote_cmd,
     ]

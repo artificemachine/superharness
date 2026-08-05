@@ -1,4 +1,5 @@
 """CLI regression tests for fail-closed discussion state authority."""
+
 from __future__ import annotations
 
 import subprocess

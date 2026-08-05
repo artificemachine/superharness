@@ -15,6 +15,7 @@ Defaults to "successes only" when counting for rate limit purposes so
 that transient transport failures do not eat into the budget. Callers
 that want a full audit count pass `include_failures=True`.
 """
+
 from __future__ import annotations
 
 import sqlite3

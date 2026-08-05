@@ -1,7 +1,5 @@
 """Tests for smart approval state with risk classification."""
-import json
-import os
-import pytest
+
 from superharness.guard.state import ApprovalState
 
 
@@ -45,8 +43,8 @@ class TestApprovalState:
 
     def test_thread_safe_concurrent(self):
         import threading
+
         state = ApprovalState()
-        results = []
 
         def approve_batch():
             for i in range(100):

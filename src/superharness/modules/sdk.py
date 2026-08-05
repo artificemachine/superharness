@@ -66,6 +66,7 @@ Schema validation
     except ManifestValidationError as exc:
         print(exc.errors)
 """
+
 from __future__ import annotations
 
 from .constants import LIFECYCLE_EVENTS

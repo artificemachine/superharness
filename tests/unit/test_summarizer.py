@@ -6,7 +6,10 @@ as the default so the auto-capture loop ships without any external call.
 External providers (Anthropic, Gemini, OpenRouter) are designed to plug
 into the same protocol but are out of scope for this iteration.
 """
+
 from __future__ import annotations
+
+import os
 
 import pytest
 
@@ -65,7 +68,11 @@ def test_noop_handles_empty_context():
 
 def test_noop_strips_private_tags():
     s = NoopSummarizer()
-    ctx = {"task_id": "t-1", "phase": "report_ready", "outcome": "ok <private>secret</private>"}
+    ctx = {
+        "task_id": "t-1",
+        "phase": "report_ready",
+        "outcome": "ok <private>secret</private>",
+    }
     out = s.summarize(ctx)
     assert "secret" not in out
     assert "<private>" not in out
@@ -75,6 +82,12 @@ def test_get_summarizer_default_is_noop(monkeypatch):
     monkeypatch.delenv("SUPERHARNESS_SUMMARIZER", raising=False)
     s = get_summarizer()
     assert isinstance(s, NoopSummarizer)
+
+
+def test_pytest_environment_forces_noop_summarizer():
+    """Normal pytest runs must not inherit a real provider from local config."""
+    assert os.environ.get("SUPERHARNESS_SUMMARIZER") == "noop"
+    assert isinstance(get_summarizer(), NoopSummarizer)
 
 
 def test_get_summarizer_explicit_noop():

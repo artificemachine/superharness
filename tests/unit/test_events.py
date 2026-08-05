@@ -7,6 +7,7 @@ typed, queryable SQLite counterpart.
 
 See docs/PLAN-steal-omnigent.md iteration 4.
 """
+
 from __future__ import annotations
 
 import json
@@ -34,7 +35,9 @@ def test_emit_task_transition_lands_in_db(tmp_path):
     conn.close()
 
     events.configure(project_dir)
-    events.emit(events.TaskTransition(task_id="t1", from_status="todo", to_status="in_progress"))
+    events.emit(
+        events.TaskTransition(task_id="t1", from_status="todo", to_status="in_progress")
+    )
     assert events.flush(timeout=5) is True
 
     conn = get_connection(project_dir)
@@ -64,7 +67,11 @@ def test_emitter_failure_never_raises(monkeypatch, tmp_path, caplog):
     monkeypatch.setattr("superharness.engine.db.get_connection", _raise)
 
     with caplog.at_level(logging.WARNING):
-        events.emit(events.TaskTransition(task_id="t1", from_status="todo", to_status="in_progress"))
+        events.emit(
+            events.TaskTransition(
+                task_id="t1", from_status="todo", to_status="in_progress"
+            )
+        )
         assert events.flush(timeout=5) is True
 
     assert any(rec.levelno == logging.WARNING for rec in caplog.records)
@@ -78,11 +85,22 @@ def test_set_task_status_emits_transition(clean_harness):
     try:
         init_db(conn)
         row = tasks_dao.TaskRow(
-            id="t1", title="T", owner="claude-code", status="todo",
-            effort=None, project_path=project_dir, development_method=None,
-            acceptance_criteria=[], test_types=[], out_of_scope=[],
-            definition_of_done=[], context=None, tdd=None,
-            version=1, created_at="2026-01-01T00:00:00Z", blocked_by=[],
+            id="t1",
+            title="T",
+            owner="claude-code",
+            status="todo",
+            effort=None,
+            project_path=project_dir,
+            development_method=None,
+            acceptance_criteria=[],
+            test_types=[],
+            out_of_scope=[],
+            definition_of_done=[],
+            context=None,
+            tdd=None,
+            version=1,
+            created_at="2026-01-01T00:00:00Z",
+            blocked_by=[],
         )
         tasks_dao.upsert(conn, row)
         conn.commit()
@@ -117,7 +135,11 @@ def test_events_json_payload_is_valid(tmp_path):
 
     events.configure(project_dir)
     events.emit(events.DispatchStarted(task_id="t1", agent="claude-code"))
-    events.emit(events.DispatchFinished(task_id="t1", agent="claude-code", duration_s=1.5, exit_code=0))
+    events.emit(
+        events.DispatchFinished(
+            task_id="t1", agent="claude-code", duration_s=1.5, exit_code=0
+        )
+    )
     assert events.flush(timeout=5) is True
 
     conn = get_connection(project_dir)

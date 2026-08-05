@@ -1,4 +1,5 @@
 """Tests for superharness.engine.schemas and safe_load schema= integration."""
+
 from __future__ import annotations
 
 import os
@@ -12,7 +13,6 @@ from superharness.engine.schemas import (
     ContractTask,
     Handoff,
     Heartbeat,
-    HeartbeatCheck,
     InboxDoc,
     InboxItem,
     InboxStatus,
@@ -127,14 +127,24 @@ def test_contract_task_model_field_optional():
     task = ContractTask.model_validate(VALID_TASK)
     assert task.model is None
 
-    task_with_model = ContractTask.model_validate({**VALID_TASK, "model": "claude-sonnet-4-6"})
+    task_with_model = ContractTask.model_validate(
+        {**VALID_TASK, "model": "claude-sonnet-4-6"}
+    )
     assert task_with_model.model == "claude-sonnet-4-6"
 
 
 def test_contract_task_status_enum_values():
     statuses = [
-        "todo", "plan_proposed", "plan_approved", "in_progress",
-        "report_ready", "review_passed", "pr_open", "done", "failed", "blocked",
+        "todo",
+        "plan_proposed",
+        "plan_approved",
+        "in_progress",
+        "report_ready",
+        "review_passed",
+        "pr_open",
+        "done",
+        "failed",
+        "blocked",
     ]
     for s in statuses:
         task = ContractTask.model_validate({**VALID_TASK, "status": s})
@@ -351,6 +361,7 @@ failures: []
 # ---------------------------------------------------------------------------
 # ship_on_complete field
 # ---------------------------------------------------------------------------
+
 
 def test_ship_on_complete_defaults_false():
     task = ContractTask.model_validate(VALID_TASK)

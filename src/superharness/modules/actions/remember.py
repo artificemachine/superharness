@@ -1,4 +1,5 @@
 """Remember module actions — auto-refresh context from CLAUDE.md and last handoff."""
+
 from __future__ import annotations
 
 import logging
@@ -8,7 +9,9 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 
-def refresh_context(context: dict[str, Any], settings: dict[str, Any]) -> dict[str, Any]:
+def refresh_context(
+    context: dict[str, Any], settings: dict[str, Any]
+) -> dict[str, Any]:
     """Refresh context from CLAUDE.md, contract, and last handoff.
 
     This action is typically fired on `on_continue` lifecycle hook to help
@@ -45,6 +48,7 @@ def refresh_context(context: dict[str, Any], settings: dict[str, Any]) -> dict[s
     # 2. Read contract state from SQLite
     try:
         from superharness.engine import state_reader as _sr
+
         doc = _sr.get_contract_doc(str(project_dir))
         if doc is not None:
             task_count = len(doc.get("tasks") or [])

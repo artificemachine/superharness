@@ -1,10 +1,10 @@
 """Unit tests for Iter 5: BehavioralValidator — HTTP assertion runner."""
+
 from __future__ import annotations
 
 import json
 from unittest.mock import MagicMock, patch
 
-import pytest
 
 from superharness.engine.behavioral_validator import (
     BehavioralStep,
@@ -28,9 +28,17 @@ class TestBehavioralStep:
 
     def test_fails_on_wrong_status(self, monkeypatch):
         import urllib.error
-        with patch("urllib.request.urlopen", side_effect=urllib.error.HTTPError(
-            url="", code=500, msg="err", hdrs=None, fp=None  # type: ignore
-        )):
+
+        with patch(
+            "urllib.request.urlopen",
+            side_effect=urllib.error.HTTPError(
+                url="",
+                code=500,
+                msg="err",
+                hdrs=None,
+                fp=None,  # type: ignore
+            ),
+        ):
             step = BehavioralStep(action="GET /api/status", expect_status=200)
             result = step.run("http://localhost:8787")
         assert result.passed is False
@@ -71,7 +79,11 @@ class TestBehavioralValidatorParsing:
         contract = {
             "behavioral_assertions": [
                 {"action": "GET /api/status", "expect_status": 200},
-                {"action": "GET /api/tasks", "expect_status": 200, "expect_json_key": "tasks"},
+                {
+                    "action": "GET /api/tasks",
+                    "expect_status": 200,
+                    "expect_json_key": "tasks",
+                },
             ]
         }
         validator = BehavioralValidator.parse_plan(contract)
@@ -84,11 +96,13 @@ class TestBehavioralValidatorParsing:
         assert validator.steps == []
 
     def test_from_locked_contract_accepts_json_string(self):
-        contract = json.dumps({
-            "behavioral_assertions": [
-                {"action": "GET /api/status", "expect_status": 200}
-            ]
-        })
+        contract = json.dumps(
+            {
+                "behavioral_assertions": [
+                    {"action": "GET /api/status", "expect_status": 200}
+                ]
+            }
+        )
         validator = BehavioralValidator.from_locked_contract(contract)
         assert len(validator.steps) == 1
 
@@ -112,15 +126,23 @@ class TestBehavioralValidatorParsing:
 
     def test_one_fail_verdict_is_not_passed(self, monkeypatch):
         import urllib.error
+
         contract = {
             "behavioral_assertions": [
                 {"action": "GET /api/status", "expect_status": 200},
             ]
         }
         validator = BehavioralValidator.from_locked_contract(contract)
-        with patch("urllib.request.urlopen", side_effect=urllib.error.HTTPError(
-            url="", code=503, msg="down", hdrs=None, fp=None  # type: ignore
-        )):
+        with patch(
+            "urllib.request.urlopen",
+            side_effect=urllib.error.HTTPError(
+                url="",
+                code=503,
+                msg="down",
+                hdrs=None,
+                fp=None,  # type: ignore
+            ),
+        ):
             verdict = validator.run()
         assert verdict.passed is False
         assert len(verdict.findings) == 1

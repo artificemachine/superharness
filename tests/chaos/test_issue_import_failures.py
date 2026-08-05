@@ -1,4 +1,5 @@
 """Iteration 3: issue_import failure surface — missing CLI, nonzero exit, bad JSON."""
+
 from __future__ import annotations
 
 import subprocess

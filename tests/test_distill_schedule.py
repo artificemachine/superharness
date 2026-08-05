@@ -4,6 +4,7 @@ A `kind: "distill"` schedule entry runs distillation via the existing watcher
 loop (cmd_run), honoring quiet hours, advancing next_run even on failure, and
 leaving existing task-id schedules untouched.
 """
+
 from __future__ import annotations
 
 from datetime import timedelta
@@ -38,13 +39,19 @@ def test_schedule_default_cron(clean_harness):
     """Bare --schedule uses the 3am default."""
     distill_cmd.main(["--project", str(clean_harness), "--schedule"])
     schedules = schedule._load_schedules(schedule._scheduled_path(str(clean_harness)))
-    assert any(s.get("cron") == "0 3 * * *" for s in schedules if s.get("kind") == "distill")
+    assert any(
+        s.get("cron") == "0 3 * * *" for s in schedules if s.get("kind") == "distill"
+    )
 
 
 def test_run_fires_due_distill(clean_harness, monkeypatch):
     """cmd_run invokes the distill job when due and advances next_run."""
     fired = {"n": 0}
-    monkeypatch.setattr(schedule, "_run_distill_job", lambda pd: fired.__setitem__("n", fired["n"] + 1) or True)
+    monkeypatch.setattr(
+        schedule,
+        "_run_distill_job",
+        lambda pd: fired.__setitem__("n", fired["n"] + 1) or True,
+    )
     path = _write_due(clean_harness, {"task_id": "__distill__", "kind": "distill"})
 
     schedule.cmd_run(str(clean_harness))
@@ -56,17 +63,27 @@ def test_run_fires_due_distill(clean_harness, monkeypatch):
 def test_quiet_window_skips(clean_harness, monkeypatch):
     """Distill job respects quiet hours."""
     fired = {"n": 0}
-    monkeypatch.setattr(schedule, "_run_distill_job", lambda pd: fired.__setitem__("n", fired["n"] + 1) or True)
+    monkeypatch.setattr(
+        schedule,
+        "_run_distill_job",
+        lambda pd: fired.__setitem__("n", fired["n"] + 1) or True,
+    )
     _write_due(clean_harness, {"task_id": "__distill__", "kind": "distill"})
     # A quiet window covering the entire day.
-    schedule.cmd_run(str(clean_harness), quiet_hours=[{"start": "00:00", "end": "23:59"}])
+    schedule.cmd_run(
+        str(clean_harness), quiet_hours=[{"start": "00:00", "end": "23:59"}]
+    )
     assert fired["n"] == 0
 
 
 def test_existing_task_schedules_unchanged(clean_harness, monkeypatch):
     """A plain task schedule still enqueues via inbox_enqueue."""
     calls = {"n": 0}
-    monkeypatch.setattr(schedule.inbox_enqueue, "main", lambda argv: calls.__setitem__("n", calls["n"] + 1) or 0)
+    monkeypatch.setattr(
+        schedule.inbox_enqueue,
+        "main",
+        lambda argv: calls.__setitem__("n", calls["n"] + 1) or 0,
+    )
     _write_due(clean_harness, {"task_id": "real-task", "agent": "claude-code"})
     schedule.cmd_run(str(clean_harness))
     assert calls["n"] == 1
@@ -74,6 +91,7 @@ def test_existing_task_schedules_unchanged(clean_harness, monkeypatch):
 
 def test_distill_exception_advances_next_run(clean_harness, monkeypatch):
     """A failing distill job does not wedge the watcher; next_run still advances."""
+
     def boom(pd):
         raise RuntimeError("distill blew up")
 

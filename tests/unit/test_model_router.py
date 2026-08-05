@@ -1,4 +1,5 @@
 """Tests for superharness.engine.model_router."""
+
 from __future__ import annotations
 
 import subprocess
@@ -26,6 +27,7 @@ def test_delegate_wires_chatgpt_auth_override_into_resolution_path():
     docs/bugs/2026-05-11_discuss_dispatch_bugs.md Bug C)."""
     import inspect
     from superharness.commands import delegate as _delegate_mod
+
     src = inspect.getsource(_delegate_mod.delegate)
     assert "_apply_chatgpt_auth_override" in src, (
         "delegate() must call _apply_chatgpt_auth_override on the resolved "
@@ -48,11 +50,14 @@ def test_models_yaml_shipped_as_package_data():
     1.56.0 and 1.56.1; restored in 1.56.2 by adding `engine/*.yaml` to
     [tool.setuptools.package-data] in pyproject.toml."""
     import yaml as _yaml
+
     pkg = resources.files("superharness")
     text = (pkg / "engine" / "models.yaml").read_text()
     doc = _yaml.safe_load(text)
     assert "model_map" in doc
-    assert doc.get("chatgpt_account_overrides", {}).get("gpt-5.3-codex") == "gpt-5-codex"
+    assert (
+        doc.get("chatgpt_account_overrides", {}).get("gpt-5.3-codex") == "gpt-5-codex"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -61,28 +66,38 @@ def test_models_yaml_shipped_as_package_data():
 
 
 class TestResolveModel:
-    @pytest.mark.parametrize("tier,expected", [
-        ("mini", "claude-haiku-4-5-20251001"),
-        ("standard", "claude-sonnet-4-6"),
-        ("max", "claude-opus-4-8"),
-    ])
+    @pytest.mark.parametrize(
+        "tier,expected",
+        [
+            ("mini", "claude-haiku-4-5-20251001"),
+            ("standard", "claude-sonnet-4-6"),
+            ("max", "claude-opus-4-8"),
+        ],
+    )
     def test_claude_code_tiers(self, tier, expected):
         assert resolve_model("claude-code", tier) == expected
 
-    @pytest.mark.parametrize("tier,expected", [
-        ("mini", "gpt-5.1-codex-mini"),
-        ("standard", "gpt-5.3-codex"),
-        ("max", "gpt-5.4"),
-    ])
+    @pytest.mark.parametrize(
+        "tier,expected",
+        [
+            ("mini", "gpt-5.1-codex-mini"),
+            ("standard", "gpt-5.3-codex"),
+            ("max", "gpt-5.4"),
+        ],
+    )
     def test_codex_cli_tiers(self, tier, expected):
         # Force apikey auth so chatgpt_account_overrides does not rewrite
         # gpt-5.3-codex → gpt-5-codex (bundled default since the discuss-
         # dispatch fix).
         from superharness.engine.model_router import _reset_codex_auth_cache
+
         _reset_codex_auth_cache()
-        fake = subprocess.CompletedProcess(args=[], returncode=0,
-                                           stdout="Logged in using API key", stderr="")
-        with mock.patch("superharness.engine.model_router.subprocess.run", return_value=fake):
+        fake = subprocess.CompletedProcess(
+            args=[], returncode=0, stdout="Logged in using API key", stderr=""
+        )
+        with mock.patch(
+            "superharness.engine.model_router.subprocess.run", return_value=fake
+        ):
             assert resolve_model("codex-cli", tier) == expected
 
     def test_unknown_target_returns_sonnet(self):
@@ -113,16 +128,39 @@ class TestResolveTier:
 
 
 @pytest.fixture(autouse=True)
-def mock_no_fleet():
-    with mock.patch("superharness.engine.model_router._load_fleet_config", return_value=None):
+def mock_no_fleet(monkeypatch):
+    # These unit tests validate the agent-routing chain with mocked calls.
+    # The suite-level default remains offline for every other test.
+    monkeypatch.setenv("SUPERHARNESS_TEST_OFFLINE", "0")
+    with mock.patch(
+        "superharness.engine.model_router._load_fleet_config", return_value=None
+    ):
         yield
 
+
 class TestClassifyTask:
+    def test_offline_test_mode_never_invokes_agent_cli(self, monkeypatch):
+        """The default pytest environment must not launch provider CLIs.
+
+        Regression for the public-readiness audit: an unrestricted suite run
+        reached ``discuss start``, which classified the topic by spawning the
+        configured Claude CLI. Offline tests must use deterministic routing.
+        """
+        monkeypatch.setenv("SUPERHARNESS_TEST_OFFLINE", "1")
+
+        with mock.patch(
+            "superharness.engine.model_router._try_classify",
+            side_effect=AssertionError("agent CLI must not run in offline tests"),
+        ):
+            assert classify_task("Implement a feature") == ("standard", "medium")
+
     def test_returns_parsed_tier_and_effort(self):
         fake_result = subprocess.CompletedProcess(
             args=[], returncode=0, stdout="mini low\n", stderr=""
         )
-        with mock.patch("superharness.engine.model_router.subprocess.run", return_value=fake_result):
+        with mock.patch(
+            "superharness.engine.model_router.subprocess.run", return_value=fake_result
+        ):
             tier, effort = classify_task("Fix typo in README")
         assert tier == "mini"
         assert effort == "low"
@@ -131,7 +169,9 @@ class TestClassifyTask:
         fake_result = subprocess.CompletedProcess(
             args=[], returncode=1, stdout="", stderr="error"
         )
-        with mock.patch("superharness.engine.model_router.subprocess.run", return_value=fake_result):
+        with mock.patch(
+            "superharness.engine.model_router.subprocess.run", return_value=fake_result
+        ):
             tier, effort = classify_task("Some task")
         assert tier == "standard"
         assert effort == "medium"
@@ -158,7 +198,9 @@ class TestClassifyTask:
         fake_result = subprocess.CompletedProcess(
             args=[], returncode=0, stdout="standard\n", stderr=""
         )
-        with mock.patch("superharness.engine.model_router.subprocess.run", return_value=fake_result):
+        with mock.patch(
+            "superharness.engine.model_router.subprocess.run", return_value=fake_result
+        ):
             tier, effort = classify_task("Some task")
         assert tier == "standard"
         assert effort == "medium"
@@ -167,7 +209,9 @@ class TestClassifyTask:
         fake_result = subprocess.CompletedProcess(
             args=[], returncode=0, stdout="huge high\n", stderr=""
         )
-        with mock.patch("superharness.engine.model_router.subprocess.run", return_value=fake_result):
+        with mock.patch(
+            "superharness.engine.model_router.subprocess.run", return_value=fake_result
+        ):
             tier, effort = classify_task("Some task")
         assert tier == "standard"
         assert effort == "high"
@@ -176,7 +220,9 @@ class TestClassifyTask:
         fake_result = subprocess.CompletedProcess(
             args=[], returncode=0, stdout="mini extreme\n", stderr=""
         )
-        with mock.patch("superharness.engine.model_router.subprocess.run", return_value=fake_result):
+        with mock.patch(
+            "superharness.engine.model_router.subprocess.run", return_value=fake_result
+        ):
             tier, effort = classify_task("Some task")
         assert tier == "mini"
         assert effort == "medium"
@@ -185,7 +231,9 @@ class TestClassifyTask:
         fake_result = subprocess.CompletedProcess(
             args=[], returncode=0, stdout="standard medium\n", stderr=""
         )
-        with mock.patch("superharness.engine.model_router.subprocess.run", return_value=fake_result) as mock_run:
+        with mock.patch(
+            "superharness.engine.model_router.subprocess.run", return_value=fake_result
+        ) as mock_run:
             classify_task(
                 "Implement search",
                 criteria=["must pass tests", "coverage > 80%"],
@@ -202,7 +250,9 @@ class TestClassifyTask:
         fake_result = subprocess.CompletedProcess(
             args=[], returncode=0, stdout="max high\n", stderr=""
         )
-        with mock.patch("superharness.engine.model_router.subprocess.run", return_value=fake_result):
+        with mock.patch(
+            "superharness.engine.model_router.subprocess.run", return_value=fake_result
+        ):
             tier, effort = classify_task("Architecture redesign")
         assert tier == "max"
         assert effort == "high"
@@ -248,10 +298,12 @@ class TestModelMapCompleteness:
 class TestMultiAgentClassifier:
     def test_classifier_agents_list_has_four_entries(self):
         from superharness.engine.model_router import _CLASSIFIER_AGENTS
+
         assert len(_CLASSIFIER_AGENTS) == 4
 
     def test_classifier_agent_names_are_registered(self):
         from superharness.engine.model_router import _CLASSIFIER_AGENTS
+
         names = [a for a, _ in _CLASSIFIER_AGENTS]
         assert "claude-code" in names
         assert "gemini-cli" in names
@@ -260,6 +312,7 @@ class TestMultiAgentClassifier:
 
     def test_classifier_templates_use_model_and_prompt(self):
         from superharness.engine.model_router import _CLASSIFIER_AGENTS
+
         for _, template in _CLASSIFIER_AGENTS:
             cmd = " ".join(template)
             assert "{model}" in cmd, f"missing {{model}} in {template}"
@@ -267,10 +320,13 @@ class TestMultiAgentClassifier:
 
     def test_try_classify_returns_tier_effort(self):
         from superharness.engine.model_router import _try_classify
+
         fake_result = subprocess.CompletedProcess(
             args=[], returncode=0, stdout="max high\n", stderr=""
         )
-        with mock.patch("superharness.engine.model_router.subprocess.run", return_value=fake_result):
+        with mock.patch(
+            "superharness.engine.model_router.subprocess.run", return_value=fake_result
+        ):
             result = _try_classify(
                 "claude-code",
                 ["claude", "--model", "{model}", "-p", "{prompt}"],
@@ -282,10 +338,13 @@ class TestMultiAgentClassifier:
 
     def test_try_classify_returns_none_on_subprocess_failure(self):
         from superharness.engine.model_router import _try_classify
+
         fake_result = subprocess.CompletedProcess(
             args=[], returncode=1, stdout="", stderr="error"
         )
-        with mock.patch("superharness.engine.model_router.subprocess.run", return_value=fake_result):
+        with mock.patch(
+            "superharness.engine.model_router.subprocess.run", return_value=fake_result
+        ):
             result = _try_classify(
                 "gemini-cli",
                 ["gemini", "-m", "{model}", "-p", "{prompt}"],
@@ -296,6 +355,7 @@ class TestMultiAgentClassifier:
 
     def test_try_classify_returns_none_on_timeout(self):
         from superharness.engine.model_router import _try_classify
+
         with mock.patch(
             "superharness.engine.model_router.subprocess.run",
             side_effect=subprocess.TimeoutExpired(cmd="test", timeout=5),
@@ -310,6 +370,7 @@ class TestMultiAgentClassifier:
 
     def test_try_classify_returns_none_on_missing_cli(self):
         from superharness.engine.model_router import _try_classify
+
         with mock.patch(
             "superharness.engine.model_router.subprocess.run",
             side_effect=FileNotFoundError("not found"),
@@ -324,8 +385,8 @@ class TestMultiAgentClassifier:
 
     def test_classify_task_tries_first_agent_and_succeeds(self):
         """First agent (claude/haiku) responds → no other agents tried."""
-        from superharness.engine.model_router import classify_task, _try_classify
-        real_try = _try_classify
+        from superharness.engine.model_router import classify_task
+
 
         call_count = {"count": 0}
 
@@ -347,8 +408,8 @@ class TestMultiAgentClassifier:
 
     def test_classify_task_falls_through_to_second_agent(self):
         """First agent fails, second agent (gemini) responds."""
-        from superharness.engine.model_router import classify_task, _try_classify
-        real_try = _try_classify
+        from superharness.engine.model_router import classify_task
+
 
         call_count = {"count": 0}
 
@@ -386,18 +447,22 @@ class TestMultiAgentClassifier:
     def test_classify_task_skips_agent_without_mini_model(self):
         """Agent without mini model in the map → skipped gracefully."""
         from superharness.engine.model_router import classify_task
+
         real_map = MODEL_MAP
 
         # Remove gemini's mini entry to simulate missing config
         broken_map = dict(real_map)
         broken_map["gemini-cli"] = {"standard": "gpt-4", "max": "gpt-4o"}
 
-        with mock.patch(
-            "superharness.engine.model_router._load_model_map",
-            return_value=broken_map,
-        ), mock.patch(
-            "superharness.engine.model_router._try_classify",
-        ) as mock_try:
+        with (
+            mock.patch(
+                "superharness.engine.model_router._load_model_map",
+                return_value=broken_map,
+            ),
+            mock.patch(
+                "superharness.engine.model_router._try_classify",
+            ) as mock_try,
+        ):
             mock_try.return_value = None
             tier, effort = classify_task("Some task")
 
@@ -405,10 +470,11 @@ class TestMultiAgentClassifier:
         assert effort == "medium"
         # gemini-cli was never passed to _try_classify (no mini model)
         gemini_called = any(
-            call_args[0][0] == "gemini-cli"
-            for call_args in mock_try.call_args_list
+            call_args[0][0] == "gemini-cli" for call_args in mock_try.call_args_list
         )
-        assert not gemini_called, "gemini-cli should be skipped when mini model is missing"
+        assert not gemini_called, (
+            "gemini-cli should be skipped when mini model is missing"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -419,16 +485,19 @@ class TestMultiAgentClassifier:
 class TestDiscussionTierRouting:
     def test_route_max_primary_gets_max(self):
         from superharness.engine.model_router import route_discussion_tier
+
         assert route_discussion_tier("max", "claude-code") == "max"
         assert route_discussion_tier("max", "opencode") == "max"
 
     def test_route_max_secondary_capped_at_standard(self):
         from superharness.engine.model_router import route_discussion_tier
+
         assert route_discussion_tier("max", "gemini-cli") == "standard"
         assert route_discussion_tier("max", "codex-cli") == "standard"
 
     def test_route_standard_all_same(self):
         from superharness.engine.model_router import route_discussion_tier
+
         assert route_discussion_tier("standard", "claude-code") == "standard"
         assert route_discussion_tier("standard", "gemini-cli") == "standard"
         assert route_discussion_tier("standard", "opencode") == "standard"
@@ -436,16 +505,19 @@ class TestDiscussionTierRouting:
 
     def test_route_mini_all_same(self):
         from superharness.engine.model_router import route_discussion_tier
+
         assert route_discussion_tier("mini", "claude-code") == "mini"
         assert route_discussion_tier("mini", "codex-cli") == "mini"
 
     def test_route_unknown_agent_returns_topic_tier(self):
         from superharness.engine.model_router import route_discussion_tier
+
         assert route_discussion_tier("max", "unknown-agent") == "max"
         assert route_discussion_tier("standard", "unknown-agent") == "standard"
 
     def test_route_unknown_tier_returns_agent_default(self):
         from superharness.engine.model_router import route_discussion_tier
+
         assert route_discussion_tier("nonexistent", "claude-code") == "nonexistent"
 
 
@@ -457,30 +529,45 @@ class TestDiscussionTierRouting:
 class TestDetectCodexAuthMode:
     def setup_method(self):
         from superharness.engine.model_router import _reset_codex_auth_cache
+
         _reset_codex_auth_cache()
 
     def teardown_method(self):
         from superharness.engine.model_router import _reset_codex_auth_cache
+
         _reset_codex_auth_cache()
 
     def test_chatgpt_account_detected(self):
         from superharness.engine.model_router import detect_codex_auth_mode
+
         fake = subprocess.CompletedProcess(
-            args=[], returncode=0, stdout="Logged in using ChatGPT", stderr="",
+            args=[],
+            returncode=0,
+            stdout="Logged in using ChatGPT",
+            stderr="",
         )
-        with mock.patch("superharness.engine.model_router.subprocess.run", return_value=fake):
+        with mock.patch(
+            "superharness.engine.model_router.subprocess.run", return_value=fake
+        ):
             assert detect_codex_auth_mode() == "chatgpt"
 
     def test_apikey_detected(self):
         from superharness.engine.model_router import detect_codex_auth_mode
+
         fake = subprocess.CompletedProcess(
-            args=[], returncode=0, stdout="Logged in using API key", stderr="",
+            args=[],
+            returncode=0,
+            stdout="Logged in using API key",
+            stderr="",
         )
-        with mock.patch("superharness.engine.model_router.subprocess.run", return_value=fake):
+        with mock.patch(
+            "superharness.engine.model_router.subprocess.run", return_value=fake
+        ):
             assert detect_codex_auth_mode() == "apikey"
 
     def test_unknown_when_codex_not_installed(self):
         from superharness.engine.model_router import detect_codex_auth_mode
+
         with mock.patch(
             "superharness.engine.model_router.subprocess.run",
             side_effect=FileNotFoundError(),
@@ -489,11 +576,16 @@ class TestDetectCodexAuthMode:
 
     def test_memoized_across_calls(self):
         from superharness.engine.model_router import detect_codex_auth_mode
+
         fake = subprocess.CompletedProcess(
-            args=[], returncode=0, stdout="Logged in using ChatGPT", stderr="",
+            args=[],
+            returncode=0,
+            stdout="Logged in using ChatGPT",
+            stderr="",
         )
         with mock.patch(
-            "superharness.engine.model_router.subprocess.run", return_value=fake,
+            "superharness.engine.model_router.subprocess.run",
+            return_value=fake,
         ) as run:
             detect_codex_auth_mode()
             detect_codex_auth_mode()
@@ -504,104 +596,158 @@ class TestDetectCodexAuthMode:
 class TestChatgptAuthOverride:
     def setup_method(self):
         from superharness.engine.model_router import _reset_codex_auth_cache
+
         _reset_codex_auth_cache()
 
     def teardown_method(self):
         from superharness.engine.model_router import _reset_codex_auth_cache
+
         _reset_codex_auth_cache()
 
     def _project_with_overrides(self, tmp_path, overrides: dict[str, str]):
         import yaml as _yaml
+
         sh = tmp_path / ".superharness"
         sh.mkdir(parents=True, exist_ok=True)
-        (sh / "models.yaml").write_text(_yaml.safe_dump({
-            "model_map": {
-                "codex-cli": {
-                    "mini": "gpt-5.1-codex-mini",
-                    "standard": "gpt-5.3-codex",
-                    "max": "gpt-5.4",
-                },
-            },
-            "chatgpt_account_overrides": overrides,
-        }))
+        (sh / "models.yaml").write_text(
+            _yaml.safe_dump(
+                {
+                    "model_map": {
+                        "codex-cli": {
+                            "mini": "gpt-5.1-codex-mini",
+                            "standard": "gpt-5.3-codex",
+                            "max": "gpt-5.4",
+                        },
+                    },
+                    "chatgpt_account_overrides": overrides,
+                }
+            )
+        )
         return tmp_path
 
     def test_no_override_when_model_not_in_map(self, tmp_path):
         """No override applies when the project explicitly maps to a model that
         has no chatgpt_account_overrides entry."""
         import yaml as _yaml
+
         sh = tmp_path / ".superharness"
         sh.mkdir(parents=True, exist_ok=True)
         # Use a fictional model with an empty override map so the bundled
         # overrides (which now cover gpt-5.4) do not interfere.
-        (sh / "models.yaml").write_text(_yaml.safe_dump({
-            "model_map": {"codex-cli": {"mini": "gpt-no-override", "standard": "gpt-no-override", "max": "gpt-no-override"}},
-            "chatgpt_account_overrides": {},
-        }))
-        fake = subprocess.CompletedProcess(args=[], returncode=0,
-                                           stdout="Logged in using ChatGPT", stderr="")
-        with mock.patch("superharness.engine.model_router.subprocess.run", return_value=fake):
+        (sh / "models.yaml").write_text(
+            _yaml.safe_dump(
+                {
+                    "model_map": {
+                        "codex-cli": {
+                            "mini": "gpt-no-override",
+                            "standard": "gpt-no-override",
+                            "max": "gpt-no-override",
+                        }
+                    },
+                    "chatgpt_account_overrides": {},
+                }
+            )
+        )
+        fake = subprocess.CompletedProcess(
+            args=[], returncode=0, stdout="Logged in using ChatGPT", stderr=""
+        )
+        with mock.patch(
+            "superharness.engine.model_router.subprocess.run", return_value=fake
+        ):
             from superharness.engine.model_router import resolve_model, _load_model_map
+
             _load_model_map.__globals__["_cached_project_maps"].clear()
             assert resolve_model("codex-cli", "max", str(tmp_path)) == "gpt-no-override"
 
     def test_override_applied_on_chatgpt_auth(self, tmp_path):
         proj = self._project_with_overrides(
-            tmp_path, {"gpt-5.3-codex": "gpt-5-codex"},
+            tmp_path,
+            {"gpt-5.3-codex": "gpt-5-codex"},
         )
-        fake = subprocess.CompletedProcess(args=[], returncode=0,
-                                           stdout="Logged in using ChatGPT", stderr="")
-        with mock.patch("superharness.engine.model_router.subprocess.run", return_value=fake):
+        fake = subprocess.CompletedProcess(
+            args=[], returncode=0, stdout="Logged in using ChatGPT", stderr=""
+        )
+        with mock.patch(
+            "superharness.engine.model_router.subprocess.run", return_value=fake
+        ):
             from superharness.engine.model_router import resolve_model, _load_model_map
+
             _load_model_map.__globals__["_cached_project_maps"].clear()
             assert resolve_model("codex-cli", "standard", str(proj)) == "gpt-5-codex"
 
     def test_override_skipped_on_apikey_auth(self, tmp_path):
         proj = self._project_with_overrides(
-            tmp_path, {"gpt-5.3-codex": "gpt-5-codex"},
+            tmp_path,
+            {"gpt-5.3-codex": "gpt-5-codex"},
         )
-        fake = subprocess.CompletedProcess(args=[], returncode=0,
-                                           stdout="Logged in using API key", stderr="")
-        with mock.patch("superharness.engine.model_router.subprocess.run", return_value=fake):
+        fake = subprocess.CompletedProcess(
+            args=[], returncode=0, stdout="Logged in using API key", stderr=""
+        )
+        with mock.patch(
+            "superharness.engine.model_router.subprocess.run", return_value=fake
+        ):
             from superharness.engine.model_router import resolve_model, _load_model_map
+
             _load_model_map.__globals__["_cached_project_maps"].clear()
             assert resolve_model("codex-cli", "standard", str(proj)) == "gpt-5.3-codex"
 
     def test_override_does_not_affect_other_targets(self, tmp_path):
         proj = self._project_with_overrides(
-            tmp_path, {"gpt-5.3-codex": "gpt-5-codex"},
+            tmp_path,
+            {"gpt-5.3-codex": "gpt-5-codex"},
         )
-        fake = subprocess.CompletedProcess(args=[], returncode=0,
-                                           stdout="Logged in using ChatGPT", stderr="")
-        with mock.patch("superharness.engine.model_router.subprocess.run", return_value=fake):
+        fake = subprocess.CompletedProcess(
+            args=[], returncode=0, stdout="Logged in using ChatGPT", stderr=""
+        )
+        with mock.patch(
+            "superharness.engine.model_router.subprocess.run", return_value=fake
+        ):
             from superharness.engine.model_router import resolve_model, _load_model_map
+
             _load_model_map.__globals__["_cached_project_maps"].clear()
-            assert resolve_model("claude-code", "standard", str(proj)) == "claude-sonnet-4-6"
+            assert (
+                resolve_model("claude-code", "standard", str(proj))
+                == "claude-sonnet-4-6"
+            )
 
     def test_bundled_default_overrides_gpt53codex_on_chatgpt_auth(self, tmp_path):
         """Regression: bundled models.yaml must ship a default
         chatgpt_account_overrides mapping for gpt-5.3-codex so users on a
         ChatGPT-account Codex don't 400 on every `shux discuss` round."""
-        fake = subprocess.CompletedProcess(args=[], returncode=0,
-                                           stdout="Logged in using ChatGPT", stderr="")
-        with mock.patch("superharness.engine.model_router.subprocess.run", return_value=fake):
+        fake = subprocess.CompletedProcess(
+            args=[], returncode=0, stdout="Logged in using ChatGPT", stderr=""
+        )
+        with mock.patch(
+            "superharness.engine.model_router.subprocess.run", return_value=fake
+        ):
             from superharness.engine.model_router import resolve_model, _load_model_map
+
             _load_model_map.__globals__["_cached_project_maps"].clear()
             # No project override — exercises the bundled models.yaml.
-            assert resolve_model("codex-cli", "standard", str(tmp_path)) == "gpt-5-codex"
+            assert (
+                resolve_model("codex-cli", "standard", str(tmp_path)) == "gpt-5-codex"
+            )
 
 
 class TestAuthStatePersistence:
     """persist_agent_auth_state / get_agent_auth_state round-trip and reset_codex_auth_cache."""
 
     def test_persist_and_read_auth_state(self, tmp_path):
-        from superharness.engine.model_router import persist_agent_auth_state, get_agent_auth_state
+        from superharness.engine.model_router import (
+            persist_agent_auth_state,
+            get_agent_auth_state,
+        )
+
         (tmp_path / ".superharness").mkdir()
         persist_agent_auth_state(str(tmp_path), "codex-cli", "chatgpt")
         assert get_agent_auth_state(str(tmp_path), "codex-cli") == "chatgpt"
 
     def test_persist_multiple_agents(self, tmp_path):
-        from superharness.engine.model_router import persist_agent_auth_state, get_agent_auth_state
+        from superharness.engine.model_router import (
+            persist_agent_auth_state,
+            get_agent_auth_state,
+        )
+
         (tmp_path / ".superharness").mkdir()
         persist_agent_auth_state(str(tmp_path), "codex-cli", "chatgpt")
         persist_agent_auth_state(str(tmp_path), "gemini-cli", "apikey")
@@ -609,7 +755,11 @@ class TestAuthStatePersistence:
         assert get_agent_auth_state(str(tmp_path), "gemini-cli") == "apikey"
 
     def test_persist_overwrites_previous(self, tmp_path):
-        from superharness.engine.model_router import persist_agent_auth_state, get_agent_auth_state
+        from superharness.engine.model_router import (
+            persist_agent_auth_state,
+            get_agent_auth_state,
+        )
+
         (tmp_path / ".superharness").mkdir()
         persist_agent_auth_state(str(tmp_path), "codex-cli", "chatgpt")
         persist_agent_auth_state(str(tmp_path), "codex-cli", "apikey")
@@ -617,15 +767,18 @@ class TestAuthStatePersistence:
 
     def test_get_returns_none_for_unknown_agent(self, tmp_path):
         from superharness.engine.model_router import get_agent_auth_state
+
         assert get_agent_auth_state(str(tmp_path), "codex-cli") is None
 
     def test_reset_codex_auth_cache_is_public(self):
         """reset_codex_auth_cache must be importable without underscore prefix."""
         from superharness.engine.model_router import reset_codex_auth_cache
+
         assert callable(reset_codex_auth_cache)
 
     def test_reset_clears_cache_so_next_detect_runs_fresh(self):
         from superharness.engine import model_router as mr
+
         mr._CODEX_AUTH_MODE_CACHE = "chatgpt"
         mr.reset_codex_auth_cache()
         assert mr._CODEX_AUTH_MODE_CACHE is None
@@ -633,6 +786,7 @@ class TestAuthStatePersistence:
     def test_private_alias_still_works_for_existing_tests(self):
         """_reset_codex_auth_cache alias must not be removed (used in older tests)."""
         from superharness.engine.model_router import _reset_codex_auth_cache
+
         assert callable(_reset_codex_auth_cache)
 
     def test_gpt54_chatgpt_override_applied(self, tmp_path):
@@ -640,22 +794,34 @@ class TestAuthStatePersistence:
         Regression: gpt-5.4 resolves internally to gpt-5.5 which ChatGPT rejects."""
         import subprocess
         from unittest import mock
-        fake = subprocess.CompletedProcess(args=[], returncode=0,
-                                           stdout="Logged in using ChatGPT", stderr="")
-        with mock.patch("superharness.engine.model_router.subprocess.run", return_value=fake):
-            from superharness.engine.model_router import resolve_model, _load_model_map, _reset_codex_auth_cache
+
+        fake = subprocess.CompletedProcess(
+            args=[], returncode=0, stdout="Logged in using ChatGPT", stderr=""
+        )
+        with mock.patch(
+            "superharness.engine.model_router.subprocess.run", return_value=fake
+        ):
+            from superharness.engine.model_router import (
+                resolve_model,
+                _load_model_map,
+                _reset_codex_auth_cache,
+            )
+
             _reset_codex_auth_cache()
             _load_model_map.__globals__["_cached_project_maps"].clear()
             result = resolve_model("codex-cli", "max", str(tmp_path))
         assert result == "gpt-5-codex", f"expected gpt-5-codex, got {result}"
 
-    def test_persist_preserves_quota_limited_until_when_updating_auth_mode(self, tmp_path):
+    def test_persist_preserves_quota_limited_until_when_updating_auth_mode(
+        self, tmp_path
+    ):
         """persist_agent_auth_state must not clobber quota_limited_until."""
         from superharness.engine.model_router import (
             persist_agent_auth_state,
             set_agent_quota_limited,
             is_agent_quota_limited,
         )
+
         (tmp_path / ".superharness").mkdir()
         set_agent_quota_limited(str(tmp_path), "gemini-cli", reset_minutes=120)
         assert is_agent_quota_limited(str(tmp_path), "gemini-cli")
@@ -671,17 +837,26 @@ class TestQuotaState:
 
     def test_not_limited_when_no_state(self, tmp_path):
         from superharness.engine.model_router import is_agent_quota_limited
+
         (tmp_path / ".superharness").mkdir()
         assert not is_agent_quota_limited(str(tmp_path), "gemini-cli")
 
     def test_limited_after_set(self, tmp_path):
-        from superharness.engine.model_router import set_agent_quota_limited, is_agent_quota_limited
+        from superharness.engine.model_router import (
+            set_agent_quota_limited,
+            is_agent_quota_limited,
+        )
+
         (tmp_path / ".superharness").mkdir()
         set_agent_quota_limited(str(tmp_path), "gemini-cli", reset_minutes=60)
         assert is_agent_quota_limited(str(tmp_path), "gemini-cli")
 
     def test_different_agents_independent(self, tmp_path):
-        from superharness.engine.model_router import set_agent_quota_limited, is_agent_quota_limited
+        from superharness.engine.model_router import (
+            set_agent_quota_limited,
+            is_agent_quota_limited,
+        )
+
         (tmp_path / ".superharness").mkdir()
         set_agent_quota_limited(str(tmp_path), "gemini-cli", reset_minutes=60)
         assert not is_agent_quota_limited(str(tmp_path), "codex-cli")
@@ -691,6 +866,7 @@ class TestQuotaState:
         """An expiry in the past must read as not limited."""
         import json
         from superharness.engine.model_router import is_agent_quota_limited
+
         sh = tmp_path / ".superharness"
         sh.mkdir()
         # Write an already-expired quota timestamp
@@ -701,6 +877,7 @@ class TestQuotaState:
 
     def test_corrupted_state_file_returns_false(self, tmp_path):
         from superharness.engine.model_router import is_agent_quota_limited
+
         sh = tmp_path / ".superharness"
         sh.mkdir()
         (sh / "agent-auth-state.json").write_text("not valid json{{{")
@@ -709,4 +886,5 @@ class TestQuotaState:
     def test_quota_state_file_no_superharness_dir(self, tmp_path):
         """Missing .superharness dir must not raise — returns False."""
         from superharness.engine.model_router import is_agent_quota_limited
+
         assert not is_agent_quota_limited(str(tmp_path), "gemini-cli")

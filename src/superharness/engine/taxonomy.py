@@ -5,44 +5,46 @@ VALID_EFFORTS: tuple[str, ...] = ("low", "medium", "high", "xhigh", "max")
 EFFORT_ORDER: list[str] = list(VALID_EFFORTS)
 
 EFFORT_TO_TIER_VERSION: dict[str, tuple[str, str]] = {
-    "low":    ("standard", "*"),
+    "low": ("standard", "*"),
     "medium": ("standard", "*"),
-    "high":   ("standard", "*"),
-    "xhigh":  ("max",      "*"),
-    "max":    ("max",      "*"),
+    "high": ("standard", "*"),
+    "xhigh": ("max", "*"),
+    "max": ("max", "*"),
 }
 
 DEFAULT_MODEL_PER_EFFORT: dict[str, str] = {
-    "low":    "claude-sonnet-4-6",
+    "low": "claude-sonnet-4-6",
     "medium": "claude-sonnet-4-6",
-    "high":   "claude-sonnet-4-6",
-    "xhigh":  flagship(),
-    "max":    flagship(),
+    "high": "claude-sonnet-4-6",
+    "xhigh": flagship(),
+    "max": flagship(),
 }
 
 DEFAULT_TIMEOUT_PER_EFFORT: dict[str, int] = {
-    "low":    10,
+    "low": 10,
     "medium": 15,
-    "high":   20,
-    "xhigh":  25,
-    "max":    30,
+    "high": 20,
+    "xhigh": 25,
+    "max": 30,
 }
 
-OPUS_KEYWORDS: frozenset[str] = frozenset({
-    "oauth",
-    "migration",
-    "security audit",
-    "architecture",
-    "irreversible",
-    "compliance",
-    "gdpr",
-    "hipaa",
-    "iec 62304",
-    "schema migration",
-    "crypto",
-    "auth design",
-    "post-mortem",
-})
+OPUS_KEYWORDS: frozenset[str] = frozenset(
+    {
+        "oauth",
+        "migration",
+        "security audit",
+        "architecture",
+        "irreversible",
+        "compliance",
+        "gdpr",
+        "hipaa",
+        "iec 62304",
+        "schema migration",
+        "crypto",
+        "auth design",
+        "post-mortem",
+    }
+)
 
 # Token threshold above which effort=max auto-promotes to the max-1m tier.
 # Based on Anthropic's 1M context beta: pricing is ~2× input / 1.5× output

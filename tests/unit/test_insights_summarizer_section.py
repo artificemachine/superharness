@@ -1,4 +1,5 @@
 """Tests for the new summarizer section in get_insights()."""
+
 from __future__ import annotations
 
 import pytest
@@ -28,10 +29,12 @@ def test_summarizer_section_empty_when_no_calls(project_dir):
 def test_summarizer_section_returns_per_provider(project_dir):
     conn = get_connection(project_dir)
     try:
-        summarizer_calls.record_call(conn, provider="anthropic", success=True,
-                                     input_tokens=100, output_tokens=20)
-        summarizer_calls.record_call(conn, provider="anthropic", success=True,
-                                     input_tokens=200, output_tokens=40)
+        summarizer_calls.record_call(
+            conn, provider="anthropic", success=True, input_tokens=100, output_tokens=20
+        )
+        summarizer_calls.record_call(
+            conn, provider="anthropic", success=True, input_tokens=200, output_tokens=40
+        )
         summarizer_calls.record_call(conn, provider="anthropic", success=False)
         summarizer_calls.record_call(conn, provider="opencode", success=True)
     finally:
@@ -78,13 +81,15 @@ def test_summarizer_cli_renders_section(tmp_path, capsys, monkeypatch):
     try:
         init_db(c, str(project_dir))
         summarizer_calls.record_call(c, provider="opencode", success=True)
-        summarizer_calls.record_call(c, provider="anthropic", success=True,
-                                     input_tokens=100, output_tokens=20)
+        summarizer_calls.record_call(
+            c, provider="anthropic", success=True, input_tokens=100, output_tokens=20
+        )
     finally:
         c.close()
 
     monkeypatch.chdir(project_dir)
     from superharness.commands.insights import main
+
     main(["-p", str(project_dir)])
     out = capsys.readouterr().out
     assert "── summarizer" in out

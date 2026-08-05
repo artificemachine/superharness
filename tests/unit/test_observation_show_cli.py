@@ -3,6 +3,7 @@
 Verifies exit codes and stdout shape. Uses click's CliRunner against the
 in-process command registered on the main CLI group.
 """
+
 from __future__ import annotations
 
 import json

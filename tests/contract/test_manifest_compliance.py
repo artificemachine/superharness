@@ -5,16 +5,18 @@ Covers:
 - Model resolution works for all tiers
 - All manifests can be loaded and validated
 """
+
 from __future__ import annotations
 
-import subprocess
 from pathlib import Path
 
 import pytest
 import yaml
 
 
-MANIFEST_DIR = Path(__file__).parent.parent.parent / "src" / "superharness" / "adapter_manifests"
+MANIFEST_DIR = (
+    Path(__file__).parent.parent.parent / "src" / "superharness" / "adapter_manifests"
+)
 
 
 def _load_manifest(name: str) -> dict:
@@ -37,6 +39,7 @@ def _all_manifests() -> list[tuple[str, dict]]:
 
 
 # ── Manifest structure ────────────────────────────────────────────────────────
+
 
 class TestManifestStructure:
     """All manifests must have required fields."""
@@ -70,6 +73,7 @@ class TestManifestStructure:
 
 # ── Model resolution ──────────────────────────────────────────────────────────
 
+
 class TestModelResolution:
     """Model resolution must return valid models for all owners and tiers."""
 
@@ -78,6 +82,7 @@ class TestModelResolution:
     def test_resolve_model_returns_value(self, name, manifest, tier):
         """resolve_model returns a non-empty string for every tier."""
         from superharness.engine.adapter_registry import resolve_model
+
         result = resolve_model(name, tier)
         assert result, f"{name}/{tier}: resolve_model returned empty"
         assert "id" in result or isinstance(result, str), f"{name}/{tier}: no model id"
@@ -86,16 +91,20 @@ class TestModelResolution:
     def test_tiers_are_different(self, name, manifest):
         """All three tiers should resolve to different models."""
         from superharness.engine.adapter_registry import resolve_model
+
         models = {}
         for tier in ("mini", "standard", "max"):
             result = resolve_model(name, tier)
             model_id = result.get("id", result) if isinstance(result, dict) else result
             models[tier] = model_id
         # At least max should differ from mini/standard
-        assert models["max"] != models["mini"], f"{name}: max and mini resolve to same model"
+        assert models["max"] != models["mini"], (
+            f"{name}: max and mini resolve to same model"
+        )
 
 
 # ── Orchestrator chain ────────────────────────────────────────────────────────
+
 
 class TestOrchestratorChain:
     """Orchestrator chain models must match manifests."""
@@ -125,7 +134,10 @@ class TestOrchestratorChain:
     def test_chain_models_match_manifest_max(self):
         """Orchestrator chain max-tier models match manifest max-tier."""
         from superharness.engine.orchestrator import _ORCHESTRATOR_CHAIN
-        from superharness.engine.adapter_registry import resolve_model, clear_manifest_cache
+        from superharness.engine.adapter_registry import (
+            resolve_model,
+            clear_manifest_cache,
+        )
 
         # Ensure fresh manifest cache
         clear_manifest_cache()
@@ -159,14 +171,21 @@ class TestOrchestratorChain:
 
 # ── Model resolution edge cases ───────────────────────────────────────────────
 
+
 class TestModelResolutionEdgeCases:
     """Model resolution for all owners and tiers."""
 
-    @pytest.mark.parametrize("owner", ["claude-code", "codex-cli", "gemini-cli", "opencode"])
+    @pytest.mark.parametrize(
+        "owner", ["claude-code", "codex-cli", "gemini-cli", "opencode"]
+    )
     @pytest.mark.parametrize("tier", ["mini", "standard", "max"])
     def test_resolve_returns_non_empty(self, owner, tier):
         """Every owner×tier combo resolves to a non-empty string."""
-        from superharness.engine.adapter_registry import resolve_model, clear_manifest_cache
+        from superharness.engine.adapter_registry import (
+            resolve_model,
+            clear_manifest_cache,
+        )
+
         clear_manifest_cache()
         result = resolve_model(owner, tier)
         if isinstance(result, dict):
@@ -174,31 +193,61 @@ class TestModelResolutionEdgeCases:
             assert result.get("label"), f"{owner}/{tier}: no label in result {result}"
         else:
             assert result, f"{owner}/{tier}: empty result"
-            assert isinstance(result, str), f"{owner}/{tier}: unexpected type {type(result)}"
+            assert isinstance(result, str), (
+                f"{owner}/{tier}: unexpected type {type(result)}"
+            )
 
-    @pytest.mark.parametrize("owner", ["claude-code", "codex-cli", "gemini-cli", "opencode"])
+    @pytest.mark.parametrize(
+        "owner", ["claude-code", "codex-cli", "gemini-cli", "opencode"]
+    )
     def test_max_tier_resolves_different_from_mini(self, owner):
         """Max tier should not return the same model as mini tier."""
-        from superharness.engine.adapter_registry import resolve_model, clear_manifest_cache
+        from superharness.engine.adapter_registry import (
+            resolve_model,
+            clear_manifest_cache,
+        )
+
         clear_manifest_cache()
         max_result = resolve_model(owner, "max")
         mini_result = resolve_model(owner, "mini")
-        max_id = max_result.get("id", max_result) if isinstance(max_result, dict) else max_result
-        mini_id = mini_result.get("id", mini_result) if isinstance(mini_result, dict) else mini_result
-        assert max_id != mini_id, f"{owner}: max and mini resolve to same model '{max_id}'"
+        max_id = (
+            max_result.get("id", max_result)
+            if isinstance(max_result, dict)
+            else max_result
+        )
+        mini_id = (
+            mini_result.get("id", mini_result)
+            if isinstance(mini_result, dict)
+            else mini_result
+        )
+        assert max_id != mini_id, (
+            f"{owner}: max and mini resolve to same model '{max_id}'"
+        )
 
-    @pytest.mark.parametrize("owner", ["claude-code", "codex-cli", "gemini-cli", "opencode"])
+    @pytest.mark.parametrize(
+        "owner", ["claude-code", "codex-cli", "gemini-cli", "opencode"]
+    )
     def test_invalid_tier_returns_fallback(self, owner):
         """Invalid tier should not crash."""
-        from superharness.engine.adapter_registry import resolve_model, clear_manifest_cache
+        from superharness.engine.adapter_registry import (
+            resolve_model,
+            clear_manifest_cache,
+        )
+
         clear_manifest_cache()
         result = resolve_model(owner, "nonexistent")
         assert result is not None  # don't crash, return something
 
-    @pytest.mark.parametrize("owner", ["claude-code", "codex-cli", "gemini-cli", "opencode"])
+    @pytest.mark.parametrize(
+        "owner", ["claude-code", "codex-cli", "gemini-cli", "opencode"]
+    )
     def test_resolve_after_cache_clear_is_consistent(self, owner):
         """resolve_model returns same result after cache clear."""
-        from superharness.engine.adapter_registry import resolve_model, clear_manifest_cache
+        from superharness.engine.adapter_registry import (
+            resolve_model,
+            clear_manifest_cache,
+        )
+
         clear_manifest_cache()
         r1 = resolve_model(owner, "standard")
         clear_manifest_cache()
@@ -209,6 +258,7 @@ class TestModelResolutionEdgeCases:
 
 
 # ── Launcher script existence ─────────────────────────────────────────────────
+
 
 class TestLauncherScripts:
     """Every adapter's launcher_script must exist."""
@@ -230,10 +280,13 @@ class TestLauncherScripts:
         script = manifest.get("launcher_script", "")
         if not script:
             pytest.skip(f"{name}: no launcher_script")
-        assert script.endswith(".sh"), f"{name}: launcher_script should be .sh, got '{script}'"
+        assert script.endswith(".sh"), (
+            f"{name}: launcher_script should be .sh, got '{script}'"
+        )
 
 
 # ── Capability consistency ────────────────────────────────────────────────────
+
 
 class TestCapabilityConsistency:
     """Capabilities must match adapter registry."""
@@ -247,13 +300,19 @@ class TestCapabilityConsistency:
     @pytest.mark.parametrize("name,manifest", _all_manifests())
     def test_valid_capabilities(self, name, manifest):
         """Capabilities must be from the known set."""
-        known = {"code_generation", "file_editing", "test_execution", "multi_file_refactor"}
+        known = {
+            "code_generation",
+            "file_editing",
+            "test_execution",
+            "multi_file_refactor",
+        }
         caps = set(manifest.get("capabilities", []))
         unknown = caps - known
         assert not unknown, f"{name}: unknown capabilities: {unknown}"
 
 
 # ── Model pricing consistency ─────────────────────────────────────────────────
+
 
 class TestModelPricing:
     """models.yaml pricing must be consistent with manifests."""
@@ -266,6 +325,7 @@ class TestModelPricing:
     def test_pricing_has_entries(self):
         """models.yaml must have pricing for all models."""
         import yaml
+
         pricing_path = MANIFEST_DIR.parent / "engine" / "models.yaml"
         with open(pricing_path) as f:
             data = yaml.safe_load(f) or {}
@@ -275,20 +335,27 @@ class TestModelPricing:
 
 # ── Manifest idempotency ──────────────────────────────────────────────────────
 
+
 class TestManifestIdempotency:
     """Loading a manifest twice returns the same result."""
 
     @pytest.mark.parametrize("name,manifest", _all_manifests())
     def test_double_load_is_consistent(self, name, manifest):
         """Loading the same manifest twice returns the same data."""
-        from superharness.engine.adapter_registry import load_manifest, clear_manifest_cache
+        from superharness.engine.adapter_registry import (
+            load_manifest,
+            clear_manifest_cache,
+        )
+
         clear_manifest_cache()
         m1 = load_manifest(name)
         m2 = load_manifest(name)
         assert m1.name == m2.name
         assert m1.model_tiers == m2.model_tiers, f"{name}: tiers differ between loads"
 
+
 # ── Launcher flag combinations ────────────────────────────────────────────────
+
 
 class TestLauncherFlagCombinations:
     """Launcher scripts must handle all flag combinations without crashing."""
@@ -302,7 +369,7 @@ class TestLauncherFlagCombinations:
             pytest.skip(f"{name}: no launcher_script")
         script_path = MANIFEST_DIR.parent / "scripts" / script
         if not script_path.exists():
-            pytest.skip(f"Script not found")
+            pytest.skip("Script not found")
         supports = manifest.get("supports_effort", False)
         if not supports:
             pytest.skip(f"{name}: doesn't support effort")
@@ -311,11 +378,15 @@ class TestLauncherFlagCombinations:
     def test_manifest_declares_effort_correctly(self, name, manifest):
         """supports_effort must be a boolean."""
         val = manifest.get("supports_effort")
-        assert isinstance(val, bool), f"{name}: supports_effort is {type(val)}, expected bool"
+        assert isinstance(val, bool), (
+            f"{name}: supports_effort is {type(val)}, expected bool"
+        )
 
     @pytest.mark.parametrize("name,manifest", _all_manifests())
-    @pytest.mark.parametrize("field", ["name", "version", "description", "type",
-                                        "launcher_script", "model_tiers"])
+    @pytest.mark.parametrize(
+        "field",
+        ["name", "version", "description", "type", "launcher_script", "model_tiers"],
+    )
     def test_required_field_not_empty(self, name, manifest, field):
         """Required manifest fields must not be empty."""
         val = manifest.get(field, "")
@@ -327,7 +398,6 @@ class TestLauncherFlagCombinations:
         requires = manifest.get("requires", {})
         validation = manifest.get("validation", {})
         if requires.get("bin") and validation.get("check_bin", True):
-            import shutil
             bin_name = requires["bin"]
             # At minimum, the config should be self-consistent
             assert isinstance(bin_name, str), f"{name}: bin must be a string"

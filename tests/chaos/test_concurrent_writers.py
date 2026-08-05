@@ -14,6 +14,7 @@ real multi-agent watcher + operator scenario produces.
     tasks_dao.update — all must succeed under WAL + busy_timeout, with
     no "database is locked" escaping to the caller.
 """
+
 from __future__ import annotations
 
 import os
@@ -41,15 +42,31 @@ def test_claim_next_exactly_one_winner_under_thread_contention(tmp_path):
     project_dir = _make_project(tmp_path)
 
     seed_conn = db.get_connection(project_dir)
-    tasks_dao.upsert(seed_conn, TaskRow(
-        id="t-race", title="Race Task", owner=None, status="todo",
-        effort=None, project_path=None, development_method=None,
-        acceptance_criteria=[], test_types=[], out_of_scope=[],
-        definition_of_done=[], context=None, tdd=None, version=1,
-        created_at="2026-07-19T00:00:00Z",
-    ))
+    tasks_dao.upsert(
+        seed_conn,
+        TaskRow(
+            id="t-race",
+            title="Race Task",
+            owner=None,
+            status="todo",
+            effort=None,
+            project_path=None,
+            development_method=None,
+            acceptance_criteria=[],
+            test_types=[],
+            out_of_scope=[],
+            definition_of_done=[],
+            context=None,
+            tdd=None,
+            version=1,
+            created_at="2026-07-19T00:00:00Z",
+        ),
+    )
     inbox_dao.enqueue(
-        seed_conn, id="i-race", task_id="t-race", target_agent="claude-code",
+        seed_conn,
+        id="i-race",
+        task_id="t-race",
+        target_agent="claude-code",
         now="2026-07-19T00:00:00Z",
     )
     seed_conn.commit()
@@ -64,7 +81,10 @@ def test_claim_next_exactly_one_winner_under_thread_contention(tmp_path):
             conn = db.get_connection(project_dir)
             try:
                 row = inbox_dao.claim_next(
-                    conn, target_agent="claude-code", pid=threading.get_ident(), now="now"
+                    conn,
+                    target_agent="claude-code",
+                    pid=threading.get_ident(),
+                    now="now",
                 )
                 conn.commit()
                 if row is not None:
@@ -83,7 +103,9 @@ def test_claim_next_exactly_one_winner_under_thread_contention(tmp_path):
         t.join(timeout=10)
 
     assert not errors, f"claim_next raised under contention: {errors}"
-    assert len(winners) == 1, f"expected exactly one winner, got {len(winners)}: {winners}"
+    assert len(winners) == 1, (
+        f"expected exactly one winner, got {len(winners)}: {winners}"
+    )
     assert winners[0].id == "i-race"
 
 
@@ -99,13 +121,26 @@ def test_interleaved_updates_on_distinct_tasks_all_succeed(tmp_path):
 
     seed_conn = db.get_connection(project_dir)
     for i in range(n):
-        tasks_dao.upsert(seed_conn, TaskRow(
-            id=f"t-writer-{i}", title=f"Writer Task {i}", owner=None, status="todo",
-            effort=None, project_path=None, development_method=None,
-            acceptance_criteria=[], test_types=[], out_of_scope=[],
-            definition_of_done=[], context=None, tdd=None, version=1,
-            created_at="2026-07-19T00:00:00Z",
-        ))
+        tasks_dao.upsert(
+            seed_conn,
+            TaskRow(
+                id=f"t-writer-{i}",
+                title=f"Writer Task {i}",
+                owner=None,
+                status="todo",
+                effort=None,
+                project_path=None,
+                development_method=None,
+                acceptance_criteria=[],
+                test_types=[],
+                out_of_scope=[],
+                definition_of_done=[],
+                context=None,
+                tdd=None,
+                version=1,
+                created_at="2026-07-19T00:00:00Z",
+            ),
+        )
     seed_conn.commit()
     seed_conn.close()
 
@@ -135,7 +170,9 @@ def test_interleaved_updates_on_distinct_tasks_all_succeed(tmp_path):
     for t in threads:
         t.join(timeout=10)
 
-    assert not errors, f"concurrent tasks_dao.update raised (e.g. 'database is locked'): {errors}"
+    assert not errors, (
+        f"concurrent tasks_dao.update raised (e.g. 'database is locked'): {errors}"
+    )
     assert sorted(succeeded) == sorted(f"t-writer-{i}" for i in range(n))
 
     verify_conn = db.get_connection(project_dir)

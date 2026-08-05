@@ -29,6 +29,7 @@ Excluded (machine-local):
   heartbeat.yaml           — runtime heartbeat
   contracts/               — contract copies (machine-local)
 """
+
 from __future__ import annotations
 
 import copy
@@ -43,6 +44,7 @@ from typing import Literal
 import yaml
 
 import logging
+
 logger = logging.getLogger(__name__)
 
 PACK_FORMAT_VERSION = "1"
@@ -147,7 +149,9 @@ def _add_file_to_tar(
                     doc = yaml.safe_load(raw)
                     if isinstance(doc, dict):
                         doc = scrub_contract(doc)
-                        scrubbed = yaml.dump(doc, default_flow_style=False, allow_unicode=True)
+                        scrubbed = yaml.dump(
+                            doc, default_flow_style=False, allow_unicode=True
+                        )
                     else:
                         scrubbed = _scrub_string(raw)
                 else:
@@ -156,6 +160,7 @@ def _add_file_to_tar(
                 scrubbed = _scrub_string(raw)
             if scrub_secrets:
                 from superharness.guard.redact import redact as _redact_secrets
+
                 scrubbed = _redact_secrets(scrubbed)
             data = scrubbed.encode("utf-8")
             info = tarfile.TarInfo(name=arcname)
@@ -201,7 +206,9 @@ def export_pack(
             "launcher-logs, agents, session files, lock files"
         ),
     }
-    manifest_bytes = yaml.dump(manifest, default_flow_style=False, allow_unicode=True).encode("utf-8")
+    manifest_bytes = yaml.dump(
+        manifest, default_flow_style=False, allow_unicode=True
+    ).encode("utf-8")
 
     with tarfile.open(str(output_path), "w:gz") as tar:
         info = tarfile.TarInfo(name="superharness-pack.yaml")
@@ -213,7 +220,9 @@ def export_pack(
             if not entry_path.exists():
                 continue
             if entry_path.is_file():
-                _add_file_to_tar(tar, entry_path, f".superharness/{entry_name}", scrub_secrets=scrub)
+                _add_file_to_tar(
+                    tar, entry_path, f".superharness/{entry_name}", scrub_secrets=scrub
+                )
             elif entry_path.is_dir():
                 for root, dirs, files in os.walk(str(entry_path)):
                     dirs[:] = sorted(d for d in dirs if d != "__pycache__")
@@ -221,7 +230,9 @@ def export_pack(
                         fpath = Path(root) / fname
                         rel = str(fpath.relative_to(sh_dir))
                         if not _is_machine_local(rel):
-                            _add_file_to_tar(tar, fpath, f".superharness/{rel}", scrub_secrets=scrub)
+                            _add_file_to_tar(
+                                tar, fpath, f".superharness/{rel}", scrub_secrets=scrub
+                            )
 
     return output_path
 
@@ -264,7 +275,8 @@ def import_pack(
 
         if collision == "fail":
             collisions = [
-                m.name for m in members
+                m.name
+                for m in members
                 if m.name != "superharness-pack.yaml" and (dest_dir / m.name).exists()
             ]
             if collisions:

@@ -2,6 +2,7 @@
 
 See docs/PLAN-steal-omnigent.md iteration 2.
 """
+
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone

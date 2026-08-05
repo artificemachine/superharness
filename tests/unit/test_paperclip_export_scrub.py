@@ -1,8 +1,8 @@
 """Tests for shux export --scrub (paperclip.export-scrub feature)."""
+
 from __future__ import annotations
 
 import tarfile
-import io
 
 import pytest
 from superharness.engine.pack import export_pack

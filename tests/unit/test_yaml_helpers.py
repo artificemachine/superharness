@@ -1,4 +1,5 @@
 """Tests for superharness.engine.yaml_helpers."""
+
 from __future__ import annotations
 
 from pathlib import Path

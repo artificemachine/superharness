@@ -6,6 +6,7 @@ handoff, and fires on_continue lifecycle hooks (e.g. the remember module's
 refresh_context). It performs no status writes and no dispatch — use
 `shux delegate` to dispatch and `shux task status` to advance.
 """
+
 from __future__ import annotations
 
 import os
@@ -47,6 +48,7 @@ def _fire_on_continue(project_dir: str, task_id: str) -> None:
     try:
         from pathlib import Path
         from superharness.modules.runner import run_hooks
+
         run_hooks(
             "on_continue",
             {"task_id": task_id, "project_dir": project_dir, "event": "on_continue"},
@@ -68,20 +70,25 @@ def resume(project_dir: str, json_mode: bool = False) -> int:
         payload: dict = {"resumable": bool(task)}
         if task:
             na = next_action(str(task.get("status") or ""))
-            payload.update({
-                "task_id": task_id,
-                "status": task.get("status"),
-                "recommended": na.recommended,
-                "legal": na.legal,
-                "reason": na.reason,
-            })
+            payload.update(
+                {
+                    "task_id": task_id,
+                    "status": task.get("status"),
+                    "recommended": na.recommended,
+                    "legal": na.legal,
+                    "reason": na.reason,
+                }
+            )
         _fire_on_continue(project_dir, task_id)
         from superharness.utils.json_output import emit_json
+
         emit_json(payload, ok=True, exit_code=0)
         return 0
 
     if not task:
-        print("No resumable task in the active contract — every task is done, failed, or stopped.")
+        print(
+            "No resumable task in the active contract — every task is done, failed, or stopped."
+        )
         print("Create one with `shux task create` or see `shux contract`.")
         _fire_on_continue(project_dir, task_id)
         return 0
@@ -100,10 +107,14 @@ def resume(project_dir: str, json_mode: bool = False) -> int:
     handoffs = state_reader.get_handoffs(project_dir, task_id)
     if handoffs:
         latest = handoffs[-1]
-        body = (latest.get("outcome") or latest.get("context") or latest.get("plan") or "").strip()
+        body = (
+            latest.get("outcome") or latest.get("context") or latest.get("plan") or ""
+        ).strip()
         if body:
             snippet = body.splitlines()[0][:200]
-            print(f"  latest handoff ({latest.get('phase') or latest.get('status') or '?'}): {snippet}")
+            print(
+                f"  latest handoff ({latest.get('phase') or latest.get('status') or '?'}): {snippet}"
+            )
 
     print("  Run `shux context " + task_id + "` for full context.")
     _fire_on_continue(project_dir, task_id)
@@ -121,8 +132,12 @@ def main(argv: list[str] | None = None) -> None:
         description="Resume the active contract: show the next resumable task and its recommended action.",
     )
     parser.add_argument("--project", "-p", default=None)
-    parser.add_argument("--json", action="store_true", default=False,
-                        help="Emit machine-readable JSON instead of human text.")
+    parser.add_argument(
+        "--json",
+        action="store_true",
+        default=False,
+        help="Emit machine-readable JSON instead of human text.",
+    )
     opts = parser.parse_args(argv)
 
     project_dir = os.path.realpath(opts.project or os.getcwd())

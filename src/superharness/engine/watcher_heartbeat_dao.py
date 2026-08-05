@@ -7,6 +7,7 @@ This DAO is the SQLite source of truth for `heartbeat_contract.write_heartbeat`
 and `read_heartbeat`. The YAML files at `.superharness/watcher.heartbeat.yaml`
 and `.superharness/agents/<agent>.heartbeat.yaml` are export mirrors.
 """
+
 from __future__ import annotations
 
 import sqlite3
@@ -60,9 +61,20 @@ def upsert(
                        updated_at=?, task_id=?
                  WHERE agent=?
                 """,
-                (runtime, pid, status, active_task, next_wake_at,
-                 written_at, tokens_used, tokens_limit, cost_usd,
-                 written_at, active_task, agent_id),
+                (
+                    runtime,
+                    pid,
+                    status,
+                    active_task,
+                    next_wake_at,
+                    written_at,
+                    tokens_used,
+                    tokens_limit,
+                    cost_usd,
+                    written_at,
+                    active_task,
+                    agent_id,
+                ),
             )
         else:
             conn.execute(
@@ -73,9 +85,21 @@ def upsert(
                     tokens_used, tokens_limit, cost_usd
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
-                (agent_id, active_task, status, pid, written_at, written_at,
-                 runtime, active_task, next_wake_at, written_at,
-                 tokens_used, tokens_limit, cost_usd),
+                (
+                    agent_id,
+                    active_task,
+                    status,
+                    pid,
+                    written_at,
+                    written_at,
+                    runtime,
+                    active_task,
+                    next_wake_at,
+                    written_at,
+                    tokens_used,
+                    tokens_limit,
+                    cost_usd,
+                ),
             )
         row = conn.execute(
             "SELECT * FROM agent_heartbeats WHERE agent = ?", (agent_id,)

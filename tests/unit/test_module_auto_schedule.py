@@ -1,15 +1,17 @@
 """Tests for auto-schedule module (TDD — RED → GREEN → REFACTOR)."""
+
 from __future__ import annotations
 import pytest
 
 from datetime import datetime, timedelta
 
 
-
 class TestAutoScheduleModule:
     """Test auto-schedule module (watcher tick hook)."""
 
-    @pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
+    @pytest.mark.skip(
+        reason="legacy YAML fixture — pending SQLite migration (see PR #208)"
+    )
     def test_scheduled_task_auto_enqueued(self, tmp_path):
         """Task with scheduled_after <= today → auto-enqueued to inbox."""
         from superharness.modules.actions.auto_schedule import check_scheduled_tasks
@@ -46,6 +48,7 @@ tasks:
         inbox = sh_dir / "inbox.yaml"
         assert inbox.exists()
         import yaml
+
         inbox_data = yaml.safe_load(inbox.read_text())
         assert len(inbox_data) == 1
         assert inbox_data[0]["task"] == "task.1"
@@ -86,6 +89,7 @@ tasks:
         # Verify inbox is still empty
         inbox = sh_dir / "inbox.yaml"
         import yaml
+
         inbox_data = yaml.safe_load(inbox.read_text())
         assert inbox_data == []
 
@@ -169,6 +173,7 @@ tasks:
         # Verify inbox still has only 1 item
         inbox = sh_dir / "inbox.yaml"
         import yaml
+
         inbox_data = yaml.safe_load(inbox.read_text())
         assert len(inbox_data) == 1
 
@@ -206,5 +211,6 @@ tasks:
         # Verify inbox is still empty
         inbox = sh_dir / "inbox.yaml"
         import yaml
+
         inbox_data = yaml.safe_load(inbox.read_text())
         assert inbox_data == []

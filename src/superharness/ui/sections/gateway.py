@@ -12,6 +12,7 @@ checklist and a non-sensitive `backend` field for display.
 Inbound commands (e.g. /approve via chat) are NOT enabled by Phase 1.
 See docs/gateway-security.md for the threat model.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -19,9 +20,10 @@ from pathlib import Path
 import yaml
 
 import logging
+
 logger = logging.getLogger(__name__)
 
-from superharness.ui.prompts import (
+from superharness.ui.prompts import (  # noqa: E402
     print_header,
     print_info,
     print_warning,
@@ -43,6 +45,7 @@ ALL_GATEWAY_EVENTS: list[str] = [
 # ---------------------------------------------------------------------------
 # profile.yaml helpers (events + backend label only — no secrets)
 # ---------------------------------------------------------------------------
+
 
 def _load_profile(project_dir: Path) -> dict:
     profile_file = project_dir / ".superharness" / "profile.yaml"
@@ -80,6 +83,7 @@ def _save_events(project_dir: Path, events: list[str], backend: str) -> None:
 # Public API — relay backend (kept for backward compat with existing callers)
 # ---------------------------------------------------------------------------
 
+
 def setup_gateway(
     project_dir: Path,
     relay_ssh_host: str,
@@ -90,6 +94,7 @@ def setup_gateway(
 ) -> None:
     """Persist relay-backend configuration."""
     from superharness.engine.relay_client import save_credentials
+
     save_credentials(relay_ssh_host, relay_token, relay_dest)
     _save_events(project_dir, events, backend="relay")
 
@@ -102,6 +107,7 @@ def setup_telegram_direct(
 ) -> None:
     """Persist direct-bot configuration."""
     from superharness.engine.relay_client import save_telegram_credentials
+
     save_telegram_credentials(bot_token, chat_id)
     _save_events(project_dir, events, backend="telegram")
 
@@ -114,6 +120,7 @@ def setup_ntfy(
 ) -> None:
     """Persist ntfy.sh configuration."""
     from superharness.engine.relay_client import save_ntfy_credentials
+
     save_ntfy_credentials(ntfy_topic, ntfy_server)
     _save_events(project_dir, events, backend="ntfy")
 
@@ -123,10 +130,10 @@ def setup_ntfy(
 # ---------------------------------------------------------------------------
 
 _BACKEND_CHOICES = [
-    ("relay",    "Relay (SSH) — secrets stay on the relay, not on this machine"),
+    ("relay", "Relay (SSH) — secrets stay on the relay, not on this machine"),
     ("telegram", "Telegram bot — direct bot token stored on this machine"),
-    ("ntfy",     "ntfy.sh — push notifications (self-hosted or ntfy.sh public)"),
-    ("skip",     "Skip — no notifications"),
+    ("ntfy", "ntfy.sh — push notifications (self-hosted or ntfy.sh public)"),
+    ("skip", "Skip — no notifications"),
 ]
 
 
@@ -140,6 +147,7 @@ def run(project_dir: Path, non_interactive: bool = False) -> None:
         load_telegram_credentials,
         load_ntfy_credentials,
     )
+
     relay_creds = load_credentials()
     bot_creds = load_telegram_credentials()
     ntfy_creds = load_ntfy_credentials()
@@ -152,15 +160,19 @@ def run(project_dir: Path, non_interactive: bool = False) -> None:
     current_backend: str = gateway_cfg.get("backend", "")
 
     if non_interactive:
-        _show_current(current_backend, relay_creds, bot_creds, current_events, ntfy_creds)
+        _show_current(
+            current_backend, relay_creds, bot_creds, current_events, ntfy_creds
+        )
         return
 
-    print_info("Outbound notifications only. Inbound chat commands are disabled in this phase.")
+    print_info(
+        "Outbound notifications only. Inbound chat commands are disabled in this phase."
+    )
     print_info("See docs/gateway-security.md for the threat model.")
     print_info(f"Credentials saved to: {credentials_path()} (mode 0600)")
     print_info("")
 
-    from superharness.ui.prompts import prompt, prompt_choice, prompt_yes_no
+    from superharness.ui.prompts import prompt_choice
 
     # --- Backend selection ---
     default_idx = 0  # relay first
@@ -186,6 +198,7 @@ def run(project_dir: Path, non_interactive: bool = False) -> None:
         _configure_telegram_direct(project_dir, bot_creds, current_events)
     else:
         from superharness.engine.relay_client import load_ntfy_credentials
+
         ntfy_creds = load_ntfy_credentials()
         _configure_ntfy(project_dir, ntfy_creds, current_events)
 
@@ -194,15 +207,23 @@ def run(project_dir: Path, non_interactive: bool = False) -> None:
 # Relay configuration flow
 # ---------------------------------------------------------------------------
 
-def _configure_relay(project_dir: Path, current: dict, current_events: list[str]) -> None:
+
+def _configure_relay(
+    project_dir: Path, current: dict, current_events: list[str]
+) -> None:
     from superharness.ui.prompts import prompt, prompt_yes_no
 
     if current["relay_ssh_host"] and current["relay_token"]:
-        suffix = current["relay_token"][-6:] if len(current["relay_token"]) > 6 else "***"
-        print_info(f"Already configured — host: {current['relay_ssh_host']}  token: ...{suffix}")
+        suffix = (
+            current["relay_token"][-6:] if len(current["relay_token"]) > 6 else "***"
+        )
+        print_info(
+            f"Already configured — host: {current['relay_ssh_host']}  token: ...{suffix}"
+        )
         if not prompt_yes_no("Reconfigure?", default=False):
             events = _pick_events(current_events)
             from superharness.engine.relay_client import save_credentials
+
             save_credentials(
                 current["relay_ssh_host"],
                 current["relay_token"],
@@ -237,22 +258,32 @@ def _configure_relay(project_dir: Path, current: dict, current_events: list[str]
 # Direct Telegram bot configuration flow
 # ---------------------------------------------------------------------------
 
-def _configure_telegram_direct(project_dir: Path, current: dict, current_events: list[str]) -> None:
+
+def _configure_telegram_direct(
+    project_dir: Path, current: dict, current_events: list[str]
+) -> None:
     from superharness.ui.prompts import prompt, prompt_yes_no
 
     if current["bot_token"] and current["chat_id"]:
         suffix = current["bot_token"][-6:] if len(current["bot_token"]) > 6 else "***"
-        print_info(f"Already configured — chat_id: {current['chat_id']}  token: ...{suffix}")
+        print_info(
+            f"Already configured — chat_id: {current['chat_id']}  token: ...{suffix}"
+        )
         if not prompt_yes_no("Reconfigure?", default=False):
             events = _pick_events(current_events)
             from superharness.engine.relay_client import save_telegram_credentials
+
             save_telegram_credentials(current["bot_token"], current["chat_id"])
             _save_events(project_dir, events, backend="telegram")
             return
 
     print_warning("Direct bot keeps the Telegram token on this machine.")
-    print_warning("If possible, use the relay backend instead (no token stored locally).")
-    print_info("Create a bot via @BotFather in Telegram, then send it /start from your account.")
+    print_warning(
+        "If possible, use the relay backend instead (no token stored locally)."
+    )
+    print_info(
+        "Create a bot via @BotFather in Telegram, then send it /start from your account."
+    )
     print_info("")
 
     bot_token = prompt(
@@ -280,8 +311,10 @@ def _configure_telegram_direct(project_dir: Path, current: dict, current_events:
 # Shared helpers
 # ---------------------------------------------------------------------------
 
+
 def _pick_events(current: list[str]) -> list[str]:
     from superharness.ui.prompts import prompt_yes_no
+
     print_info("")
     print_info("Select events to receive notifications for:")
     selected: list[str] = []
@@ -314,26 +347,39 @@ def _summary_telegram(bot_token: str, chat_id: str, events: list[str]) -> None:
 # ntfy.sh configuration flow
 # ---------------------------------------------------------------------------
 
-def _configure_ntfy(project_dir: Path, current: dict, current_events: list[str]) -> None:
+
+def _configure_ntfy(
+    project_dir: Path, current: dict, current_events: list[str]
+) -> None:
     from superharness.ui.prompts import prompt, prompt_yes_no
 
     if current["ntfy_topic"]:
-        print_info(f"Already configured — server: {current['ntfy_server']}  topic: {current['ntfy_topic']}")
+        print_info(
+            f"Already configured — server: {current['ntfy_server']}  topic: {current['ntfy_topic']}"
+        )
         if not prompt_yes_no("Reconfigure?", default=False):
             events = _pick_events(current_events)
             from superharness.engine.relay_client import save_ntfy_credentials
+
             save_ntfy_credentials(current["ntfy_topic"], current["ntfy_server"])
             _save_events(project_dir, events, backend="ntfy")
             return
 
     print_info("ntfy.sh sends push notifications to any device with the ntfy app.")
-    print_info("Self-hosted is recommended. Leave server blank to use the public ntfy.sh.")
+    print_info(
+        "Self-hosted is recommended. Leave server blank to use the public ntfy.sh."
+    )
     print_info("")
 
-    ntfy_server = prompt(
-        "ntfy server URL (leave blank for https://ntfy.sh)",
-        default=current["ntfy_server"] if current["ntfy_server"] != "https://ntfy.sh" else "",
-    ).strip() or "https://ntfy.sh"
+    ntfy_server = (
+        prompt(
+            "ntfy server URL (leave blank for https://ntfy.sh)",
+            default=current["ntfy_server"]
+            if current["ntfy_server"] != "https://ntfy.sh"
+            else "",
+        ).strip()
+        or "https://ntfy.sh"
+    )
 
     ntfy_topic = prompt(
         "ntfy topic (unique string — keep it secret on public servers)",

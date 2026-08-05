@@ -9,6 +9,7 @@ Spec:
 - get_audit_logger() writes to a separate file (security-sensitive ops)
 - redact() masks secrets in log messages (tokens, long /Users paths)
 """
+
 from __future__ import annotations
 
 import logging
@@ -47,12 +48,14 @@ def isolate_logging(tmp_path, monkeypatch):
 
 def test_get_logger_returns_logger_instance():
     from superharness.logging_utils import get_logger
+
     log = get_logger("superharness.test")
     assert isinstance(log, logging.Logger)
 
 
 def test_get_logger_writes_to_log_file(tmp_path):
     from superharness.logging_utils import get_logger
+
     log = get_logger("superharness.test_write")
     log.info("hello world")
     for h in log.handlers + logging.getLogger("superharness").handlers:
@@ -67,6 +70,7 @@ def test_get_logger_writes_to_log_file(tmp_path):
 
 def test_log_format_includes_module_func_lineno():
     from superharness.logging_utils import get_logger
+
     log = get_logger("superharness.test_fmt")
     log.warning("formatted")
     for h in logging.getLogger("superharness").handlers:
@@ -85,6 +89,7 @@ def test_log_level_honors_env_var(monkeypatch, tmp_path):
     if "superharness.logging_utils" in sys.modules:
         del sys.modules["superharness.logging_utils"]
     from superharness.logging_utils import get_logger
+
     log = get_logger("superharness.test_lvl")
     log.debug("debug-not-shown")
     log.warning("warn-shown")
@@ -97,6 +102,7 @@ def test_log_level_honors_env_var(monkeypatch, tmp_path):
 
 def test_audit_logger_writes_to_separate_file():
     from superharness.logging_utils import get_audit_logger
+
     audit = get_audit_logger()
     audit.info("launchctl load com.superharness.inbox.test")
     for h in audit.handlers + logging.getLogger("superharness.audit").handlers:
@@ -114,9 +120,11 @@ def test_rotating_handler_caps_size(tmp_path, monkeypatch):
     """Logger uses RotatingFileHandler — verify maxBytes set."""
     from superharness.logging_utils import get_logger
     from logging.handlers import RotatingFileHandler
-    log = get_logger("superharness.test_rotate")
+
+    get_logger("superharness.test_rotate")
     file_handlers = [
-        h for h in logging.getLogger("superharness").handlers
+        h
+        for h in logging.getLogger("superharness").handlers
         if isinstance(h, RotatingFileHandler)
     ]
     assert file_handlers, "must use RotatingFileHandler"
@@ -127,6 +135,7 @@ def test_rotating_handler_caps_size(tmp_path, monkeypatch):
 
 def test_redact_masks_anthropic_api_key():
     from superharness.logging_utils import redact
+
     msg = "Calling API with key sk-ant-api03-AAAA-BBBB-CCCC"
     out = redact(msg)
     assert "sk-ant-api03-AAAA-BBBB-CCCC" not in out
@@ -135,6 +144,7 @@ def test_redact_masks_anthropic_api_key():
 
 def test_redact_masks_user_home_path():
     from superharness.logging_utils import redact
+
     msg = "wrote file /Users/testuser/secret/file.txt"
     out = redact(msg)
     # Either masked or stripped to ~/
@@ -144,6 +154,7 @@ def test_redact_masks_user_home_path():
 def test_get_logger_idempotent():
     """Calling get_logger twice with same name must NOT add duplicate handlers."""
     from superharness.logging_utils import get_logger
+
     a = get_logger("superharness.idem")
     a_handlers = len(logging.getLogger("superharness").handlers)
     b = get_logger("superharness.idem")

@@ -1,4 +1,5 @@
 """Module runner — executes lifecycle hooks for enabled modules."""
+
 from __future__ import annotations
 
 import logging
@@ -104,12 +105,14 @@ def run_hooks(
                 f"Module {module.name} references unknown action '{action_name}' "
                 f"(available: {list(_ACTION_REGISTRY.keys())})"
             )
-            results.append({
-                "module": module.name,
-                "event": event,
-                "success": False,
-                "error": f"Unknown action: {action_name}",
-            })
+            results.append(
+                {
+                    "module": module.name,
+                    "event": event,
+                    "success": False,
+                    "error": f"Unknown action: {action_name}",
+                }
+            )
             continue
 
         # Execute the action
@@ -139,11 +142,13 @@ def run_hooks(
                 f"Module {module.name} action {action_name} failed: {e}",
                 exc_info=True,
             )
-            results.append({
-                "module": module.name,
-                "event": event,
-                "success": False,
-                "error": str(e),
-            })
+            results.append(
+                {
+                    "module": module.name,
+                    "event": event,
+                    "success": False,
+                    "error": str(e),
+                }
+            )
 
     return results

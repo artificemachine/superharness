@@ -7,6 +7,7 @@ Spins up a real ThreadingHTTPServer and validates:
   - Zombie-status row returns level='red' regardless of age
   - Response always includes 'agents' and 'now_utc' keys
 """
+
 from __future__ import annotations
 
 import importlib.util
@@ -26,18 +27,21 @@ import yaml
 
 # ── import Handler from dashboard-ui.py (hyphen prevents normal import) ──────
 
-_dashboard_src = Path(__file__).parents[2] / "src" / "superharness" / "scripts" / "dashboard-ui.py"
+_dashboard_src = (
+    Path(__file__).parents[2] / "src" / "superharness" / "scripts" / "dashboard-ui.py"
+)
 _spec = importlib.util.spec_from_file_location("dashboard_ui_hb", _dashboard_src)
 _dashboard_ui = importlib.util.module_from_spec(_spec)
 sys.modules["dashboard_ui_hb"] = _dashboard_ui
 _spec.loader.exec_module(_dashboard_ui)
 
 Handler = _dashboard_ui.Handler
-from superharness.engine.db import get_connection, init_db
-from superharness.engine import heartbeat_dao
+from superharness.engine.db import get_connection, init_db  # noqa: E402
+from superharness.engine import heartbeat_dao  # noqa: E402
 
 
 # ── helpers ───────────────────────────────────────────────────────────────────
+
 
 def _free_port() -> int:
     with socket.socket() as s:
@@ -79,6 +83,7 @@ def _get(base: str, path: str, token: str | None = None) -> tuple[int, dict]:
 
 # ── server fixture ────────────────────────────────────────────────────────────
 
+
 @pytest.fixture
 def server(tmp_path):
     harness = _harness(tmp_path)
@@ -108,6 +113,7 @@ def server(tmp_path):
 
 # ── tests ─────────────────────────────────────────────────────────────────────
 
+
 class TestHeartbeatEndpoint:
     def test_returns_200_with_required_keys(self, server):
         base, token, _ = server
@@ -124,7 +130,9 @@ class TestHeartbeatEndpoint:
         # Every default known agent must be present
         for agent in ["claude-code", "codex-cli", "gemini-cli", "opencode"]:
             assert agent in agents, f"{agent} missing from response"
-            assert agents[agent]["level"] == "gray", f"{agent} should be gray (never seen)"
+            assert agents[agent]["level"] == "gray", (
+                f"{agent} should be gray (never seen)"
+            )
             assert agents[agent]["age_seconds"] == -1
             assert agents[agent]["status"] is None
 
@@ -144,9 +152,7 @@ class TestHeartbeatEndpoint:
         """A row not updated for >300s should produce level='red'."""
         base, token, tmp_path = server
         # 6 minutes ago
-        old_ts = time.strftime(
-            "%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() - 370)
-        )
+        old_ts = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() - 370))
         _insert_heartbeat(tmp_path, "codex-cli", "alive", old_ts)
 
         _, body = _get(base, "/api/heartbeats", token)
@@ -168,9 +174,7 @@ class TestHeartbeatEndpoint:
     def test_idle_heartbeat_is_yellow(self, server):
         """A row updated 60-300s ago should produce level='yellow'."""
         base, token, tmp_path = server
-        ts_90s_ago = time.strftime(
-            "%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() - 90)
-        )
+        ts_90s_ago = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() - 90))
         _insert_heartbeat(tmp_path, "opencode", "alive", ts_90s_ago)
 
         _, body = _get(base, "/api/heartbeats", token)
@@ -193,7 +197,9 @@ class TestHeartbeatEndpoint:
         base, token, tmp_path = server
         now_ts = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
         conn = get_connection(str(tmp_path))
-        heartbeat_dao.upsert(conn, agent="claude-code", task_id="feat.x", status="alive", now=now_ts)
+        heartbeat_dao.upsert(
+            conn, agent="claude-code", task_id="feat.x", status="alive", now=now_ts
+        )
         conn.commit()
         conn.close()
 

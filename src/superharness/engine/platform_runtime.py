@@ -24,6 +24,7 @@ expand_agent_path()
     agent CLIs (claude, codex) are discoverable from launchd / Task Scheduler
     environments that start with a stripped PATH.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -132,7 +133,9 @@ def sync_worker_copy(src: str, dst: str, *, rsync_disabled: bool = False) -> Non
         for name in sorted(_SYNC_EXCLUDES):
             exclude_args += [f"--exclude={name}"]
         subprocess.run(
-            ["rsync", "-a", "--delete"] + exclude_args + [f"{src_path}/", f"{dst_path}/"],
+            ["rsync", "-a", "--delete"]
+            + exclude_args
+            + [f"{src_path}/", f"{dst_path}/"],
             check=False,
             capture_output=True,
         )

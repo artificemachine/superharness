@@ -5,7 +5,14 @@ import os
 import subprocess
 import sys
 
-from tests.helpers import REPO_ROOT, copy_from_repo, parse_json_output, run_bash, run_cmd, shell_guard_list
+from tests.helpers import (
+    REPO_ROOT,
+    copy_from_repo,
+    parse_json_output,
+    run_bash,
+    run_cmd,
+    shell_guard_list,
+)
 import pytest
 
 pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="requires bash")
@@ -18,7 +25,9 @@ def _run_init_py(cwd, args: list[str] | None = None, extra_env: dict | None = No
     if extra_env:
         env.update(extra_env)
     cmd = [sys.executable, "-m", "superharness.commands.init_project"] + (args or [])
-    return subprocess.run(cmd, cwd=str(cwd), text=True, capture_output=True, env=env, check=False)
+    return subprocess.run(
+        cmd, cwd=str(cwd), text=True, capture_output=True, env=env, check=False
+    )
 
 
 def _run_discuss_py(cwd, args: list[str] | None = None, extra_env: dict | None = None):
@@ -28,7 +37,9 @@ def _run_discuss_py(cwd, args: list[str] | None = None, extra_env: dict | None =
     if extra_env:
         env.update(extra_env)
     cmd = [sys.executable, "-m", "superharness.commands.discuss"] + (args or [])
-    return subprocess.run(cmd, cwd=str(cwd), text=True, capture_output=True, env=env, check=False)
+    return subprocess.run(
+        cmd, cwd=str(cwd), text=True, capture_output=True, env=env, check=False
+    )
 
 
 def test_bootstrap_and_hook_install_flow(repo_root, tmp_path) -> None:
@@ -38,8 +49,11 @@ def test_bootstrap_and_hook_install_flow(repo_root, tmp_path) -> None:
     project.mkdir()
     state_dir = str(tmp_path / "sh_state")
 
-    init_res = _run_init_py(project, args=["Demo", "Python", "active"],
-                            extra_env={"SUPERHARNESS_STATE_DIR": state_dir})
+    init_res = _run_init_py(
+        project,
+        args=["Demo", "Python", "active"],
+        extra_env={"SUPERHARNESS_STATE_DIR": state_dir},
+    )
     assert init_res.returncode == 0, init_res.stderr
 
     # Post-migration: state lives in XDG state db, not inside .superharness/.
@@ -53,8 +67,9 @@ def test_bootstrap_and_hook_install_flow(repo_root, tmp_path) -> None:
         else:
             os.environ["SUPERHARNESS_STATE_DIR"] = old_env
     assert os.path.isfile(xdg_db), f"XDG state.db not found at {xdg_db}"
-    assert not (project / ".superharness" / "state.sqlite3").exists(), \
+    assert not (project / ".superharness" / "state.sqlite3").exists(), (
         "legacy state.sqlite3 must not exist after init"
+    )
     assert (project / "CLAUDE.md").exists()
     assert (project / "AGENTS.md").exists()
 
@@ -104,7 +119,9 @@ def test_policy_enforcement_block_and_warn(repo_root, tmp_path) -> None:
     assert warn["hookSpecificOutput"]["permissionDecision"] == "ask"
 
 
-def test_bootstrap_discuss_start_enqueues_round_one_for_both_agents(repo_root, tmp_path) -> None:
+def test_bootstrap_discuss_start_enqueues_round_one_for_both_agents(
+    repo_root, tmp_path
+) -> None:
     import sqlite3 as _sql
     from superharness.utils.paths import resolve_xdg_state_db_path
 
@@ -112,30 +129,49 @@ def test_bootstrap_discuss_start_enqueues_round_one_for_both_agents(repo_root, t
     project.mkdir()
     state_dir = str(tmp_path / "sh_state_discuss")
 
-    init_res = _run_init_py(project, args=["Demo", "Python", "active"],
-                            extra_env={"SUPERHARNESS_STATE_DIR": state_dir})
+    init_res = _run_init_py(
+        project,
+        args=["Demo", "Python", "active"],
+        extra_env={"SUPERHARNESS_STATE_DIR": state_dir},
+    )
     assert init_res.returncode == 0, init_res.stderr
 
     # Add tasks for both owners (required for discussion start)
     task_script = repo_root / "src" / "superharness" / "scripts" / "task.sh"
     for agent in ("claude-code", "codex-cli"):
-        t = run_bash(task_script, cwd=repo_root, args=[
-            "create", "--project", str(project),
-            "--id", f"e2e-{agent}", "--title", f"E2E task for {agent}",
-            "--owner", agent, "--status", "todo",
-        ], env={"SUPERHARNESS_STATE_DIR": state_dir})
+        t = run_bash(
+            task_script,
+            cwd=repo_root,
+            args=[
+                "create",
+                "--project",
+                str(project),
+                "--id",
+                f"e2e-{agent}",
+                "--title",
+                f"E2E task for {agent}",
+                "--owner",
+                agent,
+                "--status",
+                "todo",
+            ],
+            env={"SUPERHARNESS_STATE_DIR": state_dir},
+        )
         assert t.returncode == 0, t.stderr
 
     start_res = _run_discuss_py(
         repo_root,
         args=[
             "start",
-            "--project", str(project),
-            "--topic", "Bootstrapping discussion",
-            "--max-rounds", "2",
+            "--project",
+            str(project),
+            "--topic",
+            "Bootstrapping discussion",
+            "--max-rounds",
+            "2",
             "--force",
         ],
-        extra_env={"SUPERHARNESS_STATE_DIR": state_dir}
+        extra_env={"SUPERHARNESS_STATE_DIR": state_dir},
     )
     assert start_res.returncode == 0, start_res.stderr
     assert "Discussion started:" in start_res.stdout

@@ -11,6 +11,7 @@ via monkeypatch (no real NFS mounts on CI runners), and get_connection's
 integration path uses the DELETE override (a valid rollback journal) instead
 of PERSIST so local-disk test dirs behave deterministically.
 """
+
 from __future__ import annotations
 
 import os
@@ -62,28 +63,33 @@ def fake_mounts(monkeypatch, tmp_path):
     # breaks the mount-point prefix match. Pin realpath to identity so the
     # target string compares exactly against the fake mount table.
     import superharness.engine.db as db_mod
+
     monkeypatch.setattr(db_mod.os.path, "realpath", lambda p: p)
     return mounts_file
 
 
 def test_is_network_fs_true_on_nfs_mount(fake_mounts):
     from superharness.engine.db import _is_network_fs
+
     assert _is_network_fs("/mnt/nas/shared/state.db") is True
 
 
 def test_is_network_fs_true_on_smb_mount(fake_mounts):
     from superharness.engine.db import _is_network_fs
+
     assert _is_network_fs("/Volumes/share/project/state.db") is True
 
 
 def test_is_network_fs_false_on_local_mount(fake_mounts):
     from superharness.engine.db import _is_network_fs
+
     assert _is_network_fs("/home/user/project/state.db") is False
 
 
 def test_is_network_fs_false_without_proc_mounts(monkeypatch, tmp_path):
     """No /proc/mounts (non-Linux host) → False (WAL default preserved)."""
     from superharness.engine.db import _is_network_fs
+
     real_open = open
 
     def _open(path, *args, **kwargs):
@@ -99,7 +105,7 @@ def test_is_network_fs_resolves_realpath(fake_mounts, tmp_path, monkeypatch):
     """_is_network_fs must realpath() the target so a symlinked path resolves
     to its actual mount."""
     import superharness.engine.db as db_mod
-    real_realpath = os.path.realpath
+
     monkeypatch.setattr(db_mod.os.path, "realpath", lambda p: "/mnt/nas/real/state.db")
     assert db_mod._is_network_fs("/symlink/state.db") is True
 
@@ -108,21 +114,25 @@ def test_is_network_fs_resolves_realpath(fake_mounts, tmp_path, monkeypatch):
 # _resolve_journal_mode — override validation
 # ---------------------------------------------------------------------------
 
+
 def test_resolve_journal_mode_default_wal_on_local(fake_mounts, monkeypatch):
     monkeypatch.delenv("SUPERHARNESS_JOURNAL_MODE", raising=False)
     from superharness.engine.db import _resolve_journal_mode
+
     assert _resolve_journal_mode("/home/user/proj/state.db") == "WAL"
 
 
 def test_resolve_journal_mode_persist_on_network(fake_mounts, monkeypatch):
     monkeypatch.delenv("SUPERHARNESS_JOURNAL_MODE", raising=False)
     from superharness.engine.db import _resolve_journal_mode
+
     assert _resolve_journal_mode("/mnt/nas/proj/state.db") == "PERSIST"
 
 
 def test_resolve_journal_mode_valid_override_wins(fake_mounts, monkeypatch):
     monkeypatch.setenv("SUPERHARNESS_JOURNAL_MODE", "DELETE")
     from superharness.engine.db import _resolve_journal_mode
+
     # Even on a network mount the explicit override wins.
     assert _resolve_journal_mode("/mnt/nas/proj/state.db") == "DELETE"
 
@@ -130,6 +140,7 @@ def test_resolve_journal_mode_valid_override_wins(fake_mounts, monkeypatch):
 def test_resolve_journal_mode_invalid_override_ignored(fake_mounts, monkeypatch):
     monkeypatch.setenv("SUPERHARNESS_JOURNAL_MODE", "WALMART")
     from superharness.engine.db import _resolve_journal_mode
+
     # Falls back to the fs-derived default; a typo must not crash or inject.
     assert _resolve_journal_mode("/home/user/proj/state.db") == "WAL"
 
@@ -137,12 +148,14 @@ def test_resolve_journal_mode_invalid_override_ignored(fake_mounts, monkeypatch)
 def test_resolve_journal_mode_override_is_case_insensitive(fake_mounts, monkeypatch):
     monkeypatch.setenv("SUPERHARNESS_JOURNAL_MODE", "delete")
     from superharness.engine.db import _resolve_journal_mode
+
     assert _resolve_journal_mode("/home/user/proj/state.db") == "DELETE"
 
 
 # ---------------------------------------------------------------------------
 # get_connection integration — journal mode actually applied
 # ---------------------------------------------------------------------------
+
 
 def test_get_connection_applies_override_journal_mode(tmp_path, monkeypatch):
     """A valid override must be applied by get_connection (here: DELETE, a
@@ -153,6 +166,7 @@ def test_get_connection_applies_override_journal_mode(tmp_path, monkeypatch):
     _make_legacy_db(project)
 
     from superharness.engine.db import get_connection
+
     conn = get_connection(project)
     try:
         jm = conn.execute("PRAGMA journal_mode").fetchone()[0]
@@ -179,6 +193,7 @@ def test_get_connection_removes_stale_sidecars_when_leaving_wal(tmp_path, monkey
             f.write(b"stale")
 
     from superharness.engine.db import get_connection
+
     conn = get_connection(project)
     conn.close()
 

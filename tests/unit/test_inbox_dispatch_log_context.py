@@ -12,6 +12,7 @@ dispatch failure. An operator debugging a real crash by grepping logs for
 actually failed) wouldn't match either. Whole point of this diff's own
 logging pass was making failures traceable — a mislabeled one defeats it.
 """
+
 from __future__ import annotations
 
 import logging
@@ -19,7 +20,9 @@ import logging
 import pytest
 
 
-def test_dispatch_failure_log_names_dispatch_not_format_usage(monkeypatch, caplog, tmp_path):
+def test_dispatch_failure_log_names_dispatch_not_format_usage(
+    monkeypatch, caplog, tmp_path
+):
     from superharness.commands import inbox_dispatch
 
     def _boom(**kwargs):

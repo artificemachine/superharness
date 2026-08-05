@@ -1,4 +1,5 @@
 """Contract tests — the superharness skill exists and routes to every curated command."""
+
 from __future__ import annotations
 
 from pathlib import Path

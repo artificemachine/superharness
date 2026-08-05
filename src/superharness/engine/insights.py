@@ -1,4 +1,5 @@
 """Insights engine — task/dispatch/agent breakdowns from SQLite."""
+
 from __future__ import annotations
 
 import os
@@ -13,11 +14,16 @@ def get_insights(project_dir: str) -> dict:
     """
     from superharness.engine import db as db_module
     from superharness.utils.paths import resolve_active_state_db_path
+
     db_path = resolve_active_state_db_path(project_dir)
     if not os.path.isfile(db_path):
         return {
-            "tasks": {}, "agents": {}, "dispatch": {},
-            "failures": [], "summarizer": [], "cost_breakdown": {},
+            "tasks": {},
+            "agents": {},
+            "dispatch": {},
+            "failures": [],
+            "summarizer": [],
+            "cost_breakdown": {},
         }
 
     # Route through the shared get_connection so this reader picks up the same
@@ -43,9 +49,12 @@ def _summarizer_breakdown(conn: sqlite3.Connection) -> list[dict]:
     input_tokens (sum of non-null), output_tokens (sum of non-null).
     Empty list when the summarizer_calls table is missing (older DBs).
     """
-    tables = {r[0] for r in conn.execute(
-        "SELECT name FROM sqlite_master WHERE type='table'"
-    ).fetchall()}
+    tables = {
+        r[0]
+        for r in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table'"
+        ).fetchall()
+    }
     if "summarizer_calls" not in tables:
         return []
 
@@ -86,9 +95,12 @@ def _cost_breakdown(conn: sqlite3.Connection) -> dict:
     exclude NULLs. Empty dict when the task_usage table is missing (older DBs)
     or has no rows.
     """
-    tables = {r[0] for r in conn.execute(
-        "SELECT name FROM sqlite_master WHERE type='table'"
-    ).fetchall()}
+    tables = {
+        r[0]
+        for r in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table'"
+        ).fetchall()
+    }
     if "task_usage" not in tables:
         return {}
 
@@ -116,7 +128,9 @@ def _cost_breakdown(conn: sqlite3.Connection) -> dict:
 
 
 def _task_counts(conn: sqlite3.Connection) -> dict:
-    rows = conn.execute("SELECT status, COUNT(*) as n FROM tasks GROUP BY status").fetchall()
+    rows = conn.execute(
+        "SELECT status, COUNT(*) as n FROM tasks GROUP BY status"
+    ).fetchall()
     return {r["status"]: r["n"] for r in rows}
 
 
@@ -134,7 +148,12 @@ def _agent_breakdown(conn: sqlite3.Connection) -> dict:
 
 
 def _dispatch_counts(conn: sqlite3.Connection) -> dict:
-    tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
+    tables = {
+        r[0]
+        for r in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table'"
+        ).fetchall()
+    }
     launched = 0
     failed = 0
     if "ledger" in tables:
@@ -150,7 +169,12 @@ def _dispatch_counts(conn: sqlite3.Connection) -> dict:
 
 
 def _top_failures(conn: sqlite3.Connection, limit: int = 10) -> list[dict]:
-    tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
+    tables = {
+        r[0]
+        for r in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table'"
+        ).fetchall()
+    }
     if "inbox" not in tables:
         return []
     rows = conn.execute(
