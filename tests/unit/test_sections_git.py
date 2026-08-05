@@ -1,4 +1,5 @@
 """RED tests for the git section (ui/sections/git.py)."""
+
 from __future__ import annotations
 
 import io
@@ -15,8 +16,11 @@ def _read_profile(project_dir: Path) -> dict:
     return yaml.safe_load(p.read_text()) if p.exists() else {}
 
 
-def _run_git_section(project_dir: Path, answers: list[str] | None = None, non_interactive: bool = False):
+def _run_git_section(
+    project_dir: Path, answers: list[str] | None = None, non_interactive: bool = False
+):
     from superharness.ui.sections.git import run
+
     if non_interactive or answers is None:
         run(project_dir, non_interactive=True)
     else:
@@ -31,8 +35,13 @@ def _run_git_section(project_dir: Path, answers: list[str] | None = None, non_in
 @pytest.fixture
 def git_project(tmp_path):
     subprocess.run(["git", "init", str(tmp_path)], capture_output=True)
-    subprocess.run(["git", "-C", str(tmp_path), "config", "user.email", "t@t.com"], capture_output=True)
-    subprocess.run(["git", "-C", str(tmp_path), "config", "user.name", "T"], capture_output=True)
+    subprocess.run(
+        ["git", "-C", str(tmp_path), "config", "user.email", "t@t.com"],
+        capture_output=True,
+    )
+    subprocess.run(
+        ["git", "-C", str(tmp_path), "config", "user.name", "T"], capture_output=True
+    )
     (tmp_path / ".superharness").mkdir()
     return tmp_path
 

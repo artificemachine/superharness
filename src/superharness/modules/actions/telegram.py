@@ -1,4 +1,5 @@
 """Telegram notification module actions — send notifications on task events."""
+
 from __future__ import annotations
 
 import logging
@@ -13,6 +14,7 @@ logger.addFilter(TokenRedactingFilter())
 # Try to import requests, but don't fail if not available
 try:
     import requests
+
     HAS_REQUESTS = True
 except ImportError:
     HAS_REQUESTS = False
@@ -43,7 +45,9 @@ def telegram_send(context: dict[str, Any], settings: dict[str, Any]) -> dict[str
     token = os.environ.get(token_env)
 
     if not token:
-        logger.debug(f"Environment variable {token_env} not set, skipping telegram notification")
+        logger.debug(
+            f"Environment variable {token_env} not set, skipping telegram notification"
+        )
         return {
             "success": False,
             "message": f"{token_env} not set",
@@ -55,7 +59,9 @@ def telegram_send(context: dict[str, Any], settings: dict[str, Any]) -> dict[str
     chat_id = os.environ.get(chat_id_env)
 
     if not chat_id:
-        logger.debug(f"Environment variable {chat_id_env} not set, skipping telegram notification")
+        logger.debug(
+            f"Environment variable {chat_id_env} not set, skipping telegram notification"
+        )
         return {
             "success": False,
             "message": f"{chat_id_env} not set",
@@ -113,7 +119,9 @@ def telegram_send(context: dict[str, Any], settings: dict[str, Any]) -> dict[str
                     "message": f"Telegram API error: {result.get('description', 'Unknown error')}",
                 }
         else:
-            logger.warning(f"Telegram notification failed: {response.status_code} {response.text}")
+            logger.warning(
+                f"Telegram notification failed: {response.status_code} {response.text}"
+            )
             return {
                 "success": False,
                 "message": f"Telegram API returned {response.status_code}",

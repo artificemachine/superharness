@@ -16,9 +16,10 @@ Schema (schema_version 1):
   next_wake_at:   str|null  # ISO-8601 UTC of next scheduled wake, or null
   budget:         dict|null # model, input_tokens, output_tokens, cost_usd, max_budget_usd
 """
+
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -26,6 +27,7 @@ from typing import Any
 import yaml
 
 import logging
+
 logger = logging.getLogger(__name__)
 
 
@@ -96,6 +98,7 @@ def write_agent_status(
     try:
         from superharness.engine.db import get_connection, init_db
         from superharness.engine import agent_runtime_status_dao
+
         conn = get_connection(project_dir_str)
         try:
             init_db(conn)
@@ -114,16 +117,22 @@ def write_agent_status(
         finally:
             conn.close()
     except Exception as e:
-        logger.error("agent_status: SQLite SoT write failed — falling back to YAML crash dump: %s", e)
+        logger.error(
+            "agent_status: SQLite SoT write failed — falling back to YAML crash dump: %s",
+            e,
+        )
 
     # YAML mirror: skip only when SQLite succeeded AND sqlite_only mode is active.
     # If SQLite failed, write YAML regardless (C-DURABLE fallback).
     try:
         from superharness.engine.sqlite_only import is_sqlite_only
+
         if sqlite_ok and is_sqlite_only(project_dir=project_dir_str):
             return
     except Exception as e:
-        logger.debug("agent_status: is_sqlite_only check failed, writing YAML mirror: %s", e)
+        logger.debug(
+            "agent_status: is_sqlite_only check failed, writing YAML mirror: %s", e
+        )
 
     agents_dir = _agents_dir(project_dir)
     agents_dir.mkdir(parents=True, exist_ok=True)
@@ -196,6 +205,7 @@ def read_agent_status(
     try:
         from superharness.engine.db import get_connection, init_db
         from superharness.engine import agent_runtime_status_dao
+
         conn = get_connection(str(project_dir))
         try:
             init_db(conn)
@@ -212,7 +222,7 @@ def read_agent_status(
     if not path.exists():
         return sqlite_rec
     try:
-        data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}  # noqa: state-read — YAML compare-or-fallback when SQLite empty or stale
+        data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}  # shipguard:ignore state-read: YAML compare-or-fallback when SQLite is empty or stale
         if not isinstance(data, dict):
             return sqlite_rec
         yaml_rec = _parse_record(data)
@@ -234,11 +244,14 @@ def _yaml_newer_than(yaml_path: str, sqlite_iso_ts: str | None) -> bool:
     heartbeat_contract._yaml_newer_than for rationale (sub-second safety)."""
     import os as _os
     from datetime import datetime as _dt, timezone as _tz
+
     try:
         yaml_mtime = _os.path.getmtime(yaml_path)
         if not sqlite_iso_ts:
             return True
-        sqlite_dt = _dt.strptime(sqlite_iso_ts.rstrip("Z"), "%Y-%m-%dT%H:%M:%S").replace(tzinfo=_tz.utc)
+        sqlite_dt = _dt.strptime(
+            sqlite_iso_ts.rstrip("Z"), "%Y-%m-%dT%H:%M:%S"
+        ).replace(tzinfo=_tz.utc)
         return yaml_mtime > sqlite_dt.timestamp()
     except Exception as e:
         logger.debug("agent_status._yaml_newer_than: %s", e)
@@ -261,6 +274,7 @@ def read_all_agent_statuses(
     try:
         from superharness.engine.db import get_connection, init_db
         from superharness.engine import agent_runtime_status_dao
+
         conn = get_connection(str(project_dir))
         try:
             init_db(conn)
@@ -278,10 +292,10 @@ def read_all_agent_statuses(
     if not agents_dir.exists():
         return result
 
-    for path in sorted(agents_dir.glob("*.status.yaml")):  # noqa: state-read — YAML scan: external runtimes + freshness compare
+    for path in sorted(agents_dir.glob("*.status.yaml")):  # shipguard:ignore state-read: external runtime freshness comparison
         runtime_name = path.name.removesuffix(".status.yaml")
         try:
-            data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}  # noqa: state-read — YAML scan: external runtimes + freshness compare
+            data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}  # shipguard:ignore state-read: external runtime freshness comparison
             if not isinstance(data, dict):
                 continue
             record = _parse_record(data)

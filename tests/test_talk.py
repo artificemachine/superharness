@@ -1,8 +1,8 @@
 """Tests for shux talk — session-name-addressed inter-agent threads."""
+
 from __future__ import annotations
 
 import json
-import os
 
 import pytest
 
@@ -35,7 +35,9 @@ def test_register_writes_identity_and_session_record(project, tmp_path, monkeypa
     assert (tmp_path / "self-alpha").read_text().split() == ["alpha", "claude-code"]
 
 
-def test_send_show_roundtrip_and_thread_stays_open(project, tmp_path, monkeypatch, capsys):
+def test_send_show_roundtrip_and_thread_stays_open(
+    project, tmp_path, monkeypatch, capsys
+):
     _as(monkeypatch, tmp_path, "alpha")
     talk.cmd_register(str(project), "alpha", "claude-code")
     _as(monkeypatch, tmp_path, "beta")

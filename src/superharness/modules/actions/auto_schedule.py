@@ -1,4 +1,5 @@
 """Auto-schedule module actions — enqueue tasks when scheduled_after arrives."""
+
 from __future__ import annotations
 
 import logging
@@ -23,7 +24,9 @@ def _generate_inbox_id(task_id: str) -> str:
     return f"{timestamp}-{task_id}-{pid}-{random_suffix}"
 
 
-def check_scheduled_tasks(context: dict[str, Any], settings: dict[str, Any]) -> dict[str, Any]:
+def check_scheduled_tasks(
+    context: dict[str, Any], settings: dict[str, Any]
+) -> dict[str, Any]:
     """Scan contract for tasks ready to delegate. Returns list of enqueued task IDs.
 
     Args:
@@ -34,11 +37,12 @@ def check_scheduled_tasks(context: dict[str, Any], settings: dict[str, Any]) -> 
         Result dict with success status and enqueued_tasks list
     """
     project_dir = Path(context.get("project_dir", "."))
-    harness_dir = project_dir / ".superharness"
+    project_dir / ".superharness"
 
     # Load tasks from state_reader (SQLite)
     try:
         from superharness.engine import state_reader as _sr
+
         tasks = _sr.get_tasks(str(project_dir))
     except Exception as e:
         logger.warning("auto_schedule.py unexpected error: %s", e, exc_info=True)
@@ -57,7 +61,11 @@ def check_scheduled_tasks(context: dict[str, Any], settings: dict[str, Any]) -> 
         inbox = []
 
     # Build set of task IDs already in inbox
-    enqueued_task_ids = {str(item.get("task", "")) for item in inbox if isinstance(item, dict) and item.get("task")}
+    enqueued_task_ids = {
+        str(item.get("task", ""))
+        for item in inbox
+        if isinstance(item, dict) and item.get("task")
+    }
 
     # Build map of task statuses for dependency checking
     task_status_map = {}
@@ -98,12 +106,18 @@ def check_scheduled_tasks(context: dict[str, Any], settings: dict[str, Any]) -> 
 
         # Parse and check scheduled_after date
         try:
-            scheduled_date = datetime.strptime(str(scheduled_after_str), "%Y-%m-%d").date()
+            scheduled_date = datetime.strptime(
+                str(scheduled_after_str), "%Y-%m-%d"
+            ).date()
             if scheduled_date > today:
-                logger.debug(f"Task {task_id} scheduled for {scheduled_date}, not ready yet")
+                logger.debug(
+                    f"Task {task_id} scheduled for {scheduled_date}, not ready yet"
+                )
                 continue
         except ValueError:
-            logger.warning(f"Invalid scheduled_after format for task {task_id}: {scheduled_after_str}")
+            logger.warning(
+                f"Invalid scheduled_after format for task {task_id}: {scheduled_after_str}"
+            )
             continue
 
         # Check dependencies
@@ -112,7 +126,9 @@ def check_scheduled_tasks(context: dict[str, Any], settings: dict[str, Any]) -> 
             if depends_on:
                 dep_status = task_status_map.get(depends_on, "todo")
                 if dep_status not in ("done", "archived"):
-                    logger.debug(f"Task {task_id} blocked by dependency {depends_on} (status={dep_status})")
+                    logger.debug(
+                        f"Task {task_id} blocked by dependency {depends_on} (status={dep_status})"
+                    )
                     continue
 
         # Task is ready to enqueue
@@ -138,22 +154,32 @@ def check_scheduled_tasks(context: dict[str, Any], settings: dict[str, Any]) -> 
         try:
             from superharness.engine.db import get_connection, init_db
             from superharness.engine import inbox_dao as _idao
+
             now_str = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
             conn = get_connection(str(project_dir))
             try:
                 init_db(conn)
-                for item in inbox[-len(enqueued_tasks):]:  # only the newly added items
-                    _idao.enqueue(conn, id=str(item["id"]), task_id=str(item["task"]),
-                                 target_agent=str(item["to"]), priority=int(item.get("priority", 2)),
-                                 max_retries=int(item.get("max_retries", 3)),
-                                 project_path=str(item.get("project", "")),
-                                 plan_only=False, now=now_str, model_override="")
+                for item in inbox[-len(enqueued_tasks) :]:  # only the newly added items
+                    _idao.enqueue(
+                        conn,
+                        id=str(item["id"]),
+                        task_id=str(item["task"]),
+                        target_agent=str(item["to"]),
+                        priority=int(item.get("priority", 2)),
+                        max_retries=int(item.get("max_retries", 3)),
+                        project_path=str(item.get("project", "")),
+                        plan_only=False,
+                        now=now_str,
+                        model_override="",
+                    )
                 conn.commit()
             finally:
                 conn.close()
         except Exception as e:
             logger.warning(f"Failed to enqueue to SQLite: {e}")
-        logger.info(f"Enqueued {len(enqueued_tasks)} task(s): {', '.join(enqueued_tasks)}")
+        logger.info(
+            f"Enqueued {len(enqueued_tasks)} task(s): {', '.join(enqueued_tasks)}"
+        )
 
     return {
         "success": True,

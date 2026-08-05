@@ -1,4 +1,5 @@
 """Tests for superharness context command (TDD — all RED first, then implement)."""
+
 from __future__ import annotations
 
 import os
@@ -15,10 +16,14 @@ def _run_cmd(args: list[str], env: dict | None = None):
     if env:
         merged.update(env)
     cmd = [sys.executable, "-m", "superharness.commands.context"] + args
-    return subprocess.run(cmd, cwd=str(REPO_ROOT), text=True, capture_output=True, env=merged, check=False)
+    return subprocess.run(
+        cmd, cwd=str(REPO_ROOT), text=True, capture_output=True, env=merged, check=False
+    )
 
 
-def _make_contract(harness: Path, task_id: str = "feat-001", status: str = "in_progress") -> None:
+def _make_contract(
+    harness: Path, task_id: str = "feat-001", status: str = "in_progress"
+) -> None:
     (harness / "contract.yaml").write_text(
         f"id: test-contract\ntasks:\n"
         f"  - id: {task_id}\n"
@@ -28,7 +33,9 @@ def _make_contract(harness: Path, task_id: str = "feat-001", status: str = "in_p
     )
 
 
-def _setup_project(tmp_path: Path, task_id: str = "feat-001", status: str = "in_progress") -> Path:
+def _setup_project(
+    tmp_path: Path, task_id: str = "feat-001", status: str = "in_progress"
+) -> Path:
     project = tmp_path / "proj"
     project.mkdir()
     harness = project / ".superharness"
@@ -53,8 +60,12 @@ class TestContextCommand:
         """Context output must include outcome and context fields from the last handoff."""
         project = _setup_project(tmp_path)
         from tests.helpers import seed_sqlite_handoff
+
         seed_sqlite_handoff(
-            project, "feat-001", phase="report", status="report_ready",
+            project,
+            "feat-001",
+            phase="report",
+            status="report_ready",
             content=(
                 "task: feat-001\nphase: report\nstatus: report_ready\n"
                 "from: claude-code\nto: owner\ndate: 2026-03-14T10:00:00Z\n"
@@ -120,6 +131,7 @@ class TestContextCommand:
         # Seed the dependency directly so the post-migration read path
         # (state_reader.get_tasks → joins task_dependencies) sees it.
         import sqlite3 as _sql
+
         seed_sqlite_from_yaml(project)
         _db = _sql.connect(str(project / ".superharness" / "state.sqlite3"))
         try:
@@ -134,16 +146,27 @@ class TestContextCommand:
         assert result.returncode == 0, result.stderr
         assert "blocker failure context" in result.stdout.lower()
         assert "unrelated failure" not in result.stdout.lower()
-        assert "[feat-001]" in result.stdout  # Should show which task the failure belonged to if not current
+        assert (
+            "[feat-001]" in result.stdout
+        )  # Should show which task the failure belonged to if not current
 
     def test_context_shows_ledger_entries(self, tmp_path):
         """Context output must include recent ledger lines mentioning the task."""
         project = _setup_project(tmp_path)
         from tests.helpers import seed_sqlite_ledger
-        seed_sqlite_ledger(project, action="IN_PROGRESS: feat-001", task_id="feat-001",
-                           now="2026-03-14T09:12:00Z")
-        seed_sqlite_ledger(project, action="REPORT: feat-001", task_id="feat-001",
-                           now="2026-03-14T11:44:00Z")
+
+        seed_sqlite_ledger(
+            project,
+            action="IN_PROGRESS: feat-001",
+            task_id="feat-001",
+            now="2026-03-14T09:12:00Z",
+        )
+        seed_sqlite_ledger(
+            project,
+            action="REPORT: feat-001",
+            task_id="feat-001",
+            now="2026-03-14T11:44:00Z",
+        )
         result = _run_cmd(["--project", str(project), "feat-001"])
         assert result.returncode == 0, result.stderr
         assert "IN_PROGRESS" in result.stdout or "REPORT" in result.stdout

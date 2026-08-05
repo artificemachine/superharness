@@ -5,6 +5,7 @@ agent runtimes (claude-code, codex-cli, and future external adapters).
 All dispatch paths use this registry to resolve launchers, validate
 adapters, and surface capability information.
 """
+
 from __future__ import annotations
 
 import logging
@@ -53,7 +54,7 @@ def _normalize_tier_value(value: Any, version: str = "*") -> dict[str, str]:
             entry = versions.get(version) or versions.get("*") or {}
             return _normalize_tier_value(entry)
         tier_id = str(value.get("id", "") or "").strip()
-        label   = str(value.get("label", "") or "").strip()
+        label = str(value.get("label", "") or "").strip()
         if not label:
             label = tier_id
         return {"id": tier_id, "label": label}
@@ -70,6 +71,7 @@ class AdapterManifest:
     versioned schema.  Call `resolve_tier_version(tier, version)` to select
     a specific version (e.g. `"4.6"` for Opus 4.6 within the `max` tier).
     """
+
     name: str
     version: str
     description: str
@@ -100,8 +102,7 @@ class AdapterManifest:
     def from_dict(cls, data: dict[str, Any]) -> "AdapterManifest":
         raw_tiers: dict[str, Any] = dict(data.get("model_tiers") or {})
         normalized_tiers = {
-            str(name): _normalize_tier_value(val)
-            for name, val in raw_tiers.items()
+            str(name): _normalize_tier_value(val) for name, val in raw_tiers.items()
         }
         return cls(
             name=str(data.get("name", "")),
@@ -143,10 +144,14 @@ def load_manifest(name: str) -> AdapterManifest:
         with open(manifest_file, "r", encoding="utf-8") as f:
             data = yaml.safe_load(f)
     except Exception as e:
-        raise AdapterValidationError(f"Failed to read adapter manifest '{name}': {e}") from e
+        raise AdapterValidationError(
+            f"Failed to read adapter manifest '{name}': {e}"
+        ) from e
 
     if not isinstance(data, dict):
-        raise AdapterValidationError(f"Adapter manifest '{name}' is not a valid YAML dict")
+        raise AdapterValidationError(
+            f"Adapter manifest '{name}' is not a valid YAML dict"
+        )
 
     manifest = AdapterManifest.from_dict(data)
     _manifest_cache[name] = manifest

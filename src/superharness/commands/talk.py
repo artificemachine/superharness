@@ -32,6 +32,7 @@ See docs/inter-agent-talk-protocol.md for the channel-split protocol
 (talk = interactive conversation; append-only mailbox files = durable
 handoffs/receipts/decisions).
 """
+
 from __future__ import annotations
 
 import argparse
@@ -86,7 +87,8 @@ def _load_self() -> tuple[str, str]:
     path = _self_file()
     if not os.path.isfile(path):
         raise UsageError(
-            "not registered — run: shux talk register <my-name> <agent-kind>", exit_code=1
+            "not registered — run: shux talk register <my-name> <agent-kind>",
+            exit_code=1,
         )
     with open(path, encoding="utf-8") as f:
         parts = f.read().split()
@@ -145,7 +147,9 @@ def _create_thread(project_dir: str, talk_dir: str, self_name: str, peer: str) -
         with open(pair_file, encoding="utf-8") as f:
             previous = f.read().strip()
         if previous:
-            with open(pair_file[: -len(".id")] + ".history", "a", encoding="utf-8") as f:
+            with open(
+                pair_file[: -len(".id")] + ".history", "a", encoding="utf-8"
+            ) as f:
                 f.write(
                     f"[{_now_utc()}] {previous} status={_status(project_dir, previous)}\n"
                 )
@@ -286,7 +290,9 @@ def main(argv: list[str] | None = None) -> None:
         prog="shux talk",
         description="Session-name-addressed inter-agent conversation threads.",
     )
-    parser.add_argument("--project", "-p", default=None, help="project root (default: cwd)")
+    parser.add_argument(
+        "--project", "-p", default=None, help="project root (default: cwd)"
+    )
     parser.add_argument(
         "target",
         help="'register', 'inbox', or a peer session name",
@@ -296,7 +302,9 @@ def main(argv: list[str] | None = None) -> None:
         nargs="*",
         help="register: <my-name> <agent-kind>; peer: [-m MESSAGE]",
     )
-    parser.add_argument("-m", "--message", default=None, help="message to send to the peer")
+    parser.add_argument(
+        "-m", "--message", default=None, help="message to send to the peer"
+    )
     opts = parser.parse_args(argv)
 
     project_dir = os.path.abspath(opts.project or os.getcwd())
@@ -313,9 +321,7 @@ def main(argv: list[str] | None = None) -> None:
         rc = cmd_inbox(project_dir)
     else:
         if opts.rest:
-            raise UsageError(
-                "usage: shux talk <peer> [-m MESSAGE]", exit_code=2
-            )
+            raise UsageError("usage: shux talk <peer> [-m MESSAGE]", exit_code=2)
         if opts.message is not None:
             rc = cmd_send(project_dir, opts.target, opts.message)
         else:

@@ -10,7 +10,6 @@ Verifies:
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
 import pytest
@@ -66,7 +65,9 @@ class TestRuleParsing:
         assert "Alpha body content" in rule["_body"]
 
     def test_parse_no_frontmatter(self, rules_project: Path):
-        rule = _parse_rule(rules_project / ".superharness" / "rules" / "no-frontmatter.md")
+        rule = _parse_rule(
+            rules_project / ".superharness" / "rules" / "no-frontmatter.md"
+        )
         assert rule is None
 
     def test_parse_nonexistent_file(self, rules_project: Path):
@@ -139,6 +140,7 @@ class TestAdapterPayloadRules:
     def test_build_payload_includes_rules(self, rules_project: Path):
         """Adapter payload must include rules key for Morpheme/external consumers."""
         from superharness.commands.adapter_payload import build_payload
+
         payload = build_payload(str(rules_project))
         assert "rules" in payload
         rules = payload["rules"]
@@ -150,6 +152,7 @@ class TestAdapterPayloadRules:
     def test_build_payload_no_rules_dir(self, tmp_path: Path):
         """Payload still works when no rules directory exists."""
         from superharness.commands.adapter_payload import build_payload
+
         payload = build_payload(str(tmp_path))
         assert "rules" in payload
         assert payload["rules"] == []
@@ -159,12 +162,14 @@ class TestHandoffRules:
     def test_load_rules_function(self, rules_project: Path):
         """_load_rules loads project rules for handoff injection."""
         from superharness.engine.handoff_generator import _load_rules
+
         rules = _load_rules(str(rules_project))
         assert "id: alpha" in rules
         assert "id: beta" in rules
 
     def test_load_rules_no_dir(self, tmp_path: Path):
         from superharness.engine.handoff_generator import _load_rules
+
         rules = _load_rules(str(tmp_path))
         assert rules == ""
 
@@ -208,4 +213,6 @@ class TestRealProjectRules:
     def test_real_rules_all_active(self):
         rules = list_rules(str(self._repo_root()))
         for r in rules:
-            assert r["status"] == "active", f"Rule {r['id']} is not active: {r['status']}"
+            assert r["status"] == "active", (
+                f"Rule {r['id']} is not active: {r['status']}"
+            )

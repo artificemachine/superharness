@@ -4,15 +4,16 @@ When a task fails, match the error output against a known pattern library.
 Matched patterns are stored in failures.yaml and injected into the next
 dispatch's context so the agent avoids repeating the same mistake.
 """
+
 from __future__ import annotations
 
 import re
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
 
 import logging
+
 logger = logging.getLogger(__name__)
 
 try:
@@ -24,6 +25,7 @@ except ImportError:
 @dataclass
 class FailurePattern:
     """One recognizable failure signature with a fix hint."""
+
     id: str
     description: str
     # Any of these regexes matching in the error text triggers this pattern
@@ -223,6 +225,7 @@ PATTERN_BY_ID: dict[str, FailurePattern] = {p.id: p for p in BUILTIN_PATTERNS}
 # Matching
 # ---------------------------------------------------------------------------
 
+
 def match_patterns(error_text: str) -> list[FailurePattern]:
     """Return all patterns that match the given error text (case-insensitive)."""
     matched = []
@@ -237,16 +240,17 @@ def match_patterns(error_text: str) -> list[FailurePattern]:
 def strip_ansi(text: str) -> str:
     """Remove ANSI escape sequences and terminal noise (BEL, BS) from text."""
     # Standard ANSI escape sequences (CSI, OSC, etc)
-    ansi_escape = re.compile(r'(?:\x1B[@-Z\\-_]|[\x80-\x9F]|\x1B\[[0-?]*[ -/]*[@-~])')
-    text = ansi_escape.sub('', text)
+    ansi_escape = re.compile(r"(?:\x1B[@-Z\\-_]|[\x80-\x9F]|\x1B\[[0-?]*[ -/]*[@-~])")
+    text = ansi_escape.sub("", text)
     # Also strip BEL, BS, and other common terminal noise
-    text = re.sub(r'[\x07\x08]', '', text)
+    text = re.sub(r"[\x07\x08]", "", text)
     return text
 
 
 # ---------------------------------------------------------------------------
 # Storage — failures.yaml integration
 # ---------------------------------------------------------------------------
+
 
 def _load_failures(failures_file: str) -> dict:
     if yaml is None:
@@ -296,12 +300,18 @@ def record_failure(
     try:
         from superharness.engine.db import get_connection, init_db
         from superharness.engine import failures_dao
+
         conn = get_connection(project_dir)
         try:
             init_db(conn)
-            failures_dao.record(conn, task_id=task_id, agent=agent,
-                              pattern=pattern_str,
-                              error_snippet=error_snippet, now=now)
+            failures_dao.record(
+                conn,
+                task_id=task_id,
+                agent=agent,
+                pattern=pattern_str,
+                error_snippet=error_snippet,
+                now=now,
+            )
             conn.commit()
         finally:
             conn.close()
@@ -328,6 +338,7 @@ def unknown_signature(error_snippet: str) -> str:
     """Stable signature for an unclassified error. Hash the first 500 chars
     of the cleaned snippet so repeated identical errors share a key."""
     import hashlib
+
     h = hashlib.sha256((error_snippet or "")[:500].encode("utf-8")).hexdigest()[:16]
     return f"unknown:{h}"
 
@@ -338,10 +349,12 @@ def _seed_unknown_signature(project_dir: str, error_snippet: str) -> None:
     (missing dirs, missing CLIs, etc.) that the regex library doesn't
     classify."""
     from superharness.utils.paths import resolve_active_state_db_path
+
     db_path = resolve_active_state_db_path(project_dir)
     if not Path(db_path).exists():
         return
     from superharness.engine.operator_memory import OperatorMemory
+
     om = OperatorMemory(db_path)
     om.ensure_table()
     sig = unknown_signature(error_snippet)
@@ -358,6 +371,7 @@ def _seed_unknown_signature(project_dir: str, error_snippet: str) -> None:
 # Operator memory seeding
 # ---------------------------------------------------------------------------
 
+
 def _seed_operator_memory(project_dir: str, patterns: list[FailurePattern]) -> None:
     """Ensure each matched pattern exists in operator_memory.
 
@@ -365,6 +379,7 @@ def _seed_operator_memory(project_dir: str, patterns: list[FailurePattern]) -> N
     exists, skip (the watcher handles confidence updates via record_match).
     """
     from superharness.utils.paths import resolve_active_state_db_path
+
     db_path = resolve_active_state_db_path(project_dir)
     if not Path(db_path).exists():
         return
@@ -396,6 +411,7 @@ def get_failure_hints(project_dir: str, task_id: str) -> list[str]:
     try:
         from superharness.engine.db import get_connection, init_db
         from superharness.engine import failures_dao
+
         conn = get_connection(project_dir)
         try:
             init_db(conn)
@@ -411,7 +427,9 @@ def get_failure_hints(project_dir: str, task_id: str) -> list[str]:
         pass
     hints = []
     if "unknown" in seen_pattern_ids and not seen_pattern_ids.difference({"unknown"}):
-        hints.append("[unknown] An unclassified error occurred. Check the error_snippet in failures.yaml for details.")
+        hints.append(
+            "[unknown] An unclassified error occurred. Check the error_snippet in failures.yaml for details."
+        )
 
     for pid in seen_pattern_ids:
         if pid == "unknown":

@@ -41,7 +41,11 @@ def test_upsert_and_get(db_conn):
     row = tasks_dao.upsert(db_conn, _task())
     assert row.id == "task-1"
     assert row.acceptance_criteria == ["must work"]
-    assert row.tdd == {"red": "write test", "green": "implement", "refactor": "clean up"}
+    assert row.tdd == {
+        "red": "write test",
+        "green": "implement",
+        "refactor": "clean up",
+    }
 
     fetched = tasks_dao.get(db_conn, "task-1")
     assert fetched is not None
@@ -71,7 +75,9 @@ def test_get_all_filter_status(db_conn):
 def test_update_optimistic_concurrency(db_conn):
     tasks_dao.upsert(db_conn, _task())
     row = tasks_dao.get(db_conn, "task-1")
-    updated = tasks_dao.update(db_conn, "task-1", version=row.version, changes={"status": "done"})
+    updated = tasks_dao.update(
+        db_conn, "task-1", version=row.version, changes={"status": "done"}
+    )
     assert updated.status == "done"
 
 
@@ -112,4 +118,4 @@ def test_get_unblocked_with_pending_dep(db_conn):
     unblocked = tasks_dao.get_unblocked(db_conn)
     ids = [r.id for r in unblocked]
     assert "t2" not in ids  # t1 not done, so t2 is blocked
-    assert "t1" in ids      # t1 has no deps, so it's unblocked
+    assert "t1" in ids  # t1 has no deps, so it's unblocked

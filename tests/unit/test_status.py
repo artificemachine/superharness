@@ -8,18 +8,23 @@ command (superharness.commands.status) reports watcher/inbox health, not the con
 dashboard. Tests have been updated accordingly.
 """
 
-import sys
+import subprocess  # noqa: E402
+import sys  # noqa: E402
 
-import pytest
+import pytest  # noqa: E402
 
-from tests.helpers import REPO_ROOT
+from tests.helpers import REPO_ROOT  # noqa: E402
 
 
-pytestmark = pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
+pytestmark = pytest.mark.skip(
+    reason="legacy YAML fixture — pending SQLite migration (see PR #208)"
+)
+
 
 def _run_python(args: list[str]) -> "subprocess.CompletedProcess[str]":
     import os
     import subprocess
+
     env = os.environ.copy()
     env["PYTHONPATH"] = str(REPO_ROOT / "src")
     return subprocess.run(
@@ -40,13 +45,18 @@ def _write_harness(project_dir, *, inbox_yaml: str | None = None):
     return sh_dir
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Unix execute-bit not meaningful on Windows NTFS")
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="Unix execute-bit not meaningful on Windows NTFS"
+)
 def test_status_script_is_executable(repo_root) -> None:
     """src/superharness/scripts/status.sh should still be executable (Bash wrapper kept)."""
     script = repo_root / "src" / "superharness" / "scripts" / "status.sh"
     assert script.exists(), "src/superharness/scripts/status.sh not found"
     import stat
-    assert script.stat().st_mode & stat.S_IXUSR, "src/superharness/scripts/status.sh is not executable"
+
+    assert script.stat().st_mode & stat.S_IXUSR, (
+        "src/superharness/scripts/status.sh is not executable"
+    )
 
 
 def test_status_no_contract(repo_root, tmp_path) -> None:
@@ -138,6 +148,7 @@ def test_status_no_watcher_heartbeat(repo_root, tmp_path) -> None:
 def test_status_fresh_watcher(repo_root, tmp_path) -> None:
     """status shows recent heartbeat age."""
     from datetime import datetime, timezone
+
     project = tmp_path / "proj"
     project.mkdir()
     sh_dir = _write_harness(project)
@@ -177,7 +188,9 @@ def test_status_with_profile(repo_root, tmp_path) -> None:
     project = tmp_path / "proj"
     project.mkdir()
     sh_dir = _write_harness(project)
-    (sh_dir / "profile.yaml").write_text("autonomy: autonomous\nprimary_agent: codex-cli\nteam_size: small\n")
+    (sh_dir / "profile.yaml").write_text(
+        "autonomy: autonomous\nprimary_agent: codex-cli\nteam_size: small\n"
+    )
     result = _run_python(["--project", str(project)])
     assert result.returncode == 0, f"{result.stdout}\n{result.stderr}"
     assert "superharness status" in result.stdout
@@ -196,9 +209,13 @@ def test_status_reads_worker_project_heartbeat(repo_root, tmp_path) -> None:
         f'watcher_project: "{worker.as_posix()}"\ninterval_seconds: 30\n',
         encoding="utf-8",
     )
-    (sh_dir / "watcher.heartbeat").write_text("2026-01-01T00:00:00Z\n", encoding="utf-8")
+    (sh_dir / "watcher.heartbeat").write_text(
+        "2026-01-01T00:00:00Z\n", encoding="utf-8"
+    )
     fresh = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-    (worker / ".superharness" / "watcher.heartbeat").write_text(fresh + "\n", encoding="utf-8")
+    (worker / ".superharness" / "watcher.heartbeat").write_text(
+        fresh + "\n", encoding="utf-8"
+    )
 
     result = _run_python(["--project", str(project)])
     assert result.returncode == 0, f"{result.stdout}\n{result.stderr}"
@@ -206,7 +223,9 @@ def test_status_reads_worker_project_heartbeat(repo_root, tmp_path) -> None:
     assert "worker project" in result.stdout.lower()
 
 
-def test_status_worker_stale_falls_back_to_source_heartbeat(repo_root, tmp_path) -> None:
+def test_status_worker_stale_falls_back_to_source_heartbeat(
+    repo_root, tmp_path
+) -> None:
     """When watcher.yaml points to a worker dir whose heartbeat is stale,
     status must fall back to the source project heartbeat written by the operator.
     Regression: shux operator start writes to project_dir, not the worker dir."""
@@ -222,7 +241,9 @@ def test_status_worker_stale_falls_back_to_source_heartbeat(repo_root, tmp_path)
         encoding="utf-8",
     )
     # Worker heartbeat is stale (weeks old, as seen in the real morpheme case)
-    (worker / ".superharness" / "watcher.heartbeat").write_text("2026-01-01T00:00:00Z\n", encoding="utf-8")
+    (worker / ".superharness" / "watcher.heartbeat").write_text(
+        "2026-01-01T00:00:00Z\n", encoding="utf-8"
+    )
     # Operator wrote a fresh heartbeat to the source project
     fresh = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     (sh_dir / "watcher.heartbeat").write_text(fresh + "\n", encoding="utf-8")

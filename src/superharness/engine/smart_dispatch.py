@@ -12,6 +12,7 @@ Usage::
     agent = choose_agent(task, project_dir="/path/to/project")
     # → "claude-code" | "codex-cli" | "gemini-cli" | ...
 """
+
 from __future__ import annotations
 
 import logging
@@ -108,7 +109,9 @@ def choose_agent(
     manifests = _load_manifests(mdir)
 
     if not manifests:
-        logger.debug("smart_dispatch: no manifests found in %s, using owner/fallback", mdir)
+        logger.debug(
+            "smart_dispatch: no manifests found in %s, using owner/fallback", mdir
+        )
         return explicit_owner or _FALLBACK_AGENT
 
     keywords = _task_keywords(task)
@@ -128,14 +131,18 @@ def choose_agent(
     if best_score <= 0 or not best_agent:
         logger.debug(
             "smart_dispatch: no skill match (best_score=%d), falling back to %s",
-            best_score, explicit_owner or _FALLBACK_AGENT
+            best_score,
+            explicit_owner or _FALLBACK_AGENT,
         )
         return explicit_owner or _FALLBACK_AGENT
 
     if best_agent != explicit_owner and explicit_owner:
         logger.info(
             "smart_dispatch: routing '%s' to '%s' (score=%d, owner was '%s')",
-            task.get("id", "?"), best_agent, best_score, explicit_owner
+            task.get("id", "?"),
+            best_agent,
+            best_score,
+            explicit_owner,
         )
 
     return best_agent

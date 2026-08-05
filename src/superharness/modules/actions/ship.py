@@ -1,4 +1,5 @@
 """Ship module actions — auto-commit and push on task close."""
+
 from __future__ import annotations
 
 import logging
@@ -86,7 +87,9 @@ def git_ship(context: dict[str, Any], settings: dict[str, Any]) -> dict[str, Any
         }
 
     # Commit changes
-    commit_message = f"{summary}\n\nTask: {task_id}\nAuto-committed by superharness ship module"
+    commit_message = (
+        f"{summary}\n\nTask: {task_id}\nAuto-committed by superharness ship module"
+    )
 
     try:
         logger.info(f"Committing changes for task {task_id}")

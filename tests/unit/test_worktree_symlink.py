@@ -10,12 +10,12 @@ status, and every dispatch into a worktree was rejected with
 Fix: _git_worktree_add must replace any pre-existing real dir with a
 symlink to the live source.
 """
+
 from __future__ import annotations
 
 import os
 import subprocess
 import sys
-import tempfile
 from pathlib import Path
 
 import pytest
@@ -31,18 +31,23 @@ def git_project(tmp_path):
     project = tmp_path / "proj"
     project.mkdir()
     subprocess.run(["git", "-C", str(project), "init", "-q"], check=True)
-    subprocess.run(["git", "-C", str(project), "config", "user.email", "t@e.x"], check=True)
+    subprocess.run(
+        ["git", "-C", str(project), "config", "user.email", "t@e.x"], check=True
+    )
     subprocess.run(["git", "-C", str(project), "config", "user.name", "t"], check=True)
     harness = project / ".superharness"
     harness.mkdir()
-    (harness / "contract.yaml").write_text("tasks:\n  - id: t1\n    status: in_progress\n")
+    (harness / "contract.yaml").write_text(
+        "tasks:\n  - id: t1\n    status: in_progress\n"
+    )
     subprocess.run(["git", "-C", str(project), "add", "."], check=True)
     env = os.environ.copy()
     env["ALLOW_MAIN_COMMIT"] = "1"
     env["ALLOW_NO_CHANGELOG"] = "1"
     subprocess.run(
         ["git", "-C", str(project), "commit", "-q", "-m", "init", "--no-verify"],
-        check=True, env=env,
+        check=True,
+        env=env,
     )
     return project
 
@@ -88,7 +93,14 @@ def test_get_connection_uses_state_project_env_var(tmp_path):
     init_db(conn_real)
     conn_real.execute(
         "INSERT INTO tasks (id, title, owner, status, workflow, created_at) VALUES (?,?,?,?,?,?)",
-        ("task-wt-test", "Worktree test task", "claude-code", "todo", "implementation", "2026-05-19T00:00:00Z"),
+        (
+            "task-wt-test",
+            "Worktree test task",
+            "claude-code",
+            "todo",
+            "implementation",
+            "2026-05-19T00:00:00Z",
+        ),
     )
     conn_real.commit()
     conn_real.close()
@@ -108,7 +120,9 @@ def test_get_connection_uses_state_project_env_var(tmp_path):
         conn_via_env = get_connection(str(worktree_dir))
         init_db(conn_via_env)
         task = tasks_dao.get(conn_via_env, "task-wt-test")
-        assert task is not None, "task should be visible when SUPERHARNESS_STATE_PROJECT is set"
+        assert task is not None, (
+            "task should be visible when SUPERHARNESS_STATE_PROJECT is set"
+        )
         assert task.status == "todo"
         conn_via_env.close()
     finally:

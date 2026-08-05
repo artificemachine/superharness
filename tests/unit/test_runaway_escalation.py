@@ -5,9 +5,9 @@ Two escalation triggers:
 2. The same error_snippet has been recorded N times in a row for this
    task — indicates an environmental fault that no agent reroute will fix.
 """
+
 from __future__ import annotations
 
-import os
 from unittest.mock import patch
 
 from superharness.engine.db import get_connection, init_db
@@ -108,9 +108,9 @@ def test_auto_recover_escalates_when_max_retries_hits_ceiling(tmp_path):
 
     conn = get_connection(project)
     try:
-        task_status = conn.execute(
-            "SELECT status FROM tasks WHERE id='t1'"
-        ).fetchone()["status"]
+        task_status = conn.execute("SELECT status FROM tasks WHERE id='t1'").fetchone()[
+            "status"
+        ]
         inbox_status = conn.execute(
             "SELECT status FROM inbox WHERE id='i1'"
         ).fetchone()["status"]
@@ -141,9 +141,9 @@ def test_auto_recover_escalates_on_identical_error_loop(tmp_path):
 
     conn = get_connection(project)
     try:
-        task_status = conn.execute(
-            "SELECT status FROM tasks WHERE id='t1'"
-        ).fetchone()["status"]
+        task_status = conn.execute("SELECT status FROM tasks WHERE id='t1'").fetchone()[
+            "status"
+        ]
         assert task_status == "waiting_input"
     finally:
         conn.close()
@@ -167,7 +167,9 @@ def test_auto_recover_writes_recovery_count_to_column_not_failed_reason(tmp_path
     # No identical-error loop seeded → should re-route normally.
     conn.close()
 
-    with patch("superharness.commands.inbox_watch._agent_cli_reachable", return_value=True):
+    with patch(
+        "superharness.commands.inbox_watch._agent_cli_reachable", return_value=True
+    ):
         _auto_recover_exhausted_failures_sqlite(project)
 
     conn = get_connection(project)

@@ -1,4 +1,5 @@
 """Tests for session-stop.sh — automatic context persistence on session exit."""
+
 from __future__ import annotations
 
 import json
@@ -13,6 +14,7 @@ import pytest
 
 
 pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="requires bash")
+
 
 def _setup_project(
     tmp_path: Path,
@@ -36,22 +38,44 @@ def _setup_project(
     (harness / "decisions.yaml").write_text("decisions: []\n")
     (harness / "failures.yaml").write_text("failures: []\n")
     from tests.helpers import seed_sqlite_from_yaml
+
     seed_sqlite_from_yaml(project)
     return project
 
 
 def _init_git(project: Path, *, branch: str = "feat/test-branch") -> None:
     subprocess.run(["git", "init", str(project)], capture_output=True, check=True)
-    subprocess.run(["git", "-C", str(project), "checkout", "-b", branch], capture_output=True, check=True)
+    subprocess.run(
+        ["git", "-C", str(project), "checkout", "-b", branch],
+        capture_output=True,
+        check=True,
+    )
     # Initial commit so git log works
     dummy = project / "README.md"
     dummy.write_text("# test\n")
-    subprocess.run(["git", "-C", str(project), "add", "README.md"], capture_output=True, check=True)
     subprocess.run(
-        ["git", "-C", str(project), "commit", "-m", "initial commit", "--no-gpg-sign", "--no-verify"],
-        capture_output=True, check=True,
-        env={**__import__("os").environ, "GIT_AUTHOR_NAME": "test", "GIT_AUTHOR_EMAIL": "test@test.com",
-             "GIT_COMMITTER_NAME": "test", "GIT_COMMITTER_EMAIL": "test@test.com"},
+        ["git", "-C", str(project), "add", "README.md"], capture_output=True, check=True
+    )
+    subprocess.run(
+        [
+            "git",
+            "-C",
+            str(project),
+            "commit",
+            "-m",
+            "initial commit",
+            "--no-gpg-sign",
+            "--no-verify",
+        ],
+        capture_output=True,
+        check=True,
+        env={
+            **__import__("os").environ,
+            "GIT_AUTHOR_NAME": "test",
+            "GIT_AUTHOR_EMAIL": "test@test.com",
+            "GIT_COMMITTER_NAME": "test",
+            "GIT_COMMITTER_EMAIL": "test@test.com",
+        },
     )
 
 
@@ -80,12 +104,18 @@ class TestSessionStop:
         content = (project / ".superharness" / "session-progress.md").read_text()
         assert "feat/my-feature" in content
 
-    def test_includes_uncommitted_changes(self, repo_root: Path, tmp_path: Path) -> None:
+    def test_includes_uncommitted_changes(
+        self, repo_root: Path, tmp_path: Path
+    ) -> None:
         project = _setup_project(tmp_path)
         _init_git(project)
         # Create an uncommitted file
         (project / "new_file.py").write_text("print('hello')\n")
-        subprocess.run(["git", "-C", str(project), "add", "new_file.py"], capture_output=True, check=True)
+        subprocess.run(
+            ["git", "-C", str(project), "add", "new_file.py"],
+            capture_output=True,
+            check=True,
+        )
         script = repo_root / "adapters" / "claude-code" / "hooks" / "session-stop.sh"
         run_bash(script, cwd=project)
         content = (project / ".superharness" / "session-progress.md").read_text()
@@ -107,7 +137,9 @@ class TestSessionStop:
         assert "session-stop" in ledger
         assert "session-progress.md" in ledger
 
-    def test_overwrites_previous_progress(self, repo_root: Path, tmp_path: Path) -> None:
+    def test_overwrites_previous_progress(
+        self, repo_root: Path, tmp_path: Path
+    ) -> None:
         project = _setup_project(tmp_path)
         script = repo_root / "adapters" / "claude-code" / "hooks" / "session-stop.sh"
         run_bash(script, cwd=project)
@@ -116,12 +148,16 @@ class TestSessionStop:
         # Only one "Last updated" header — file was overwritten, not appended
         assert content.count("Last updated:") == 1
 
-    def test_monitor_kill_respects_env_var_port(self, repo_root: Path, tmp_path: Path) -> None:
+    def test_monitor_kill_respects_env_var_port(
+        self, repo_root: Path, tmp_path: Path
+    ) -> None:
         """SUPERHARNESS_MONITOR_PORT env var is used instead of hardcoded 8787."""
         project = _setup_project(tmp_path)
         script = repo_root / "adapters" / "claude-code" / "hooks" / "session-stop.sh"
         # Use a port extremely unlikely to be in use; script must not crash
-        result = run_bash(script, cwd=project, env={"SUPERHARNESS_MONITOR_PORT": "19876"})
+        result = run_bash(
+            script, cwd=project, env={"SUPERHARNESS_MONITOR_PORT": "19876"}
+        )
         assert result.returncode == 0, result.stderr
 
     def test_no_listener_on_port_is_noop(self, repo_root: Path, tmp_path: Path) -> None:
@@ -133,11 +169,14 @@ class TestSessionStop:
         proc = subprocess.Popen(["sleep", "60"])
         try:
             result = run_bash(
-                script, cwd=project,
+                script,
+                cwd=project,
                 env={"SUPERHARNESS_MONITOR_PORT": "19877"},
             )
             assert result.returncode == 0, result.stderr
-            assert proc.poll() is None, "session-stop.sh must not kill unrelated processes"
+            assert proc.poll() is None, (
+                "session-stop.sh must not kill unrelated processes"
+            )
         finally:
             proc.terminate()
             proc.wait()
@@ -157,7 +196,9 @@ class TestSessionStop:
 
 
 class TestSessionStartReadsProgress:
-    def test_session_start_includes_progress_snapshot(self, repo_root: Path, tmp_path: Path) -> None:
+    def test_session_start_includes_progress_snapshot(
+        self, repo_root: Path, tmp_path: Path
+    ) -> None:
         """session-start.sh must include session-progress.md content in additionalContext."""
         project = tmp_path / "proj"
         project.mkdir()
@@ -182,7 +223,9 @@ class TestSessionStartReadsProgress:
         assert "feat-001" in context
         assert "feat/my-branch" in context
 
-    def test_session_start_works_without_progress_file(self, repo_root: Path, tmp_path: Path) -> None:
+    def test_session_start_works_without_progress_file(
+        self, repo_root: Path, tmp_path: Path
+    ) -> None:
         """session-start.sh must work fine when no session-progress.md exists."""
         project = tmp_path / "proj"
         project.mkdir()
@@ -198,83 +241,150 @@ class TestSessionStartReadsProgress:
         assert "additionalContext" in payload
 
 
-_INBOX_HEADER = "# Delegation inbox\n# status: pending|launched|running|done|failed|stale\n"
+_INBOX_HEADER = (
+    "# Delegation inbox\n# status: pending|launched|running|done|failed|stale\n"
+)
 
 
 class TestSessionStopPausesTasks:
     """session-stop.sh must stop active Claude work and pause remaining Claude inbox items."""
 
-    def _make_inbox(self, harness: Path, items: list[dict], *, filename: str = "inbox.yaml") -> Path:
+    def _make_inbox(
+        self, harness: Path, items: list[dict], *, filename: str = "inbox.yaml"
+    ) -> Path:
         inbox = harness / filename
         inbox.write_text(
-            _INBOX_HEADER + yaml.dump(items, default_flow_style=False, allow_unicode=True)
+            _INBOX_HEADER
+            + yaml.dump(items, default_flow_style=False, allow_unicode=True)
         )
         return inbox
 
-    @pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
+    @pytest.mark.skip(
+        reason="legacy YAML fixture — pending SQLite migration (see PR #208)"
+    )
     def test_pauses_pending_inbox_items(self, repo_root: Path, tmp_path: Path) -> None:
         project = _setup_project(tmp_path)
         harness = project / ".superharness"
-        inbox = self._make_inbox(harness, [
-            {"id": "item-001", "to": "claude-code", "task": "t1", "status": "pending",
-             "priority": 1, "retry_count": 0, "max_retries": 3, "created_at": "2026-01-01T00:00:00Z"},
-        ])
+        inbox = self._make_inbox(
+            harness,
+            [
+                {
+                    "id": "item-001",
+                    "to": "claude-code",
+                    "task": "t1",
+                    "status": "pending",
+                    "priority": 1,
+                    "retry_count": 0,
+                    "max_retries": 3,
+                    "created_at": "2026-01-01T00:00:00Z",
+                },
+            ],
+        )
         script = repo_root / "adapters" / "claude-code" / "hooks" / "session-stop.sh"
         result = run_bash(script, cwd=project)
         assert result.returncode == 0, result.stderr
         loaded = yaml.safe_load(inbox.read_text())
-        assert loaded[0]["status"] == "paused", f"Expected paused, got {loaded[0]['status']}"
+        assert loaded[0]["status"] == "paused", (
+            f"Expected paused, got {loaded[0]['status']}"
+        )
         assert "paused_at" in loaded[0]
 
-    @pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
+    @pytest.mark.skip(
+        reason="legacy YAML fixture — pending SQLite migration (see PR #208)"
+    )
     def test_pauses_launched_inbox_items(self, repo_root: Path, tmp_path: Path) -> None:
         project = _setup_project(tmp_path)
         harness = project / ".superharness"
-        inbox = self._make_inbox(harness, [
-            {"id": "item-002", "to": "claude-code", "task": "t2", "status": "launched",
-             "priority": 1, "retry_count": 0, "max_retries": 3, "created_at": "2026-01-01T00:00:00Z"},
-        ])
+        inbox = self._make_inbox(
+            harness,
+            [
+                {
+                    "id": "item-002",
+                    "to": "claude-code",
+                    "task": "t2",
+                    "status": "launched",
+                    "priority": 1,
+                    "retry_count": 0,
+                    "max_retries": 3,
+                    "created_at": "2026-01-01T00:00:00Z",
+                },
+            ],
+        )
         script = repo_root / "adapters" / "claude-code" / "hooks" / "session-stop.sh"
         result = run_bash(script, cwd=project)
         assert result.returncode == 0, result.stderr
         loaded = yaml.safe_load(inbox.read_text())
         assert loaded[0]["status"] == "paused"
 
-    @pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
+    @pytest.mark.skip(
+        reason="legacy YAML fixture — pending SQLite migration (see PR #208)"
+    )
     def test_pauses_running_inbox_items(self, repo_root: Path, tmp_path: Path) -> None:
         project = _setup_project(tmp_path)
         harness = project / ".superharness"
-        inbox = self._make_inbox(harness, [
-            {"id": "item-003", "to": "claude-code", "task": "t3", "status": "running",
-             "priority": 1, "retry_count": 0, "max_retries": 3, "created_at": "2026-01-01T00:00:00Z"},
-        ])
+        inbox = self._make_inbox(
+            harness,
+            [
+                {
+                    "id": "item-003",
+                    "to": "claude-code",
+                    "task": "t3",
+                    "status": "running",
+                    "priority": 1,
+                    "retry_count": 0,
+                    "max_retries": 3,
+                    "created_at": "2026-01-01T00:00:00Z",
+                },
+            ],
+        )
         script = repo_root / "adapters" / "claude-code" / "hooks" / "session-stop.sh"
         result = run_bash(script, cwd=project)
         assert result.returncode == 0, result.stderr
         loaded = yaml.safe_load(inbox.read_text())
         assert loaded[0]["status"] == "paused"
 
-    @pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-    def test_falls_back_to_legacy_inbox_json(self, repo_root: Path, tmp_path: Path) -> None:
+    @pytest.mark.skip(
+        reason="legacy YAML fixture — pending SQLite migration (see PR #208)"
+    )
+    def test_falls_back_to_legacy_inbox_json(
+        self, repo_root: Path, tmp_path: Path
+    ) -> None:
         project = _setup_project(tmp_path)
         harness = project / ".superharness"
-        inbox = self._make_inbox(harness, [
-            {"id": "item-legacy", "to": "claude-code", "task": "t-json", "status": "pending",
-             "priority": 1, "retry_count": 0, "max_retries": 3, "created_at": "2026-01-01T00:00:00Z"},
-        ], filename="inbox.json")
+        inbox = self._make_inbox(
+            harness,
+            [
+                {
+                    "id": "item-legacy",
+                    "to": "claude-code",
+                    "task": "t-json",
+                    "status": "pending",
+                    "priority": 1,
+                    "retry_count": 0,
+                    "max_retries": 3,
+                    "created_at": "2026-01-01T00:00:00Z",
+                },
+            ],
+            filename="inbox.json",
+        )
         script = repo_root / "adapters" / "claude-code" / "hooks" / "session-stop.sh"
         result = run_bash(script, cwd=project)
         assert result.returncode == 0, result.stderr
         loaded = yaml.safe_load(inbox.read_text())
         assert loaded[0]["status"] == "paused"
 
-    def test_skips_done_and_stopped_items(self, repo_root: Path, tmp_path: Path) -> None:
+    def test_skips_done_and_stopped_items(
+        self, repo_root: Path, tmp_path: Path
+    ) -> None:
         project = _setup_project(tmp_path)
         harness = project / ".superharness"
-        inbox = self._make_inbox(harness, [
-            {"id": "item-done", "status": "done"},
-            {"id": "item-stopped", "status": "stopped"},
-        ])
+        inbox = self._make_inbox(
+            harness,
+            [
+                {"id": "item-done", "status": "done"},
+                {"id": "item-stopped", "status": "stopped"},
+            ],
+        )
         script = repo_root / "adapters" / "claude-code" / "hooks" / "session-stop.sh"
         run_bash(script, cwd=project)
         loaded = yaml.safe_load(inbox.read_text())
@@ -287,7 +397,9 @@ class TestSessionStopPausesTasks:
         result = run_bash(script, cwd=project)
         assert result.returncode == 0, result.stderr
 
-    def test_in_progress_contract_tasks_set_to_stopped(self, repo_root: Path, tmp_path: Path) -> None:
+    def test_in_progress_contract_tasks_set_to_stopped(
+        self, repo_root: Path, tmp_path: Path
+    ) -> None:
         project = _setup_project(tmp_path, task_status="in_progress")
         script = repo_root / "adapters" / "claude-code" / "hooks" / "session-stop.sh"
         result = run_bash(script, cwd=project)
@@ -296,20 +408,30 @@ class TestSessionStopPausesTasks:
         # writes via state_writer.set_task_status, not by rewriting
         # contract.yaml. The assertion must read from SQLite to match.
         from tests.helpers import get_task_from_sqlite
+
         task = get_task_from_sqlite(project, "feat-001")
         assert task is not None, "task feat-001 not found in SQLite after hook ran"
         assert task["status"] == "stopped", f"Expected stopped, got {task['status']}"
         # stopped_reason is stored in the tasks.stopped_reason column on the
         # SQLite side; tolerate None on schemas where the column is sparse
         # (the hook writes it via state_writer which sets it as a side-field).
-        assert task.get("stopped_reason") in ("session_stopped", None) or "session_stopped" in str(task)
+        assert task.get("stopped_reason") in (
+            "session_stopped",
+            None,
+        ) or "session_stopped" in str(task)
 
-    def test_in_progress_contract_task_writes_stop_handoff(self, repo_root: Path, tmp_path: Path) -> None:
+    def test_in_progress_contract_task_writes_stop_handoff(
+        self, repo_root: Path, tmp_path: Path
+    ) -> None:
         project = _setup_project(tmp_path, task_status="in_progress")
         script = repo_root / "adapters" / "claude-code" / "hooks" / "session-stop.sh"
         result = run_bash(script, cwd=project)
         assert result.returncode == 0, result.stderr
-        handoffs = sorted((project / ".superharness" / "handoffs").glob("feat-001-session-stop-*.yaml"))
+        handoffs = sorted(
+            (project / ".superharness" / "handoffs").glob(
+                "feat-001-session-stop-*.yaml"
+            )
+        )
         assert len(handoffs) == 1, handoffs
         handoff = yaml.safe_load(handoffs[0].read_text())
         assert handoff["task"] == "feat-001"
@@ -317,51 +439,92 @@ class TestSessionStopPausesTasks:
         assert handoff["from"] == "claude-code"
         assert handoff["to"] == "owner"
 
-    def test_does_not_stop_other_agent_task(self, repo_root: Path, tmp_path: Path) -> None:
-        project = _setup_project(tmp_path, task_status="in_progress", task_owner="codex-cli")
+    def test_does_not_stop_other_agent_task(
+        self, repo_root: Path, tmp_path: Path
+    ) -> None:
+        project = _setup_project(
+            tmp_path, task_status="in_progress", task_owner="codex-cli"
+        )
         script = repo_root / "adapters" / "claude-code" / "hooks" / "session-stop.sh"
         result = run_bash(script, cwd=project)
         assert result.returncode == 0, result.stderr
-        contract = yaml.safe_load((project / ".superharness" / "contract.yaml").read_text())
+        contract = yaml.safe_load(
+            (project / ".superharness" / "contract.yaml").read_text()
+        )
         task = next(t for t in contract["tasks"] if t["id"] == "feat-001")
         assert task["status"] == "in_progress"
         assert "stopped_reason" not in task
 
-    def test_todo_contract_tasks_not_touched(self, repo_root: Path, tmp_path: Path) -> None:
+    def test_todo_contract_tasks_not_touched(
+        self, repo_root: Path, tmp_path: Path
+    ) -> None:
         project = _setup_project(tmp_path, task_status="todo")
         script = repo_root / "adapters" / "claude-code" / "hooks" / "session-stop.sh"
         run_bash(script, cwd=project)
-        contract = yaml.safe_load((project / ".superharness" / "contract.yaml").read_text())
+        contract = yaml.safe_load(
+            (project / ".superharness" / "contract.yaml").read_text()
+        )
         task = next(t for t in contract["tasks"] if t["id"] == "feat-001")
         assert task["status"] == "todo"
 
     def test_ledger_records_paused_items(self, repo_root: Path, tmp_path: Path) -> None:
         project = _setup_project(tmp_path)
         harness = project / ".superharness"
-        self._make_inbox(harness, [{"id": "item-xyz", "status": "pending", "to": "claude-code"}])
+        self._make_inbox(
+            harness, [{"id": "item-xyz", "status": "pending", "to": "claude-code"}]
+        )
         script = repo_root / "adapters" / "claude-code" / "hooks" / "session-stop.sh"
         run_bash(script, cwd=project)
         ledger = (harness / "ledger.md").read_text()
         assert "item-xyz" in ledger
 
-    def test_ledger_skips_inbox_task_stopped_when_no_matching_inbox_task(self, repo_root: Path, tmp_path: Path) -> None:
+    def test_ledger_skips_inbox_task_stopped_when_no_matching_inbox_task(
+        self, repo_root: Path, tmp_path: Path
+    ) -> None:
         project = _setup_project(tmp_path, task_status="in_progress")
         harness = project / ".superharness"
-        self._make_inbox(harness, [{"id": "item-xyz", "status": "pending", "to": "claude-code", "task": "other-task"}])
+        self._make_inbox(
+            harness,
+            [
+                {
+                    "id": "item-xyz",
+                    "status": "pending",
+                    "to": "claude-code",
+                    "task": "other-task",
+                }
+            ],
+        )
         script = repo_root / "adapters" / "claude-code" / "hooks" / "session-stop.sh"
         run_bash(script, cwd=project)
         ledger = (harness / "ledger.md").read_text()
         assert "session-stop: task stopped (feat-001)" in ledger
         assert "session-stop: inbox task stopped (feat-001)" not in ledger
 
-    @pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-    def test_pauses_only_claude_targeted_inbox_items(self, repo_root: Path, tmp_path: Path) -> None:
+    @pytest.mark.skip(
+        reason="legacy YAML fixture — pending SQLite migration (see PR #208)"
+    )
+    def test_pauses_only_claude_targeted_inbox_items(
+        self, repo_root: Path, tmp_path: Path
+    ) -> None:
         project = _setup_project(tmp_path)
         harness = project / ".superharness"
-        inbox = self._make_inbox(harness, [
-            {"id": "item-claude", "to": "claude-code", "task": "t1", "status": "pending"},
-            {"id": "item-codex", "to": "codex-cli", "task": "t2", "status": "pending"},
-        ])
+        inbox = self._make_inbox(
+            harness,
+            [
+                {
+                    "id": "item-claude",
+                    "to": "claude-code",
+                    "task": "t1",
+                    "status": "pending",
+                },
+                {
+                    "id": "item-codex",
+                    "to": "codex-cli",
+                    "task": "t2",
+                    "status": "pending",
+                },
+            ],
+        )
         script = repo_root / "adapters" / "claude-code" / "hooks" / "session-stop.sh"
         result = run_bash(script, cwd=project)
         assert result.returncode == 0, result.stderr

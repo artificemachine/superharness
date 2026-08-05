@@ -3,13 +3,10 @@
 Covers: extraction, confidence scoring, EWMA decay, hysteresis, adaptive rules,
 project/user separation, context sizing, CLI visibility.
 """
+
 from __future__ import annotations
 
-import json
-import os
-import tempfile
 from pathlib import Path
-from unittest.mock import patch
 
 import pytest
 
@@ -17,10 +14,12 @@ import pytest
 @pytest.fixture
 def behavioral():
     from superharness.engine import behavioral
+
     return behavioral
 
 
 # ── RED: profile extraction ──────────────────────────────────────────────────
+
 
 def test_extract_task_style(behavioral, tmp_path: Path) -> None:
     """Should extract task decomposition patterns from SQLite."""
@@ -64,6 +63,7 @@ def test_extract_all_profiles(behavioral, tmp_path: Path) -> None:
 
 # ── RED: confidence scoring ──────────────────────────────────────────────────
 
+
 def test_confidence_low_for_few_samples(behavioral) -> None:
     """Confidence should be 'low' when sample_count < 5."""
     assert behavioral.confidence_level(2) == "low"
@@ -85,6 +85,7 @@ def test_confidence_high_for_many_samples(behavioral) -> None:
 
 # ── RED: EWMA decay ──────────────────────────────────────────────────────────
 
+
 def test_ewma_weight_recent_stronger(behavioral) -> None:
     """EWMA should give higher weight to recent data."""
     w1 = behavioral.ewma_weight(age_days=1, halflife_days=30)
@@ -100,12 +101,15 @@ def test_ewma_weight_zero_for_very_old(behavioral) -> None:
 
 # ── RED: hysteresis ──────────────────────────────────────────────────────────
 
+
 def test_hysteresis_no_change_in_neutral_zone(behavioral) -> None:
     """Hysteresis should return None (no change) in neutral zone."""
     # 5 successes, 1 failure → neutral (between upgrade=10 and downgrade=3)
     result = behavioral.hysteresis_check(
-        successes=5, failures=1,
-        upgrade_threshold=10, downgrade_threshold=3,
+        successes=5,
+        failures=1,
+        upgrade_threshold=10,
+        downgrade_threshold=3,
     )
     assert result == "neutral"
 
@@ -113,8 +117,10 @@ def test_hysteresis_no_change_in_neutral_zone(behavioral) -> None:
 def test_hysteresis_upgrade_on_success(behavioral) -> None:
     """Hysteresis should return 'upgrade' when above threshold."""
     result = behavioral.hysteresis_check(
-        successes=12, failures=0,
-        upgrade_threshold=10, downgrade_threshold=3,
+        successes=12,
+        failures=0,
+        upgrade_threshold=10,
+        downgrade_threshold=3,
     )
     assert result == "upgrade"
 
@@ -122,13 +128,16 @@ def test_hysteresis_upgrade_on_success(behavioral) -> None:
 def test_hysteresis_downgrade_on_failure(behavioral) -> None:
     """Hysteresis should return 'downgrade' when below threshold."""
     result = behavioral.hysteresis_check(
-        successes=1, failures=5,
-        upgrade_threshold=10, downgrade_threshold=3,
+        successes=1,
+        failures=5,
+        upgrade_threshold=10,
+        downgrade_threshold=3,
     )
     assert result == "downgrade"
 
 
 # ── RED: adaptive rules ──────────────────────────────────────────────────────
+
 
 def test_rule_autonomous_success_bumps_autonomy(behavioral) -> None:
     """10 consecutive autonomous successes should bump autonomy up."""
@@ -161,6 +170,7 @@ def test_rule_high_quality_relaxes_review(behavioral) -> None:
 
 
 # ── RED: project/user separation ─────────────────────────────────────────────
+
 
 def test_user_profile_stored_globally(behavioral) -> None:
     """User profile should be stored in ~/.config/superharness/behavioral/"""
@@ -198,6 +208,7 @@ def test_project_not_promoted_below_threshold(behavioral) -> None:
 
 # ── RED: context sizing ──────────────────────────────────────────────────────
 
+
 def test_profile_tier_summary_always_fits(behavioral) -> None:
     """Summary tier should be 1-2 sentences, safe for all models."""
     profile = {"task_style": {"default_effort": "medium", "tdd_required": True}}
@@ -208,13 +219,17 @@ def test_profile_tier_summary_always_fits(behavioral) -> None:
 
 def test_profile_tier_full_includes_all(behavioral) -> None:
     """Full tier should include complete profile."""
-    profile = {"task_style": {"default_effort": "medium"}, "review_style": {"strictness": 0.7}}
+    profile = {
+        "task_style": {"default_effort": "medium"},
+        "review_style": {"strictness": 0.7},
+    }
     text = behavioral.format_profile_for_context(profile, tier="full")
     assert "medium" in text
     assert "strictness" in text
 
 
 # ── RED: serialization ───────────────────────────────────────────────────────
+
 
 def test_save_and_load_profile(behavioral, tmp_path: Path) -> None:
     """Profile should round-trip through JSON serialization."""

@@ -5,6 +5,7 @@ Covers:
 - PORT_REUSE: dashboard restarts on same port (no inflation)
 - PROCESS_CLEANUP: old subprocess killed before replacement spawned
 """
+
 from __future__ import annotations
 
 import time
@@ -27,7 +28,7 @@ def operator(tmp_path: Path) -> Operator:
 
 def _run_one_tick(op: Operator) -> None:
     """Run one tick of the recovery loop and stop.
-    
+
     Mirrors the core logic of monitor_and_recover() without the infinite
     loop, and without calling trace_event (which fails on mock objects).
     """
@@ -91,7 +92,10 @@ class TestCircuitBreaker:
         # Each tick prunes old history → never trips
         for _ in range(10):
             _run_one_tick(operator)
-        assert len(operator._restart_history.get("watcher", [])) <= operator._max_restarts + 1
+        assert (
+            len(operator._restart_history.get("watcher", []))
+            <= operator._max_restarts + 1
+        )
 
     def test_circuit_breaker_per_component(self, operator: Operator):
         """Watcher tripping does NOT block dashboard restarts."""
@@ -119,7 +123,7 @@ class TestCircuitBreaker:
                     proc_d.pid = 2
                     operator.processes["dashboard"] = proc_d
                     _run_one_tick(operator)
-                    
+
                     assert len(operator._restart_history.get("dashboard", [])) == 1
                     assert len(operator._restart_history.get("watcher", [])) == 3
 

@@ -8,6 +8,7 @@ commits and stashes into real history.
 
 See docs/bugs/BUG-2026-07-31-test-suite-git-dir-escape.md.
 """
+
 from __future__ import annotations
 
 import os
@@ -38,7 +39,9 @@ class TestGitEnvIsolation:
         decoy = tmp_path / "decoy"
         for path in (real, decoy):
             path.mkdir()
-            subprocess.run(["git", "init", "-q", str(path)], check=True, capture_output=True)
+            subprocess.run(
+                ["git", "init", "-q", str(path)], check=True, capture_output=True
+            )
 
         subprocess.run(
             ["git", "-C", str(real), "config", "user.email", "real@real.com"],
@@ -71,7 +74,9 @@ class TestGitEnvIsolation:
         decoy = tmp_path / "decoy"
         for path in (real, decoy):
             path.mkdir()
-            subprocess.run(["git", "init", "-q", str(path)], check=True, capture_output=True)
+            subprocess.run(
+                ["git", "init", "-q", str(path)], check=True, capture_output=True
+            )
 
         subprocess.run(
             ["git", "-C", str(real), "config", "user.email", "real@real.com"],

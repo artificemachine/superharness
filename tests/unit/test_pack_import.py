@@ -1,4 +1,5 @@
 """Tests for superharness pack import engine."""
+
 from __future__ import annotations
 
 import io
@@ -13,7 +14,12 @@ import yaml
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _make_pack(tmp_path: Path, manifest_override: dict | None = None, extra_files: dict | None = None) -> Path:
+
+def _make_pack(
+    tmp_path: Path,
+    manifest_override: dict | None = None,
+    extra_files: dict | None = None,
+) -> Path:
     """Build a minimal valid pack tarball and return its path."""
     pack_path = tmp_path / "test.superharness.pack.tar.gz"
 
@@ -51,6 +57,7 @@ def _make_pack(tmp_path: Path, manifest_override: dict | None = None, extra_file
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
+
 
 def test_import_extracts_files(tmp_path):
     from superharness.engine.pack import import_pack
@@ -174,8 +181,20 @@ def test_roundtrip_preserves_contract_tasks(tmp_path):
     contract = {
         "project_path": "/home/testuser/src",
         "tasks": [
-            {"id": "task-001", "title": "Alpha", "status": "open", "owner": "claude-code", "project_path": "/home/testuser/src"},
-            {"id": "task-002", "title": "Beta",  "status": "done", "owner": "codex-cli",   "project_path": "/home/testuser/src"},
+            {
+                "id": "task-001",
+                "title": "Alpha",
+                "status": "open",
+                "owner": "claude-code",
+                "project_path": "/home/testuser/src",
+            },
+            {
+                "id": "task-002",
+                "title": "Beta",
+                "status": "done",
+                "owner": "codex-cli",
+                "project_path": "/home/testuser/src",
+            },
         ],
     }
     (sh / "contract.yaml").write_text(yaml.dump(contract))
@@ -189,7 +208,9 @@ def test_roundtrip_preserves_contract_tasks(tmp_path):
     dest.mkdir()
     import_pack(pack, dest)
 
-    result_contract = yaml.safe_load((dest / ".superharness" / "contract.yaml").read_text())
+    result_contract = yaml.safe_load(
+        (dest / ".superharness" / "contract.yaml").read_text()
+    )
     ids = {t["id"] for t in result_contract["tasks"]}
     assert ids == {"task-001", "task-002"}
 

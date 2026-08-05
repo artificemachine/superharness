@@ -1,8 +1,7 @@
 """Unit tests for shux subtask-cancel command."""
+
 from __future__ import annotations
 
-import os
-import tempfile
 
 import pytest
 import yaml
@@ -10,9 +9,14 @@ import yaml
 from superharness.commands.subtask_cancel import cancel_subtask
 
 
-pytestmark = pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
+pytestmark = pytest.mark.skip(
+    reason="legacy YAML fixture — pending SQLite migration (see PR #208)"
+)
 
-def _make_contract(subtask_status: str = "pending", extra_subtasks: list | None = None) -> dict:
+
+def _make_contract(
+    subtask_status: str = "pending", extra_subtasks: list | None = None
+) -> dict:
     subtasks = [
         {
             "id": "T-1.1",
@@ -39,7 +43,9 @@ def _make_contract(subtask_status: str = "pending", extra_subtasks: list | None 
     }
 
 
-def _setup(tmp_path, subtask_status: str = "pending", extra_subtasks: list | None = None):
+def _setup(
+    tmp_path, subtask_status: str = "pending", extra_subtasks: list | None = None
+):
     harness_dir = tmp_path / ".superharness"
     harness_dir.mkdir()
     contract_file = harness_dir / "contract.yaml"
@@ -53,7 +59,9 @@ def _setup(tmp_path, subtask_status: str = "pending", extra_subtasks: list | Non
 class TestCancelSubtask:
     def test_cancels_pending_subtask(self, tmp_path):
         contract_file, _ = _setup(tmp_path, "pending")
-        rc = cancel_subtask(contract_file, "T-1", "T-1.1", "claude-code", "scope shrunk")
+        rc = cancel_subtask(
+            contract_file, "T-1", "T-1.1", "claude-code", "scope shrunk"
+        )
         assert rc == 0
         doc = yaml.safe_load(open(contract_file))
         sub = doc["tasks"][0]["subtasks"][0]
@@ -61,14 +69,18 @@ class TestCancelSubtask:
 
     def test_cancels_in_progress_subtask(self, tmp_path):
         contract_file, _ = _setup(tmp_path, "in_progress")
-        rc = cancel_subtask(contract_file, "T-1", "T-1.1", "claude-code", "no longer needed")
+        rc = cancel_subtask(
+            contract_file, "T-1", "T-1.1", "claude-code", "no longer needed"
+        )
         assert rc == 0
         doc = yaml.safe_load(open(contract_file))
         assert doc["tasks"][0]["subtasks"][0]["status"] == "cancelled"
 
     def test_cancels_failed_subtask(self, tmp_path):
         contract_file, _ = _setup(tmp_path, "failed")
-        rc = cancel_subtask(contract_file, "T-1", "T-1.1", "claude-code", "retry path chosen")
+        rc = cancel_subtask(
+            contract_file, "T-1", "T-1.1", "claude-code", "retry path chosen"
+        )
         assert rc == 0
         doc = yaml.safe_load(open(contract_file))
         assert doc["tasks"][0]["subtasks"][0]["status"] == "cancelled"
@@ -85,7 +97,9 @@ class TestCancelSubtask:
 
     def test_writes_ledger_line(self, tmp_path):
         contract_file, ledger_file = _setup(tmp_path, "pending")
-        cancel_subtask(contract_file, "T-1", "T-1.1", "claude-code", "obsolete after review")
+        cancel_subtask(
+            contract_file, "T-1", "T-1.1", "claude-code", "obsolete after review"
+        )
         ledger = open(ledger_file).read()
         assert "SUBTASK_CANCEL" in ledger
         assert "T-1.1" in ledger
@@ -95,7 +109,7 @@ class TestCancelSubtask:
     def test_ledger_line_format(self, tmp_path):
         contract_file, ledger_file = _setup(tmp_path, "pending")
         cancel_subtask(contract_file, "T-1", "T-1.1", "claude-code", "my reason")
-        lines = [l for l in open(ledger_file).read().splitlines() if l.strip()]
+        lines = [line for line in open(ledger_file).read().splitlines() if line.strip()]
         assert len(lines) == 1
         assert lines[0].startswith("- 20")
         assert "SUBTASK_CANCEL: T-1.1 (parent=T-1)" in lines[0]
@@ -103,7 +117,9 @@ class TestCancelSubtask:
 
     def test_fails_when_task_not_found(self, tmp_path, capsys):
         contract_file, _ = _setup(tmp_path)
-        rc = cancel_subtask(contract_file, "nonexistent", "T-1.1", "claude-code", "reason")
+        rc = cancel_subtask(
+            contract_file, "nonexistent", "T-1.1", "claude-code", "reason"
+        )
         assert rc != 0
         assert "not found" in capsys.readouterr().err
 
@@ -123,8 +139,8 @@ class TestCancelSubtask:
 
 class TestCancelSubtaskCLI:
     def test_cli_requires_reason(self, tmp_path):
-        import sys
         from superharness.commands.subtask_cancel import main as cancel_main
+
         contract_file, _ = _setup(tmp_path)
         with pytest.raises(SystemExit) as exc:
             cancel_main(["--project", str(tmp_path), "--task", "T-1", "--sub", "T-1.1"])
@@ -132,12 +148,14 @@ class TestCancelSubtaskCLI:
 
     def test_cli_requires_task(self, tmp_path):
         from superharness.commands.subtask_cancel import main as cancel_main
+
         with pytest.raises(SystemExit) as exc:
             cancel_main(["--project", str(tmp_path), "--sub", "T-1.1", "--reason", "x"])
         assert exc.value.code != 0
 
     def test_cli_requires_sub(self, tmp_path):
         from superharness.commands.subtask_cancel import main as cancel_main
+
         with pytest.raises(SystemExit) as exc:
             cancel_main(["--project", str(tmp_path), "--task", "T-1", "--reason", "x"])
         assert exc.value.code != 0

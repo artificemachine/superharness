@@ -7,6 +7,7 @@ advance to the next round, not close.
 
 Fix: require ALL verdicts to be 'agree' or 'consensus' before auto-closing.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -70,12 +71,15 @@ class TestPartialDoesNotTriggerAutoConsensus:
 # (BUGREPORT-discussion-consensus-single-participant)
 # ---------------------------------------------------------------------------
 
+
 class TestSubmitRejectsPromptCopyVerdict:
     """cmd_submit_round must reject verdicts that are unparsed prompt copies
     ('agree or disagree or partial') instead of silently normalizing to a
     random valid option."""
 
-    def _setup_discussion_dir(self, project: Path, disc_id: str, participants: list[str]) -> Path:
+    def _setup_discussion_dir(
+        self, project: Path, disc_id: str, participants: list[str]
+    ) -> Path:
         """Create a full discussion directory with DB so cmd_submit_round works."""
         conn = get_connection(str(project))
         init_db(conn)
@@ -113,7 +117,9 @@ class TestSubmitRejectsPromptCopyVerdict:
                 verdict="agree or disagree or partial",
                 position="test",
             )
-        assert exc_info.value.exit_code != 0, "must exit non-zero for prompt-copy verdict"
+        assert exc_info.value.exit_code != 0, (
+            "must exit non-zero for prompt-copy verdict"
+        )
 
     def test_accepts_valid_abstain(self, project_with_db: Path):
         """'abstain' → accepted (valid consensus vote)."""
@@ -123,6 +129,7 @@ class TestSubmitRejectsPromptCopyVerdict:
         )
 
         from superharness.engine.discussion import cmd_submit_round
+
         rc = cmd_submit_round(
             discussion_dir=str(disc_dir),
             round_=1,
@@ -160,7 +167,9 @@ class TestSubmitRejectsPromptCopyVerdict:
         """Only one of two participants submitted — must not auto-close."""
         conn = get_connection(str(project_with_db))
         init_db(conn)
-        disc = _setup_discussion(conn, "disc-partial-submit", ["claude-code", "gemini-cli"])
+        disc = _setup_discussion(
+            conn, "disc-partial-submit", ["claude-code", "gemini-cli"]
+        )
         _submit(conn, disc.id, 1, "claude-code", "agree")
 
         _check_all_submitted_and_set_consensus(conn, disc, 1)

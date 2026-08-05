@@ -14,6 +14,7 @@ stale inbox items for a single discussion task:
 Also verifies operator memory now learns from these unclassified
 failures via the unknown:<hash> signature path.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -32,10 +33,7 @@ from superharness.commands.inbox_watch import (
 
 
 NOW = "2026-05-08T00:00:00Z"
-SNIPPET = (
-    "Discussion directory not found: "
-    "/proj/.superharness/discussions/discuss-xyz"
-)
+SNIPPET = "Discussion directory not found: /proj/.superharness/discussions/discuss-xyz"
 
 
 @pytest.fixture

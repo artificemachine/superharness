@@ -8,6 +8,7 @@ Most helpers are pure and none opens a database. The active-state resolver and
 initialization guard inspect path existence so they can preserve compatibility
 and fail closed on an explicit state-root conflict.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -151,10 +152,7 @@ def resolve_active_state_db_path(project_path: str) -> str:
         target_real = os.path.realpath(xdg)
         alternatives = []
         for candidate in (ambient_xdg, legacy):
-            if (
-                os.path.realpath(candidate) != target_real
-                and os.path.isfile(candidate)
-            ):
+            if os.path.realpath(candidate) != target_real and os.path.isfile(candidate):
                 alternatives.append(candidate)
         if alternatives:
             joined = ", ".join(alternatives)
@@ -194,7 +192,5 @@ def resolve_dashboard_port(default: int) -> int:
             ) from exc
 
     if not (_PORT_MIN <= port <= _PORT_MAX):
-        raise ValueError(
-            f"port {port} out of range [{_PORT_MIN}, {_PORT_MAX}]"
-        )
+        raise ValueError(f"port {port} out of range [{_PORT_MIN}, {_PORT_MAX}]")
     return port

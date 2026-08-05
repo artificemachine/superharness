@@ -9,6 +9,7 @@ Pattern: mirrors the operator_memory DAO style.
 
 Privacy: insert() strips <private>...</private> spans before write.
 """
+
 from __future__ import annotations
 
 import sqlite3

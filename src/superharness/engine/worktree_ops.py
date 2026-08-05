@@ -1,4 +1,5 @@
 """Shared git worktree helpers used by parallel_dispatch and swarm."""
+
 from __future__ import annotations
 
 import os
@@ -13,15 +14,16 @@ def sanitize_task_id(task_id: str) -> str:
     Only allows alphanumeric, hyphens, underscores, and dots.
     Rejects path traversal components.
     """
-    sanitized = re.sub(r'[^a-zA-Z0-9._-]', '-', task_id)
-    if '..' in sanitized or sanitized.startswith('/'):
-        sanitized = sanitized.replace('..', '--').lstrip('/')
+    sanitized = re.sub(r"[^a-zA-Z0-9._-]", "-", task_id)
+    if ".." in sanitized or sanitized.startswith("/"):
+        sanitized = sanitized.replace("..", "--").lstrip("/")
     return sanitized[:100]
 
 
 @dataclass
 class WorktreeSlot:
     """One parallel dispatch slot."""
+
     index: int
     branch: str
     worktree_path: str
@@ -38,7 +40,10 @@ def create_worktree(project_dir: str, branch: str, path: str) -> bool:
     try:
         r = subprocess.run(
             ["git", "worktree", "add", "-b", branch, path, "HEAD"],
-            capture_output=True, text=True, check=False, cwd=project_dir,
+            capture_output=True,
+            text=True,
+            check=False,
+            cwd=project_dir,
         )
         return r.returncode == 0
     except (OSError, FileNotFoundError):
@@ -49,11 +54,17 @@ def remove_worktree(project_dir: str, path: str, branch: str) -> None:
     """Remove a git worktree and its branch."""
     subprocess.run(
         ["git", "worktree", "remove", "--force", path],
-        capture_output=True, text=True, check=False, cwd=project_dir,
+        capture_output=True,
+        text=True,
+        check=False,
+        cwd=project_dir,
     )
     subprocess.run(
         ["git", "branch", "-D", branch],
-        capture_output=True, text=True, check=False, cwd=project_dir,
+        capture_output=True,
+        text=True,
+        check=False,
+        cwd=project_dir,
     )
 
 

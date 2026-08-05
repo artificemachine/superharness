@@ -3,6 +3,7 @@
 Updated for SQLite-primary: _get_task_effort_timeout now takes project_dir
 instead of contract_file. Tasks must exist in SQLite state.db.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -26,11 +27,20 @@ def _mk_project(tmp_path: Path, tasks: list[dict]) -> Path:
     init_db(conn)
     for t in tasks:
         defaults = dict(
-            title=t.get("title", t["id"]), owner="claude-code", status="todo",
-            effort=t.get("effort"), project_path=str(project),
-            development_method="tdd", acceptance_criteria=[], test_types=[],
-            out_of_scope=[], definition_of_done=[], context=None, tdd=None,
-            version=1, created_at=T0,
+            title=t.get("title", t["id"]),
+            owner="claude-code",
+            status="todo",
+            effort=t.get("effort"),
+            project_path=str(project),
+            development_method="tdd",
+            acceptance_criteria=[],
+            test_types=[],
+            out_of_scope=[],
+            definition_of_done=[],
+            context=None,
+            tdd=None,
+            version=1,
+            created_at=T0,
             estimated_minutes=t.get("estimated_minutes"),
         )
         tasks_dao.upsert(conn, TaskRow(id=t["id"], **defaults))
@@ -41,14 +51,17 @@ def _mk_project(tmp_path: Path, tasks: list[dict]) -> Path:
 
 @pytest.fixture
 def effort_project(tmp_path: Path) -> Path:
-    return _mk_project(tmp_path, [
-        {"id": "low-effort-task", "effort": "low"},
-        {"id": "medium-effort-task", "effort": "medium"},
-        {"id": "high-effort-task", "effort": "high"},
-        {"id": "explicit-minutes-task", "estimated_minutes": "45"},
-        {"id": "both-set-task", "effort": "low", "estimated_minutes": "90"},
-        {"id": "no-estimate-task"},
-    ])
+    return _mk_project(
+        tmp_path,
+        [
+            {"id": "low-effort-task", "effort": "low"},
+            {"id": "medium-effort-task", "effort": "medium"},
+            {"id": "high-effort-task", "effort": "high"},
+            {"id": "explicit-minutes-task", "estimated_minutes": "45"},
+            {"id": "both-set-task", "effort": "low", "estimated_minutes": "90"},
+            {"id": "no-estimate-task"},
+        ],
+    )
 
 
 def test_auto_timeout_from_effort_low(effort_project: Path) -> None:
@@ -64,7 +77,9 @@ def test_auto_timeout_from_effort_high(effort_project: Path) -> None:
 
 
 def test_auto_timeout_from_estimated_minutes(effort_project: Path) -> None:
-    assert _get_task_effort_timeout(str(effort_project), "explicit-minutes-task") == 2700
+    assert (
+        _get_task_effort_timeout(str(effort_project), "explicit-minutes-task") == 2700
+    )
 
 
 def test_auto_timeout_estimated_minutes_overrides_effort(effort_project: Path) -> None:

@@ -1,9 +1,7 @@
 """Unit tests for operator_memory CLI — shux operator-memory and shux operator-forget."""
+
 from __future__ import annotations
 
-import os
-import sqlite3
-from pathlib import Path
 
 import pytest
 from click.testing import CliRunner
@@ -19,6 +17,7 @@ def seeded_project(tmp_path):
     db_path = str(sh / "state.sqlite3")
 
     from superharness.engine.operator_memory import OperatorMemory
+
     om = OperatorMemory(db_path)
     om.ensure_table()
     om.record_new("import_error", "pip install -e .")
@@ -38,12 +37,14 @@ def seeded_project(tmp_path):
 # operator-memory
 # ---------------------------------------------------------------------------
 
+
 def test_operator_memory_shows_empty_state(tmp_path):
     """Empty project shows 'no remembered patterns' message."""
     sh = tmp_path / ".superharness"
     sh.mkdir()
     db_path = sh / "state.sqlite3"
     from superharness.engine.operator_memory import OperatorMemory
+
     OperatorMemory(str(db_path)).ensure_table()
 
     runner = CliRunner()
@@ -85,12 +86,13 @@ def test_operator_memory_with_default_project_uses_cwd(seeded_project):
 # operator-forget
 # ---------------------------------------------------------------------------
 
+
 def test_operator_forget_removes_pattern(seeded_project):
     """Forgetting a pattern removes it from memory."""
     runner = CliRunner()
-    result = runner.invoke(main, [
-        "operator-forget", "timeout", "--project", str(seeded_project)
-    ])
+    result = runner.invoke(
+        main, ["operator-forget", "timeout", "--project", str(seeded_project)]
+    )
     assert result.exit_code == 0
     assert "removed 'timeout'" in result.output
 
@@ -102,9 +104,9 @@ def test_operator_forget_removes_pattern(seeded_project):
 def test_operator_forget_unknown_signature_fails(seeded_project):
     """Forgetting a non-existent pattern exits with error."""
     runner = CliRunner()
-    result = runner.invoke(main, [
-        "operator-forget", "nonexistent", "--project", str(seeded_project)
-    ])
+    result = runner.invoke(
+        main, ["operator-forget", "nonexistent", "--project", str(seeded_project)]
+    )
     assert result.exit_code == 1
     assert "no pattern 'nonexistent'" in result.output
 
@@ -112,9 +114,7 @@ def test_operator_forget_unknown_signature_fails(seeded_project):
 def test_operator_forget_without_signature_shows_usage(seeded_project):
     """Missing signature argument shows usage hint."""
     runner = CliRunner()
-    result = runner.invoke(main, [
-        "operator-forget", "--project", str(seeded_project)
-    ])
+    result = runner.invoke(main, ["operator-forget", "--project", str(seeded_project)])
     assert result.exit_code == 1
     assert "usage" in result.output.lower() or "<signature>" in result.output.lower()
 
@@ -125,8 +125,8 @@ def test_operator_forget_no_db_graceful(tmp_path):
     sh.mkdir()
 
     runner = CliRunner()
-    result = runner.invoke(main, [
-        "operator-forget", "anything", "--project", str(tmp_path)
-    ])
+    result = runner.invoke(
+        main, ["operator-forget", "anything", "--project", str(tmp_path)]
+    )
     assert result.exit_code == 1
     assert "no state database" in result.output

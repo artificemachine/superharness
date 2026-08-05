@@ -1,7 +1,7 @@
 """Tests for MCP CLI subcommands — Iteration 10."""
+
 from __future__ import annotations
 
-import pytest
 from click.testing import CliRunner
 from superharness.cli import main
 

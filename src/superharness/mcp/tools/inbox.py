@@ -1,4 +1,5 @@
 """MCP inbox tools — Iteration 6."""
+
 from __future__ import annotations
 
 import sqlite3
@@ -7,6 +8,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 import logging
+
 logger = logging.getLogger(__name__)
 
 
@@ -65,15 +67,21 @@ def enqueue_task(
 
     item_id = str(uuid.uuid4())
     now = _now()
-    conn.execute("""
+    conn.execute(
+        """
         INSERT OR IGNORE INTO inbox
         (id, task_id, target_agent, status, created_at, retry_count, max_retries, project_path)
         VALUES (?, ?, ?, 'pending', ?, 0, 3, ?)
-    """, (item_id, task_id, target, now, project_path))
+    """,
+        (item_id, task_id, target, now, project_path),
+    )
     conn.commit()
 
     if hook_registry:
-        hook_registry.fire("task:delegated", {"task_id": task_id, "target": target},
-                           project_path=project_path)
+        hook_registry.fire(
+            "task:delegated",
+            {"task_id": task_id, "target": target},
+            project_path=project_path,
+        )
 
     return {"id": item_id, "task": task_id, "to": target, "status": "pending"}

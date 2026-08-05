@@ -7,16 +7,16 @@ of what was written to the task dict or TaskRow.
 
 Fix: propagate all three fields through _task_row_from_dict and upsert.
 """
+
 from __future__ import annotations
 
 from datetime import datetime, timezone
 from pathlib import Path
 
-import pytest
-
 
 def _make_db(tmp_path: Path):
     from superharness.engine.db import get_connection, init_db
+
     conn = get_connection(str(tmp_path))
     init_db(conn)
     return conn
@@ -34,11 +34,22 @@ class TestWorkflowColumnPersistence:
         conn = _make_db(tmp_path)
         now = _now()
         row = tasks_dao.TaskRow(
-            id="task.workflow-persist", title="t", owner="claude-code",
-            status="todo", effort="medium", project_path=str(tmp_path),
-            development_method=None, acceptance_criteria=[], test_types=[],
-            out_of_scope=[], definition_of_done=[], context=None, tdd=None,
-            version=1, created_at=now, workflow="quick",
+            id="task.workflow-persist",
+            title="t",
+            owner="claude-code",
+            status="todo",
+            effort="medium",
+            project_path=str(tmp_path),
+            development_method=None,
+            acceptance_criteria=[],
+            test_types=[],
+            out_of_scope=[],
+            definition_of_done=[],
+            context=None,
+            tdd=None,
+            version=1,
+            created_at=now,
+            workflow="quick",
         )
         tasks_dao.upsert(conn, row)
         conn.commit()
@@ -56,11 +67,22 @@ class TestWorkflowColumnPersistence:
         conn = _make_db(tmp_path)
         now = _now()
         row = tasks_dao.TaskRow(
-            id="task.autonomy-persist", title="t", owner="claude-code",
-            status="todo", effort="medium", project_path=str(tmp_path),
-            development_method=None, acceptance_criteria=[], test_types=[],
-            out_of_scope=[], definition_of_done=[], context=None, tdd=None,
-            version=1, created_at=now, autonomy="ai_driven",
+            id="task.autonomy-persist",
+            title="t",
+            owner="claude-code",
+            status="todo",
+            effort="medium",
+            project_path=str(tmp_path),
+            development_method=None,
+            acceptance_criteria=[],
+            test_types=[],
+            out_of_scope=[],
+            definition_of_done=[],
+            context=None,
+            tdd=None,
+            version=1,
+            created_at=now,
+            autonomy="ai_driven",
         )
         tasks_dao.upsert(conn, row)
         conn.commit()
@@ -76,11 +98,22 @@ class TestWorkflowColumnPersistence:
         conn = _make_db(tmp_path)
         now = _now()
         row = tasks_dao.TaskRow(
-            id="task.tdd-persist", title="t", owner="claude-code",
-            status="todo", effort="medium", project_path=str(tmp_path),
-            development_method=None, acceptance_criteria=[], test_types=[],
-            out_of_scope=[], definition_of_done=[], context=None, tdd=None,
-            version=1, created_at=now, require_tdd=True,
+            id="task.tdd-persist",
+            title="t",
+            owner="claude-code",
+            status="todo",
+            effort="medium",
+            project_path=str(tmp_path),
+            development_method=None,
+            acceptance_criteria=[],
+            test_types=[],
+            out_of_scope=[],
+            definition_of_done=[],
+            context=None,
+            tdd=None,
+            version=1,
+            created_at=now,
+            require_tdd=True,
         )
         tasks_dao.upsert(conn, row)
         conn.commit()
@@ -97,22 +130,44 @@ class TestWorkflowColumnPersistence:
         conn = _make_db(tmp_path)
         now = _now()
         row = tasks_dao.TaskRow(
-            id="task.update-workflow", title="t", owner="claude-code",
-            status="todo", effort="medium", project_path=str(tmp_path),
-            development_method=None, acceptance_criteria=[], test_types=[],
-            out_of_scope=[], definition_of_done=[], context=None, tdd=None,
-            version=1, created_at=now, workflow="implementation",
+            id="task.update-workflow",
+            title="t",
+            owner="claude-code",
+            status="todo",
+            effort="medium",
+            project_path=str(tmp_path),
+            development_method=None,
+            acceptance_criteria=[],
+            test_types=[],
+            out_of_scope=[],
+            definition_of_done=[],
+            context=None,
+            tdd=None,
+            version=1,
+            created_at=now,
+            workflow="implementation",
         )
         tasks_dao.upsert(conn, row)
         conn.commit()
 
         # Second upsert (same id → triggers ON CONFLICT path)
         row2 = tasks_dao.TaskRow(
-            id="task.update-workflow", title="updated", owner="claude-code",
-            status="in_progress", effort="medium", project_path=str(tmp_path),
-            development_method=None, acceptance_criteria=[], test_types=[],
-            out_of_scope=[], definition_of_done=[], context=None, tdd=None,
-            version=1, created_at=now, workflow="implementation",
+            id="task.update-workflow",
+            title="updated",
+            owner="claude-code",
+            status="in_progress",
+            effort="medium",
+            project_path=str(tmp_path),
+            development_method=None,
+            acceptance_criteria=[],
+            test_types=[],
+            out_of_scope=[],
+            definition_of_done=[],
+            context=None,
+            tdd=None,
+            version=1,
+            created_at=now,
+            workflow="implementation",
         )
         tasks_dao.upsert(conn, row2)
         conn.commit()

@@ -4,6 +4,7 @@ One Logger per process. Honors SUPERHARNESS_LOG_LEVEL and
 SUPERHARNESS_LOG_FILE env vars. Writes structured lines to a rotating
 file (10 MB x 5). Audit channel is separate for security-sensitive ops.
 """
+
 from __future__ import annotations
 
 import logging
@@ -41,11 +42,16 @@ def _ensure_handler(logger: logging.Logger, log_file: Path) -> None:
     """Attach a RotatingFileHandler if not already present for this file."""
     target = str(log_file.resolve())
     for h in logger.handlers:
-        if isinstance(h, RotatingFileHandler) and getattr(h, "baseFilename", None) == target:
+        if (
+            isinstance(h, RotatingFileHandler)
+            and getattr(h, "baseFilename", None) == target
+        ):
             return
     log_file.parent.mkdir(parents=True, exist_ok=True)
     handler = RotatingFileHandler(
-        str(log_file), maxBytes=_DEFAULT_MAX_BYTES, backupCount=_DEFAULT_BACKUPS,
+        str(log_file),
+        maxBytes=_DEFAULT_MAX_BYTES,
+        backupCount=_DEFAULT_BACKUPS,
         encoding="utf-8",
     )
     handler.setFormatter(logging.Formatter(_FMT, datefmt=_DATEFMT))
@@ -64,7 +70,9 @@ def get_logger(name: str = "superharness") -> logging.Logger:
     root = logging.getLogger("superharness")
     root.setLevel(_resolve_level())
     root.propagate = False
-    _ensure_handler(root, _resolve_log_file("SUPERHARNESS_LOG_FILE", "superharness.log"))
+    _ensure_handler(
+        root, _resolve_log_file("SUPERHARNESS_LOG_FILE", "superharness.log")
+    )
     return logging.getLogger(name)
 
 
@@ -78,7 +86,10 @@ def get_audit_logger() -> logging.Logger:
     audit = logging.getLogger("superharness.audit")
     audit.setLevel(logging.INFO)
     audit.propagate = False
-    _ensure_handler(audit, _resolve_log_file("SUPERHARNESS_AUDIT_LOG_FILE", "superharness-audit.log"))
+    _ensure_handler(
+        audit,
+        _resolve_log_file("SUPERHARNESS_AUDIT_LOG_FILE", "superharness-audit.log"),
+    )
     return audit
 
 

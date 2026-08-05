@@ -2,6 +2,7 @@
 route through the process seam rather than a raw os.kill(pid, 0) probe,
 which is not a liveness check on Windows.
 """
+
 from __future__ import annotations
 
 import os
@@ -30,10 +31,18 @@ def test_status_dead_pid_check_uses_the_seam(tmp_path, monkeypatch):
     def _fail_if_called(pid, sig):
         raise AssertionError("status.py must not call os.kill directly for liveness")
 
-    _fake_state_reader(monkeypatch, [
-        {"id": "i1", "task": "t1", "status": "launched",
-         "launched_at": "2026-01-01T00:00:00Z", "pid": 4242},
-    ])
+    _fake_state_reader(
+        monkeypatch,
+        [
+            {
+                "id": "i1",
+                "task": "t1",
+                "status": "launched",
+                "launched_at": "2026-01-01T00:00:00Z",
+                "pid": 4242,
+            },
+        ],
+    )
     monkeypatch.setattr(status_mod, "pid_alive", _recorder)
     monkeypatch.setattr(os, "kill", _fail_if_called)
 
@@ -46,10 +55,18 @@ def test_status_dead_pid_check_uses_the_seam(tmp_path, monkeypatch):
 def test_status_dead_pid_check_preserves_valueerror_handling(tmp_path, monkeypatch):
     """A non-numeric pid must still be treated as dead (int(pid) raising
     ValueError), independent of the liveness seam."""
-    _fake_state_reader(monkeypatch, [
-        {"id": "i1", "task": "t1", "status": "launched",
-         "launched_at": "2026-01-01T00:00:00Z", "pid": "not-a-pid"},
-    ])
+    _fake_state_reader(
+        monkeypatch,
+        [
+            {
+                "id": "i1",
+                "task": "t1",
+                "status": "launched",
+                "launched_at": "2026-01-01T00:00:00Z",
+                "pid": "not-a-pid",
+            },
+        ],
+    )
     monkeypatch.setattr(status_mod, "pid_alive", lambda pid: True)
 
     result = status_mod._deep_inbox_health(str(tmp_path))

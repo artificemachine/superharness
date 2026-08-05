@@ -4,11 +4,10 @@ A paused inbox item with a dead pid must be transitioned to failed on the
 next watcher reconciliation pass. Paused items with a live pid or no pid
 must be left untouched.
 """
+
 from __future__ import annotations
 
 import os
-
-import pytest
 
 
 def _make_inbox_item(status: str, pid: int | str | None = None) -> dict:
@@ -36,7 +35,9 @@ def test_paused_item_with_dead_pid_transitions_to_failed():
 
     assert changed, "should report that a change was made"
     assert item["status"] == "failed"
-    assert "pid" in item.get("failed_reason", "").lower() or str(dead_pid) in item.get("failed_reason", "")
+    assert "pid" in item.get("failed_reason", "").lower() or str(dead_pid) in item.get(
+        "failed_reason", ""
+    )
 
 
 def test_paused_item_with_live_pid_stays_paused():
@@ -88,5 +89,7 @@ def test_reconcile_is_idempotent():
     assert item["status"] == "failed"
 
     changed_second = _reconcile_paused_dead_pids(inbox)
-    assert not changed_second, "second pass on already-failed item must report no change"
+    assert not changed_second, (
+        "second pass on already-failed item must report no change"
+    )
     assert item["status"] == "failed"

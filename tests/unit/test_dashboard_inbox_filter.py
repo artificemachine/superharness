@@ -13,22 +13,21 @@ status=active, causing the discussion pill to show 6 paused inbox items
 alongside active discussions instead of showing discussions only.
 """
 
-import json
-import sqlite3
-import time
-import urllib.parse
-from dataclasses import dataclass
-from http.server import BaseHTTPRequestHandler
-from io import BytesIO
-from pathlib import Path
-from typing import Any
-from unittest.mock import MagicMock, patch
-
 import pytest
 
 # ── inbox item factory ────────────────────────────────────────────────────────
 
-_STATUSES = ["pending", "launched", "running", "paused", "failed", "stale", "done", "stopped"]
+_STATUSES = [
+    "pending",
+    "launched",
+    "running",
+    "paused",
+    "failed",
+    "stale",
+    "done",
+    "stopped",
+]
+
 
 def _item(id: str, status: str, agent: str = "claude-code") -> dict:
     return {
@@ -45,6 +44,7 @@ def _item(id: str, status: str, agent: str = "claude-code") -> dict:
 
 
 # ── helper: call the filter logic directly without HTTP ───────────────────────
+
 
 def _apply_status_filter(items: list[dict], status_filter: str) -> list[dict]:
     """Replicate exactly the filter logic from dashboard-ui.py /api/inbox."""
@@ -63,21 +63,25 @@ def _make_inbox(specs: list[tuple[str, str]]) -> list[dict]:
 
 # ── shared fixture: mixed inbox with one item per status ──────────────────────
 
+
 @pytest.fixture
 def mixed_inbox() -> list[dict]:
-    return _make_inbox([
-        ("p1", "pending"),
-        ("p2", "launched"),
-        ("p3", "running"),
-        ("p4", "paused"),
-        ("p5", "failed"),
-        ("p6", "stale"),
-        ("p7", "done"),
-        ("p8", "stopped"),
-    ])
+    return _make_inbox(
+        [
+            ("p1", "pending"),
+            ("p2", "launched"),
+            ("p3", "running"),
+            ("p4", "paused"),
+            ("p5", "failed"),
+            ("p6", "stale"),
+            ("p7", "done"),
+            ("p8", "stopped"),
+        ]
+    )
 
 
 # ── "discussion" pill → status=active ────────────────────────────────────────
+
 
 class TestActiveFilter:
     """The discussion pill calls /api/inbox?status=active.
@@ -104,7 +108,9 @@ class TestActiveFilter:
         """Regression: paused was in _ACTIVE before the v1.37.3 fix."""
         result = _apply_status_filter(mixed_inbox, "active")
         ids = [i["id"] for i in result]
-        assert "p4" not in ids, "paused must NOT appear in active filter (discussion pill bug)"
+        assert "p4" not in ids, (
+            "paused must NOT appear in active filter (discussion pill bug)"
+        )
 
     def test_excludes_failed(self, mixed_inbox):
         result = _apply_status_filter(mixed_inbox, "active")
@@ -133,21 +139,26 @@ class TestActiveFilter:
         """Critical regression guard: all paused → discussion pill must show 0 inbox items."""
         items = _make_inbox([("a", "paused"), ("b", "paused"), ("c", "paused")])
         result = _apply_status_filter(items, "active")
-        assert result == [], "only paused items must yield 0 active items (discussion pill shows discussions only)"
+        assert result == [], (
+            "only paused items must yield 0 active items (discussion pill shows discussions only)"
+        )
 
     def test_count_matches_only_active_statuses(self):
-        items = _make_inbox([
-            ("x1", "pending"),
-            ("x2", "paused"),
-            ("x3", "running"),
-            ("x4", "failed"),
-            ("x5", "launched"),
-        ])
+        items = _make_inbox(
+            [
+                ("x1", "pending"),
+                ("x2", "paused"),
+                ("x3", "running"),
+                ("x4", "failed"),
+                ("x5", "launched"),
+            ]
+        )
         result = _apply_status_filter(items, "active")
         assert len(result) == 3  # pending + running + launched only
 
 
 # ── "paused" pill → status=paused ────────────────────────────────────────────
+
 
 class TestPausedFilter:
     def test_returns_only_paused(self, mixed_inbox):
@@ -178,6 +189,7 @@ class TestPausedFilter:
 
 # ── "failed" pill → status=failed ────────────────────────────────────────────
 
+
 class TestFailedFilter:
     def test_returns_only_failed(self, mixed_inbox):
         result = _apply_status_filter(mixed_inbox, "failed")
@@ -194,6 +206,7 @@ class TestFailedFilter:
 
 
 # ── "stale" pill → status=stale ──────────────────────────────────────────────
+
 
 class TestStaleFilter:
     def test_returns_only_stale(self, mixed_inbox):
@@ -212,6 +225,7 @@ class TestStaleFilter:
 
 # ── "done" pill → status=done ────────────────────────────────────────────────
 
+
 class TestDoneFilter:
     def test_returns_only_done(self, mixed_inbox):
         result = _apply_status_filter(mixed_inbox, "done")
@@ -224,6 +238,7 @@ class TestDoneFilter:
 
 
 # ── no filter (status='') → all items ────────────────────────────────────────
+
 
 class TestNoFilter:
     def test_returns_all_items(self, mixed_inbox):
@@ -242,11 +257,14 @@ class TestNoFilter:
 _ALL_PILLS = ["active", "paused", "failed", "stale", "done", "stopped"]
 
 # Generate all 15 unique pairs — C(6,2).
-import itertools
+import itertools  # noqa: E402
+
 _PILL_PAIRS = list(itertools.combinations(_ALL_PILLS, 2))
 
 
-@pytest.mark.parametrize("a,b", _PILL_PAIRS, ids=[f"{a}-vs-{b}" for a, b in _PILL_PAIRS])
+@pytest.mark.parametrize(
+    "a,b", _PILL_PAIRS, ids=[f"{a}-vs-{b}" for a, b in _PILL_PAIRS]
+)
 def test_pills_are_disjoint(mixed_inbox, a, b):
     """No item must appear in two different pill results simultaneously.
 

@@ -5,14 +5,13 @@ to start a second instance. This prevents the process-accumulation bug where
 launchd KeepAlive=true combined with lack of singleton enforcement caused
 hundreds of operator processes to accumulate.
 """
+
 from __future__ import annotations
 
 import json
 import os
-import tempfile
 from pathlib import Path
 
-import pytest
 
 from superharness.engine.operator import Operator, _OPERATOR_STATE_FILE
 
@@ -34,7 +33,9 @@ class TestOperatorSingleton:
         """A state file with a dead PID is treated as stale — not a singleton."""
         _harness_dir(tmp_path)
         state_file = tmp_path / _OPERATOR_STATE_FILE
-        state_file.write_text(json.dumps({"operator_pid": 99999999, "dashboard_port": 8787}))
+        state_file.write_text(
+            json.dumps({"operator_pid": 99999999, "dashboard_port": 8787})
+        )
 
         op = Operator(str(tmp_path))
         result = op._check_singleton()
@@ -46,7 +47,9 @@ class TestOperatorSingleton:
         """A state file with our own PID signals an already-running operator."""
         _harness_dir(tmp_path)
         state_file = tmp_path / _OPERATOR_STATE_FILE
-        state_file.write_text(json.dumps({"operator_pid": os.getpid(), "dashboard_port": 8787}))
+        state_file.write_text(
+            json.dumps({"operator_pid": os.getpid(), "dashboard_port": 8787})
+        )
 
         op = Operator(str(tmp_path))
         assert op._check_singleton()
@@ -55,7 +58,9 @@ class TestOperatorSingleton:
         """_check_singleton removes stale state files so subsequent starts proceed."""
         _harness_dir(tmp_path)
         state_file = tmp_path / _OPERATOR_STATE_FILE
-        state_file.write_text(json.dumps({"operator_pid": 99999999, "dashboard_port": 8787}))
+        state_file.write_text(
+            json.dumps({"operator_pid": 99999999, "dashboard_port": 8787})
+        )
 
         op = Operator(str(tmp_path))
         op._check_singleton()  # should clean up

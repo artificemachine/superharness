@@ -1,4 +1,5 @@
 """Smoke tests — the Claude Code plugin command surface exists and is well-formed."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -24,7 +25,9 @@ def test_commands_dir_exists_and_nonempty():
 
 
 @pytest.mark.parametrize(
-    "path", sorted(COMMANDS_DIR.glob("*.md")) if COMMANDS_DIR.is_dir() else [], ids=lambda p: p.name
+    "path",
+    sorted(COMMANDS_DIR.glob("*.md")) if COMMANDS_DIR.is_dir() else [],
+    ids=lambda p: p.name,
 )
 def test_every_command_file_has_valid_frontmatter(path):
     fm = _read_frontmatter(path)
@@ -32,7 +35,9 @@ def test_every_command_file_has_valid_frontmatter(path):
 
 
 @pytest.mark.parametrize(
-    "path", sorted(COMMANDS_DIR.glob("*.md")) if COMMANDS_DIR.is_dir() else [], ids=lambda p: p.name
+    "path",
+    sorted(COMMANDS_DIR.glob("*.md")) if COMMANDS_DIR.is_dir() else [],
+    ids=lambda p: p.name,
 )
 def test_every_command_file_has_argument_hint_or_none(path):
     fm = _read_frontmatter(path)

@@ -1,8 +1,8 @@
 """shux adapters — list, inspect, and validate agent runtime adapters."""
+
 from __future__ import annotations
 
 import json
-import os
 import sys
 
 import click
@@ -34,7 +34,9 @@ def list_cmd(as_json):
         for name in names:
             try:
                 info = adapter_info(name)
-                rows.append({"name": name, "valid": info["valid"], "issues": info["issues"]})
+                rows.append(
+                    {"name": name, "valid": info["valid"], "issues": info["issues"]}
+                )
             except AdapterValidationError as e:
                 rows.append({"name": name, "valid": False, "issues": [str(e)]})
         click.echo(json.dumps(rows, indent=2))
@@ -128,7 +130,9 @@ def test_cmd(name):
         click.echo(f"  Version:  {manifest.version}")
         sys.exit(0)
     except AdapterValidationError as e:
-        click.echo(click.style(f"✗ Adapter '{name}' failed validation:", fg="red"), err=True)
+        click.echo(
+            click.style(f"✗ Adapter '{name}' failed validation:", fg="red"), err=True
+        )
         click.echo(f"  {e}", err=True)
         sys.exit(1)
 

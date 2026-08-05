@@ -30,6 +30,7 @@ Kept deliberately flat: SuperharnessError plus two subclasses is enough for
 every site iterations 6 and 7 migrate. Do not add a third without a call
 site that genuinely cannot be expressed as UsageError or OperationError.
 """
+
 from __future__ import annotations
 
 import sys

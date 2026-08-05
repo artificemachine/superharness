@@ -9,6 +9,7 @@ any test in this file. `run_monitor` loops forever by design; every test
 terminates it deterministically by having a fake side effect raise a
 sentinel exception once the assertion point is reached.
 """
+
 from __future__ import annotations
 
 import inspect
@@ -49,8 +50,14 @@ def test_monitor_does_not_spawn_while_adopted_pid_is_alive(tmp_path):
 
     with pytest.raises(_StopLoop):
         daemon_monitor.run_monitor(
-            str(tmp_path), 30, "out.log", "err.log", watcher_pid=4242,
-            spawn=fake_spawn, sleep=_noop_sleep, alive=fake_alive,
+            str(tmp_path),
+            30,
+            "out.log",
+            "err.log",
+            watcher_pid=4242,
+            spawn=fake_spawn,
+            sleep=_noop_sleep,
+            alive=fake_alive,
         )
 
     assert alive_calls == [4242, 4242, 4242]
@@ -68,8 +75,14 @@ def test_monitor_respawns_after_adopted_pid_dies(tmp_path):
 
     with pytest.raises(_StopLoop):
         daemon_monitor.run_monitor(
-            str(tmp_path), 30, "out.log", "err.log", watcher_pid=4242,
-            spawn=fake_spawn, sleep=_noop_sleep, alive=fake_alive,
+            str(tmp_path),
+            30,
+            "out.log",
+            "err.log",
+            watcher_pid=4242,
+            spawn=fake_spawn,
+            sleep=_noop_sleep,
+            alive=fake_alive,
         )
 
     assert spawn_calls == [1], "exactly one spawn must follow the adopted pid dying"
@@ -86,12 +99,20 @@ def test_monitor_writes_state_with_the_adopted_pid_first(tmp_path):
 
     with pytest.raises(_StopLoop):
         daemon_monitor.run_monitor(
-            str(tmp_path), 30, "out.log", "err.log", watcher_pid=4242,
-            spawn=fake_spawn, sleep=_noop_sleep, alive=fake_alive,
+            str(tmp_path),
+            30,
+            "out.log",
+            "err.log",
+            watcher_pid=4242,
+            spawn=fake_spawn,
+            sleep=_noop_sleep,
+            alive=fake_alive,
         )
 
     state = json.loads((tmp_path / ".superharness" / "daemon-state.json").read_text())
-    assert state["watcher_pid"] == 4242, "the first state write must carry the adopted pid, not a freshly spawned one"
+    assert state["watcher_pid"] == 4242, (
+        "the first state write must carry the adopted pid, not a freshly spawned one"
+    )
 
 
 def test_monitor_state_file_shape_is_unchanged(tmp_path):
@@ -105,12 +126,25 @@ def test_monitor_state_file_shape_is_unchanged(tmp_path):
 
     with pytest.raises(_StopLoop):
         daemon_monitor.run_monitor(
-            str(tmp_path), 30, "out.log", "err.log", watcher_pid=4242,
-            spawn=fake_spawn, sleep=_noop_sleep, alive=fake_alive,
+            str(tmp_path),
+            30,
+            "out.log",
+            "err.log",
+            watcher_pid=4242,
+            spawn=fake_spawn,
+            sleep=_noop_sleep,
+            alive=fake_alive,
         )
 
     state = json.loads((tmp_path / ".superharness" / "daemon-state.json").read_text())
-    assert set(state.keys()) == {"pid", "watcher_pid", "project", "interval", "log_out", "log_err"}
+    assert set(state.keys()) == {
+        "pid",
+        "watcher_pid",
+        "project",
+        "interval",
+        "log_out",
+        "log_err",
+    }
 
 
 def test_monitor_respawns_when_adopted_pid_is_already_dead_on_start(tmp_path):
@@ -127,8 +161,14 @@ def test_monitor_respawns_when_adopted_pid_is_already_dead_on_start(tmp_path):
 
     with pytest.raises(_StopLoop):
         daemon_monitor.run_monitor(
-            str(tmp_path), 30, "out.log", "err.log", watcher_pid=9999,
-            spawn=fake_spawn, sleep=_noop_sleep, alive=fake_alive,
+            str(tmp_path),
+            30,
+            "out.log",
+            "err.log",
+            watcher_pid=9999,
+            spawn=fake_spawn,
+            sleep=_noop_sleep,
+            alive=fake_alive,
         )
 
     assert spawn_calls == [1]
@@ -137,7 +177,9 @@ def test_monitor_respawns_when_adopted_pid_is_already_dead_on_start(tmp_path):
 def test_main_parses_argv_and_calls_run_monitor(monkeypatch, tmp_path):
     captured = {}
 
-    def fake_run_monitor(project_dir, interval, out_log, err_log, watcher_pid, **kwargs):
+    def fake_run_monitor(
+        project_dir, interval, out_log, err_log, watcher_pid, **kwargs
+    ):
         captured["args"] = (project_dir, interval, out_log, err_log, watcher_pid)
 
     monkeypatch.setattr(daemon_monitor, "run_monitor", fake_run_monitor)

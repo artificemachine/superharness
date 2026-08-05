@@ -2,9 +2,9 @@
 
 TDD RED phase — all tests must fail before implementation starts.
 """
+
 from __future__ import annotations
 
-import sys
 from pathlib import Path
 
 import pytest
@@ -13,6 +13,7 @@ import yaml
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _write_contract(project: Path, tasks: list[dict]) -> None:
     (project / ".superharness").mkdir(parents=True, exist_ok=True)
@@ -46,6 +47,7 @@ def _write_profile(project: Path, auto_dispatch: bool) -> None:
 # Test 1 — auto-enqueue plan_approved task
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
 def test_auto_dispatch_enqueues_plan_approved(tmp_path):
     """Watcher auto-enqueues plan_approved contract task when auto_dispatch=True."""
@@ -53,9 +55,12 @@ def test_auto_dispatch_enqueues_plan_approved(tmp_path):
 
     project = tmp_path / "proj"
     project.mkdir()
-    _write_contract(project, [
-        {"id": "task-1", "owner": "claude-code", "status": "plan_approved"},
-    ])
+    _write_contract(
+        project,
+        [
+            {"id": "task-1", "owner": "claude-code", "status": "plan_approved"},
+        ],
+    )
     _write_inbox(project, [])
     _write_profile(project, auto_dispatch=True)
 
@@ -73,6 +78,7 @@ def test_auto_dispatch_enqueues_plan_approved(tmp_path):
 # Test 2 — idempotent: running twice doesn't duplicate
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
 def test_auto_dispatch_idempotent(tmp_path):
     """Running auto_enqueue_approved twice on the same project adds no duplicates."""
@@ -80,9 +86,12 @@ def test_auto_dispatch_idempotent(tmp_path):
 
     project = tmp_path / "proj"
     project.mkdir()
-    _write_contract(project, [
-        {"id": "task-2", "owner": "claude-code", "status": "plan_approved"},
-    ])
+    _write_contract(
+        project,
+        [
+            {"id": "task-2", "owner": "claude-code", "status": "plan_approved"},
+        ],
+    )
     _write_inbox(project, [])
     _write_profile(project, auto_dispatch=True)
 
@@ -98,16 +107,23 @@ def test_auto_dispatch_idempotent(tmp_path):
 # Test 3 — other statuses are skipped
 # ---------------------------------------------------------------------------
 
-@pytest.mark.parametrize("status", ["todo", "plan_proposed", "in_progress", "report_ready", "done", "review_failed"])
+
+@pytest.mark.parametrize(
+    "status",
+    ["todo", "plan_proposed", "in_progress", "report_ready", "done", "review_failed"],
+)
 def test_auto_dispatch_skips_other_statuses(tmp_path, status):
     """Only plan_approved tasks are auto-enqueued; all other statuses are ignored."""
     from superharness.commands.inbox_watch import auto_enqueue_approved
 
     project = tmp_path / f"proj-{status}"
     project.mkdir()
-    _write_contract(project, [
-        {"id": "task-x", "owner": "claude-code", "status": status},
-    ])
+    _write_contract(
+        project,
+        [
+            {"id": "task-x", "owner": "claude-code", "status": status},
+        ],
+    )
     _write_inbox(project, [])
     _write_profile(project, auto_dispatch=True)
 
@@ -121,15 +137,19 @@ def test_auto_dispatch_skips_other_statuses(tmp_path, status):
 # Test 4 — off by default
 # ---------------------------------------------------------------------------
 
+
 def test_auto_dispatch_off_by_default(tmp_path):
     """No auto-enqueue when auto_dispatch is absent from profile.yaml."""
     from superharness.commands.inbox_watch import auto_enqueue_approved
 
     project = tmp_path / "proj"
     project.mkdir()
-    _write_contract(project, [
-        {"id": "task-3", "owner": "claude-code", "status": "plan_approved"},
-    ])
+    _write_contract(
+        project,
+        [
+            {"id": "task-3", "owner": "claude-code", "status": "plan_approved"},
+        ],
+    )
     _write_inbox(project, [])
     # No profile written — missing auto_dispatch key
 
@@ -145,9 +165,12 @@ def test_auto_dispatch_off_when_false(tmp_path):
 
     project = tmp_path / "proj"
     project.mkdir()
-    _write_contract(project, [
-        {"id": "task-4", "owner": "claude-code", "status": "plan_approved"},
-    ])
+    _write_contract(
+        project,
+        [
+            {"id": "task-4", "owner": "claude-code", "status": "plan_approved"},
+        ],
+    )
     _write_inbox(project, [])
     _write_profile(project, auto_dispatch=False)
 
@@ -160,6 +183,7 @@ def test_auto_dispatch_off_when_false(tmp_path):
 # Test 5 — skip if active inbox entry already exists
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.parametrize("active_status", ["pending", "launched", "running", "paused"])
 def test_auto_dispatch_skips_if_active_inbox_entry(tmp_path, active_status):
     """Do not re-enqueue a task that already has an active inbox entry."""
@@ -167,18 +191,33 @@ def test_auto_dispatch_skips_if_active_inbox_entry(tmp_path, active_status):
 
     project = tmp_path / f"proj-{active_status}"
     project.mkdir()
-    _write_contract(project, [
-        {"id": "task-5", "owner": "claude-code", "status": "plan_approved"},
-    ])
-    _write_inbox(project, [
-        {"id": "existing-item", "task": "task-5", "to": "claude-code",
-         "status": active_status, "priority": 2, "retry_count": 0, "max_retries": 3},
-    ])
+    _write_contract(
+        project,
+        [
+            {"id": "task-5", "owner": "claude-code", "status": "plan_approved"},
+        ],
+    )
+    _write_inbox(
+        project,
+        [
+            {
+                "id": "existing-item",
+                "task": "task-5",
+                "to": "claude-code",
+                "status": active_status,
+                "priority": 2,
+                "retry_count": 0,
+                "max_retries": 3,
+            },
+        ],
+    )
     _write_profile(project, auto_dispatch=True)
 
     added = auto_enqueue_approved(str(project))
 
-    assert added == 0, f"Should not enqueue when inbox already has '{active_status}' entry"
+    assert added == 0, (
+        f"Should not enqueue when inbox already has '{active_status}' entry"
+    )
     items = _read_inbox(project)
     assert len(items) == 1, "Inbox should remain unchanged"
 
@@ -189,13 +228,26 @@ def test_auto_dispatch_reenqueues_after_done(tmp_path):
 
     project = tmp_path / "proj"
     project.mkdir()
-    _write_contract(project, [
-        {"id": "task-6", "owner": "claude-code", "status": "plan_approved"},
-    ])
-    _write_inbox(project, [
-        {"id": "old-item", "task": "task-6", "to": "claude-code",
-         "status": "done", "priority": 2, "retry_count": 0, "max_retries": 3},
-    ])
+    _write_contract(
+        project,
+        [
+            {"id": "task-6", "owner": "claude-code", "status": "plan_approved"},
+        ],
+    )
+    _write_inbox(
+        project,
+        [
+            {
+                "id": "old-item",
+                "task": "task-6",
+                "to": "claude-code",
+                "status": "done",
+                "priority": 2,
+                "retry_count": 0,
+                "max_retries": 3,
+            },
+        ],
+    )
     _write_profile(project, auto_dispatch=True)
 
     added = auto_enqueue_approved(str(project))
@@ -207,17 +259,25 @@ def test_auto_dispatch_reenqueues_after_done(tmp_path):
 # Test 6 — respects blocked_by via _deps_satisfied
 # ---------------------------------------------------------------------------
 
+
 def test_auto_dispatch_respects_blocked_by(tmp_path):
     """Tasks with unresolved blocked_by deps are not auto-enqueued."""
     from superharness.commands.inbox_watch import auto_enqueue_approved
 
     project = tmp_path / "proj"
     project.mkdir()
-    _write_contract(project, [
-        {"id": "dep-task", "owner": "claude-code", "status": "in_progress"},
-        {"id": "task-7", "owner": "claude-code", "status": "plan_approved",
-         "blocked_by": "dep-task"},
-    ])
+    _write_contract(
+        project,
+        [
+            {"id": "dep-task", "owner": "claude-code", "status": "in_progress"},
+            {
+                "id": "task-7",
+                "owner": "claude-code",
+                "status": "plan_approved",
+                "blocked_by": "dep-task",
+            },
+        ],
+    )
     _write_inbox(project, [])
     _write_profile(project, auto_dispatch=True)
 
@@ -233,11 +293,18 @@ def test_auto_dispatch_enqueues_when_dep_done(tmp_path):
 
     project = tmp_path / "proj"
     project.mkdir()
-    _write_contract(project, [
-        {"id": "dep-task", "owner": "claude-code", "status": "done"},
-        {"id": "task-8", "owner": "claude-code", "status": "plan_approved",
-         "blocked_by": "dep-task"},
-    ])
+    _write_contract(
+        project,
+        [
+            {"id": "dep-task", "owner": "claude-code", "status": "done"},
+            {
+                "id": "task-8",
+                "owner": "claude-code",
+                "status": "plan_approved",
+                "blocked_by": "dep-task",
+            },
+        ],
+    )
     _write_inbox(project, [])
     _write_profile(project, auto_dispatch=True)
 
@@ -249,6 +316,7 @@ def test_auto_dispatch_enqueues_when_dep_done(tmp_path):
 # ---------------------------------------------------------------------------
 # Test 7 — config key readable via shux config
 # ---------------------------------------------------------------------------
+
 
 def test_config_auto_dispatch_key(tmp_path):
     """auto_dispatch can be set and read via the config system."""
@@ -267,6 +335,7 @@ def test_config_auto_dispatch_key(tmp_path):
 # ---------------------------------------------------------------------------
 # Test 8 — watcher tick calls auto_enqueue_approved when enabled
 # ---------------------------------------------------------------------------
+
 
 def test_watcher_tick_calls_auto_enqueue(tmp_path, monkeypatch):
     """The watcher main loop calls auto_enqueue_approved on each tick."""
@@ -288,9 +357,14 @@ def test_watcher_tick_calls_auto_enqueue(tmp_path, monkeypatch):
     _write_profile(project, auto_dispatch=True)
 
     # Run a single tick (not the full loop)
-    inbox_watch.run_once(str(project), to="both", non_interactive=True,
-                         recover_timeout_minutes=3, recover_action="retry",
-                         launcher_timeout=0)
+    inbox_watch.run_once(
+        str(project),
+        to="both",
+        non_interactive=True,
+        recover_timeout_minutes=3,
+        recover_action="retry",
+        launcher_timeout=0,
+    )
 
     assert len(calls) == 1, "auto_enqueue_approved should be called once per tick"
 
@@ -298,6 +372,7 @@ def test_watcher_tick_calls_auto_enqueue(tmp_path, monkeypatch):
 # ---------------------------------------------------------------------------
 # Test — non-implementation workflows must not use plan_only
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.parametrize("workflow", ["review", "quick", "note", "approval"])
 def test_enqueue_non_implementation_workflow_plan_only_false(workflow):
@@ -316,10 +391,12 @@ def test_enqueue_non_implementation_workflow_plan_only_false(workflow):
     def fake_enqueue(conn, **kwargs):
         captured.update(kwargs)
 
-    with patch("superharness.engine.db.get_connection", return_value=MagicMock()), \
-         patch("superharness.engine.db.init_db"), \
-         patch("superharness.engine.inbox_dao.enqueue", side_effect=fake_enqueue), \
-         patch("superharness.commands.auto_dispatch.uuid") as mock_uuid:
+    with (
+        patch("superharness.engine.db.get_connection", return_value=MagicMock()),
+        patch("superharness.engine.db.init_db"),
+        patch("superharness.engine.inbox_dao.enqueue", side_effect=fake_enqueue),
+        patch("superharness.commands.auto_dispatch.uuid") as mock_uuid,
+    ):
         mock_uuid.uuid4.return_value.hex = "aabbcc"
         _enqueue(
             project_dir="/fake/project",
@@ -344,10 +421,12 @@ def test_enqueue_implementation_workflow_plan_only_true():
     def fake_enqueue(conn, **kwargs):
         captured.update(kwargs)
 
-    with patch("superharness.engine.db.get_connection", return_value=MagicMock()), \
-         patch("superharness.engine.db.init_db"), \
-         patch("superharness.engine.inbox_dao.enqueue", side_effect=fake_enqueue), \
-         patch("superharness.commands.auto_dispatch.uuid") as mock_uuid:
+    with (
+        patch("superharness.engine.db.get_connection", return_value=MagicMock()),
+        patch("superharness.engine.db.init_db"),
+        patch("superharness.engine.inbox_dao.enqueue", side_effect=fake_enqueue),
+        patch("superharness.commands.auto_dispatch.uuid") as mock_uuid,
+    ):
         mock_uuid.uuid4.return_value.hex = "aabbcc"
         _enqueue(
             project_dir="/fake/project",
@@ -365,6 +444,7 @@ def test_enqueue_implementation_workflow_plan_only_true():
 # ---------------------------------------------------------------------------
 # Tests for _read_round_skip_flag
 # ---------------------------------------------------------------------------
+
 
 def test_read_round_skip_flag_no_profile(tmp_path):
     """Returns True (default) when profile.yaml is absent."""
@@ -431,10 +511,12 @@ def test_enqueue_round_task_skips_plan_only_when_flag_true(tmp_path):
     def fake_enqueue(conn, **kwargs):
         captured.update(kwargs)
 
-    with patch("superharness.engine.db.get_connection", return_value=MagicMock()), \
-         patch("superharness.engine.db.init_db"), \
-         patch("superharness.engine.inbox_dao.enqueue", side_effect=fake_enqueue), \
-         patch("superharness.commands.auto_dispatch.uuid") as mock_uuid:
+    with (
+        patch("superharness.engine.db.get_connection", return_value=MagicMock()),
+        patch("superharness.engine.db.init_db"),
+        patch("superharness.engine.inbox_dao.enqueue", side_effect=fake_enqueue),
+        patch("superharness.commands.auto_dispatch.uuid") as mock_uuid,
+    ):
         mock_uuid.uuid4.return_value.hex = "aabbcc"
         _enqueue(
             project_dir=str(tmp_path),
@@ -463,10 +545,12 @@ def test_enqueue_round_task_preserves_plan_only_when_flag_false(tmp_path):
     def fake_enqueue(conn, **kwargs):
         captured.update(kwargs)
 
-    with patch("superharness.engine.db.get_connection", return_value=MagicMock()), \
-         patch("superharness.engine.db.init_db"), \
-         patch("superharness.engine.inbox_dao.enqueue", side_effect=fake_enqueue), \
-         patch("superharness.commands.auto_dispatch.uuid") as mock_uuid:
+    with (
+        patch("superharness.engine.db.get_connection", return_value=MagicMock()),
+        patch("superharness.engine.db.init_db"),
+        patch("superharness.engine.inbox_dao.enqueue", side_effect=fake_enqueue),
+        patch("superharness.commands.auto_dispatch.uuid") as mock_uuid,
+    ):
         mock_uuid.uuid4.return_value.hex = "aabbcc"
         _enqueue(
             project_dir=str(tmp_path),

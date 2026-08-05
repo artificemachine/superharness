@@ -3,6 +3,7 @@
 Reads contract data from SQLite (the source of truth) via state_reader,
 then validates the reconstructed document against the Contract schema.
 """
+
 from __future__ import annotations
 
 import os
@@ -27,9 +28,8 @@ def test_live_contract_passes_full_validation():
         errors = exc.errors()
         detail = "\n".join(
             f"  tasks[{e['loc'][1]}].{'.'.join(str(x) for x in e['loc'][2:])}: {e['msg']}"
-            if len(e["loc"]) > 2 else f"  {'.'.join(str(x) for x in e['loc'])}: {e['msg']}"
+            if len(e["loc"]) > 2
+            else f"  {'.'.join(str(x) for x in e['loc'])}: {e['msg']}"
             for e in errors
         )
-        raise AssertionError(
-            f"{len(errors)} schema violation(s):\n{detail}"
-        ) from exc
+        raise AssertionError(f"{len(errors)} schema violation(s):\n{detail}") from exc

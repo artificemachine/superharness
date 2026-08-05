@@ -1,4 +1,5 @@
 """Lifecycle timeout rule tests — verify every status has a timeout, and timeouts fire correctly."""
+
 from __future__ import annotations
 
 import pytest
@@ -17,7 +18,9 @@ class TestLifecycleTimeoutRules:
         for rule in LIFECYCLE_RULES:
             assert rule.state, f"Rule missing 'state': {rule}"
             assert rule.timeout_minutes > 0, f"Rule {rule.state} has timeout_minutes=0"
-            assert rule.on_timeout in ("fail", "archive", "revert"), f"Unknown on_timeout: {rule.on_timeout}"
+            assert rule.on_timeout in ("fail", "archive", "revert"), (
+                f"Unknown on_timeout: {rule.on_timeout}"
+            )
 
     def test_waiting_input_has_timeout(self):
         """waiting_input status must have a timeout rule."""
@@ -32,7 +35,7 @@ class TestLifecycleTimeoutRules:
 
     def test_pending_user_approval_has_timeout(self):
         """pending_user_approval should have a timeout to prevent indefinite waits.
-        
+
         NOTE: Currently no rule exists for this status. This is a known gap —
         tasks stuck in pending_user_approval need manual intervention.
         """
@@ -44,9 +47,12 @@ class TestLifecycleTimeoutRules:
     def test_all_rules_have_valid_states(self):
         """Every rule's state must be a real status string."""
         from superharness.engine.schemas import TaskStatus
+
         valid = {s.value for s in TaskStatus}
         for rule in LIFECYCLE_RULES:
-            assert rule.state in valid, f"Unknown state '{rule.state}' in lifecycle rule"
+            assert rule.state in valid, (
+                f"Unknown state '{rule.state}' in lifecycle rule"
+            )
 
 
 class TestLifecycleRuleStructure:

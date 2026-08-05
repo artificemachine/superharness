@@ -17,6 +17,7 @@ Gitleaks (CI job "Gitleaks") covers real secrets and high-entropy
 strings; GitHub native push protection covers confirmed secret formats
 server-side. This test is the topology layer neither of those sees.
 """
+
 from __future__ import annotations
 
 import re
@@ -45,10 +46,10 @@ _BLOCKLIST_FILE = _REPO_ROOT / ".security-blocklist.txt"
 # itself in this file.
 # ---------------------------------------------------------------------------
 _HOSTNAME_SHAPES = [
-    r"\bvm\d{3}\b",        # vm740, vm903, vm913...
-    r"\bP\d{3,4}\b",       # P510-style workstation ids
+    r"\bvm\d{3}\b",  # vm740, vm903, vm913...
+    r"\bP\d{3,4}\b",  # P510-style workstation ids
     r"\bSite-[A-Za-z]\b",  # Site-A/Site-B style datacenter ids
-    r"\b[\w-]+-sidecar\b", # vm903-sidecar-style model/device refs
+    r"\b[\w-]+-sidecar\b",  # vm903-sidecar-style model/device refs
 ]
 
 _PRIVATE_IP_RANGES = [
@@ -58,10 +59,14 @@ _PRIVATE_IP_RANGES = [
 ]
 
 _INFRA_MARKERS = [
-    r"/mnt/pve/",          # Proxmox NAS mount
-    r"\bgs-nas\b",         # NAS share namespace
-    r"control-token",      # token file paths (RMDI-style routers)
+    r"/mnt/pve/",  # Proxmox NAS mount
+    r"\bgs-nas\b",  # NAS share namespace
+    r"control-token",  # token file paths (RMDI-style routers)
     r"/var/lib/rmdi/",
+]
+
+_PERSONAL_CLOUD_PATHS = [
+    r"GoogleDrive-[^/\s<>]*@[^/\s<>]+",
 ]
 
 _USER_HOME_PATTERNS = [
@@ -79,6 +84,7 @@ for _label, _patterns in (
     ("hostname", _HOSTNAME_SHAPES),
     ("private-ip", _PRIVATE_IP_RANGES),
     ("infra-marker", _INFRA_MARKERS),
+    ("personal-cloud", _PERSONAL_CLOUD_PATHS),
     ("user-home", _USER_HOME_PATTERNS),
 ):
     for _p in _patterns:
@@ -106,7 +112,10 @@ LEAK_ALLOWLIST: dict[str, tuple[str, ...]] = {
 def _tracked_files() -> list[str]:
     out = subprocess.run(
         ["git", "ls-files"],
-        cwd=_REPO_ROOT, capture_output=True, text=True, check=True,
+        cwd=_REPO_ROOT,
+        capture_output=True,
+        text=True,
+        check=True,
     )
     return [line for line in out.stdout.splitlines() if line]
 
@@ -115,7 +124,8 @@ def _blocklist_lines() -> list[str]:
     if not _BLOCKLIST_FILE.exists():
         return []
     lines = [
-        ln.strip() for ln in _BLOCKLIST_FILE.read_text().splitlines()
+        ln.strip()
+        for ln in _BLOCKLIST_FILE.read_text().splitlines()
         if ln.strip() and not ln.strip().startswith("#")
     ]
     return lines
@@ -130,7 +140,7 @@ def _read(rel: str) -> str:
 
 def test_no_infra_topology_patterns_in_tracked_files():
     """Generic class-shaped patterns: hostname shapes, private IPs, NAS
-    mounts, token paths, any-user home paths. Hits on documented
+    mounts, token paths, personal cloud paths, and any-user home paths. Hits on documented
     placeholder values (LEAK_ALLOWLIST) are exempt with a stated reason."""
     offenders: dict[str, list[str]] = {}
     for rel in _tracked_files():
@@ -144,7 +154,7 @@ def test_no_infra_topology_patterns_in_tracked_files():
             offenders[rel] = unexpected
     assert not offenders, (
         "tracked files leak private-infrastructure topology "
-        f"(hostnames/private-IPs/NAS/token-paths/user-homes): {offenders}. "
+        f"(hostnames/private-IPs/NAS/token-paths/personal-cloud-paths/user-homes): {offenders}. "
         "Remove the identifier or abstract it (e.g. vm740 -> <router-host>) "
         "before merging to a public repo."
     )

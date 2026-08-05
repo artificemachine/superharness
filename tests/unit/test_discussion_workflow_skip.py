@@ -12,12 +12,11 @@ Regression source — 2026-05-09 runaway:
 
 Both auto-flows must skip discussion-workflow tasks.
 """
+
 from __future__ import annotations
 
 from datetime import datetime, timezone
 from pathlib import Path
-
-import pytest
 
 
 DISC_TASK_ID = "discuss-20260509T132148Z-test-fixture/round-1"
@@ -27,14 +26,18 @@ NORMAL_TASK_ID = "feat.regular-implementation"
 def _make_project(tmp_path: Path) -> Path:
     sh = tmp_path / ".superharness"
     sh.mkdir(parents=True)
-    (sh / "profile.yaml").write_text(
-        "auto_approve_plans: true\nautonomy: ai_driven\n"
-    )
+    (sh / "profile.yaml").write_text("auto_approve_plans: true\nautonomy: ai_driven\n")
     (sh / "inbox.yaml").write_text("items: []\n")
     return tmp_path
 
 
-def _seed_task(project_dir: Path, task_id: str, status: str, owner: str = "claude-code", workflow: str | None = None) -> None:
+def _seed_task(
+    project_dir: Path,
+    task_id: str,
+    status: str,
+    owner: str = "claude-code",
+    workflow: str | None = None,
+) -> None:
     """Insert a task row directly into SQLite (bypasses contract YAML coupling)."""
     from superharness.engine.db import get_connection, init_db
     from superharness.engine import tasks_dao
@@ -89,6 +92,7 @@ def _seed_task(project_dir: Path, task_id: str, status: str, owner: str = "claud
 # Auto-bootstrap must skip discussion sub-tasks
 # ---------------------------------------------------------------------------
 
+
 class TestAutoBootstrapSkipsDiscussion:
     def test_does_not_bootstrap_discussion_round_task(self, tmp_path):
         """Discussion rounds have no AC by design. Bootstrapping them sets
@@ -110,7 +114,9 @@ class TestAutoBootstrapSkipsDiscussion:
         from superharness.commands.inbox_watch import _auto_bootstrap_empty_tasks
 
         proj = _make_project(tmp_path)
-        _seed_task(proj, NORMAL_TASK_ID, status="waiting_input", workflow="implementation")
+        _seed_task(
+            proj, NORMAL_TASK_ID, status="waiting_input", workflow="implementation"
+        )
 
         bootstrapped = _auto_bootstrap_empty_tasks(str(proj))
 
@@ -120,6 +126,7 @@ class TestAutoBootstrapSkipsDiscussion:
 # ---------------------------------------------------------------------------
 # Auto-peer-review must skip discussion sub-tasks
 # ---------------------------------------------------------------------------
+
 
 class TestAutoPeerReviewSkipsDiscussion:
     def test_does_not_peer_review_discussion_round_task(self, tmp_path):
@@ -137,11 +144,22 @@ class TestAutoPeerReviewSkipsDiscussion:
         # under the legacy dispatch path. With workflow inferred from the ID
         # regex, it should still skip even without the YAML mirror.
         import yaml as _yaml
+
         contract_file = proj / ".superharness" / "contract.yaml"
-        contract_file.write_text(_yaml.safe_dump({
-            "tasks": [{"id": DISC_TASK_ID, "status": "plan_proposed",
-                       "owner": "claude-code", "workflow": "discussion"}]
-        }))
+        contract_file.write_text(
+            _yaml.safe_dump(
+                {
+                    "tasks": [
+                        {
+                            "id": DISC_TASK_ID,
+                            "status": "plan_proposed",
+                            "owner": "claude-code",
+                            "workflow": "discussion",
+                        }
+                    ]
+                }
+            )
+        )
 
         enqueued = _auto_peer_approve_plans(str(proj))
 
@@ -152,14 +170,27 @@ class TestAutoPeerReviewSkipsDiscussion:
         from superharness.commands.inbox_watch import _auto_peer_approve_plans
 
         proj = _make_project(tmp_path)
-        _seed_task(proj, NORMAL_TASK_ID, status="plan_proposed", workflow="implementation")
+        _seed_task(
+            proj, NORMAL_TASK_ID, status="plan_proposed", workflow="implementation"
+        )
 
         import yaml as _yaml
+
         contract_file = proj / ".superharness" / "contract.yaml"
-        contract_file.write_text(_yaml.safe_dump({
-            "tasks": [{"id": NORMAL_TASK_ID, "status": "plan_proposed",
-                       "owner": "claude-code", "workflow": "implementation"}]
-        }))
+        contract_file.write_text(
+            _yaml.safe_dump(
+                {
+                    "tasks": [
+                        {
+                            "id": NORMAL_TASK_ID,
+                            "status": "plan_proposed",
+                            "owner": "claude-code",
+                            "workflow": "implementation",
+                        }
+                    ]
+                }
+            )
+        )
 
         enqueued = _auto_peer_approve_plans(str(proj))
 

@@ -3,6 +3,7 @@
 Provides runtime schema validation for the 5 protocol YAML types:
 Contract, Handoff, Heartbeat, Profile, and Inbox.
 """
+
 from __future__ import annotations
 
 from datetime import date, datetime
@@ -36,8 +37,8 @@ class TaskStatus(str, Enum):
     blocked = "blocked"
     stopped = "stopped"
     # Phase 2: agent liveness signals
-    waiting_input = "waiting_input"   # agent paused, needs human response
-    paused = "paused"                 # agent suspended (e.g. budget gate)
+    waiting_input = "waiting_input"  # agent paused, needs human response
+    paused = "paused"  # agent suspended (e.g. budget gate)
     # Operator-initiated soft-delete: done tasks moved out of the active view
     # while remaining in contract.yaml for history. Renderers hide archived by
     # default; consumers (e.g. Morpheme) can still surface them behind a toggle.
@@ -121,7 +122,9 @@ class ContractTask(BaseModel):
     definition_of_done: Optional[list[str]] = None
     context: Optional[str] = None
     timeout_minutes: Optional[int] = None
-    progress_timeout_minutes: Optional[int] = 10  # reserved: agent liveness monitor (not yet wired)
+    progress_timeout_minutes: Optional[int] = (
+        10  # reserved: agent liveness monitor (not yet wired)
+    )
     # Phase 3: 1M context opt-in; auto-promoted when effort=max AND tokens>200K
     context_1m: Optional[bool] = None
     # Ship step: agent runs /ship commit before report_ready; watcher validates PR URL
@@ -179,14 +182,17 @@ class AgentPulse(BaseModel):
     Allows the operator and morpheme to detect stale/zombie tasks and
     surface "last seen X min ago" on in-progress nodes.
     """
+
     model_config = ConfigDict(extra="allow")
 
     task_id: str
-    agent: str                          # claude-code | codex-cli | …
-    status: str = "running"             # running | waiting_input | paused
-    last_seen: str                      # ISO-8601 UTC timestamp
-    message: Optional[str] = None      # human-readable note (e.g. "waiting for approval on X")
-    pid: Optional[int] = None          # agent process PID if known
+    agent: str  # claude-code | codex-cli | …
+    status: str = "running"  # running | waiting_input | paused
+    last_seen: str  # ISO-8601 UTC timestamp
+    message: Optional[str] = (
+        None  # human-readable note (e.g. "waiting for approval on X")
+    )
+    pid: Optional[int] = None  # agent process PID if known
 
 
 # ---------------------------------------------------------------------------
@@ -223,7 +229,9 @@ class Profile(BaseModel):
     primary_agent: Literal["claude-code", "codex-cli"]
     stack: str
     repo: Optional[Literal["github", "gitlab", "bitbucket", "other"]] = None
-    ci: Optional[Literal["github-actions", "gitlab-ci", "jenkins", "circleci", "none"]] = None
+    ci: Optional[
+        Literal["github-actions", "gitlab-ci", "jenkins", "circleci", "none"]
+    ] = None
     team_size: Optional[Literal["solo", "small", "team"]] = None
     existing_harness: list[str] = []
     watcher: bool = False

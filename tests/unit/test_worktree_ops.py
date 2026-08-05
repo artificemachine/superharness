@@ -1,10 +1,6 @@
 """Tests for the shared worktree_ops module."""
+
 from __future__ import annotations
-
-import os
-from pathlib import Path
-
-import pytest
 
 
 def test_sanitize_task_id_basic():
@@ -46,6 +42,7 @@ def test_private_aliases_still_importable():
         _remove_worktree,
         _copy_superharness_state,
     )
+
     assert callable(_sanitize_task_id)
     assert callable(_create_worktree)
     assert callable(_remove_worktree)
@@ -54,8 +51,8 @@ def test_private_aliases_still_importable():
 
 def test_swarm_imports_from_worktree_ops():
     """swarm.py should import WorktreeSlot from worktree_ops (not from parallel_dispatch)."""
-    import importlib, inspect
     import superharness.engine.swarm as swarm_mod
     import superharness.engine.worktree_ops as wt_ops
+
     # The WorktreeSlot used in swarm should be the same class object as worktree_ops.WorktreeSlot
     assert swarm_mod.WorktreeSlot is wt_ops.WorktreeSlot

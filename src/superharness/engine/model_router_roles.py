@@ -11,6 +11,7 @@ Default routing rationale (from Factory Missions analysis):
 - worker: fast + code fluency → Sonnet
 - validator: precise instruction following → Sonnet
 """
+
 from __future__ import annotations
 
 import os
@@ -19,6 +20,7 @@ from typing import Any
 from superharness.engine.adapter_registry import flagship
 
 import logging
+
 logger = logging.getLogger(__name__)
 
 _DEFAULT_ROUTING: dict[str, str] = {
@@ -41,17 +43,24 @@ class ModelRouter:
         profile_path = os.path.join(project_dir, ".superharness", "profile.yaml")
         try:
             import yaml  # type: ignore[import]
+
             with open(profile_path) as f:
                 profile: dict[str, Any] = yaml.safe_load(f) or {}
             overrides = profile.get("model_routing") or {}
             return cls(overrides=overrides)
         except Exception as e:
-            logger.warning("model_router_roles.py unexpected error: %s", e, exc_info=True)
+            logger.warning(
+                "model_router_roles.py unexpected error: %s", e, exc_info=True
+            )
             return cls()
 
     def model_for(self, role: str) -> str:
         """Return the resolved model name for the given role."""
-        return self._overrides.get(role) or _DEFAULT_ROUTING.get(role) or "claude-sonnet-4-6"
+        return (
+            self._overrides.get(role)
+            or _DEFAULT_ROUTING.get(role)
+            or "claude-sonnet-4-6"
+        )
 
     def all_routes(self) -> dict[str, str]:
         """Return effective routing table (defaults merged with overrides)."""

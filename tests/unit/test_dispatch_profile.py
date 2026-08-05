@@ -1,9 +1,9 @@
 """Unit tests for Iter 2: DispatchProfile — role-based payload filtering."""
+
 from __future__ import annotations
 
 import json
 
-import pytest
 
 from superharness.engine.dispatch_profile import DispatchProfile
 
@@ -89,12 +89,14 @@ class TestBuildReviewPayload:
 
 # ── Iter 5 RED: autonomy gate consistency ─────────────────────────────────────
 
+
 class TestAutonomyGateConsistency:
     """Verify normalize_autonomy preserves supervised and pipeline_check uses it."""
 
     def test_normalize_autonomy_preserves_supervised(self):
         """normalize_autonomy("supervised") must return "supervised", not "ai_driven"."""
         from superharness.engine.profile import normalize_autonomy
+
         result = normalize_autonomy("supervised")
         assert result == "supervised", (
             f"normalize_autonomy('supervised') returned {result!r}; "
@@ -106,6 +108,7 @@ class TestAutonomyGateConsistency:
         from superharness.engine.profile import normalize_autonomy
         import inspect
         from superharness.commands import pipeline_check as pc
+
         # Precondition: 'full-auto' normalizes to 'ai_driven'
         assert normalize_autonomy("full-auto") == "ai_driven"
         # pipeline_check must use normalize_autonomy — otherwise 'full-auto' passes the runtime

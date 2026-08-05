@@ -1,7 +1,7 @@
 """Tests for shux diff command."""
+
 from __future__ import annotations
 
-from pathlib import Path
 
 import pytest
 import yaml
@@ -62,5 +62,7 @@ def test_diff_base_flag(project):
     from superharness.commands.diff import cmd_diff
 
     runner = CliRunner()
-    result = runner.invoke(cmd_diff, ["task-001", "--project", str(project), "--base", "HEAD"])
+    result = runner.invoke(
+        cmd_diff, ["task-001", "--project", str(project), "--base", "HEAD"]
+    )
     assert result.exit_code == 0

@@ -6,12 +6,19 @@ Browser-side JS behaviour is exercised through manual smoke testing
 exists to catch accidental deletion of the IDs and entry points the
 JS depends on.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
 
 
-_HTML = Path(__file__).resolve().parents[2] / "src" / "superharness" / "scripts" / "dashboard.html"
+_HTML = (
+    Path(__file__).resolve().parents[2]
+    / "src"
+    / "superharness"
+    / "scripts"
+    / "dashboard.html"
+)
 
 
 def test_dashboard_html_exists():

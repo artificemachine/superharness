@@ -1,8 +1,8 @@
 """Tests for telegram module (TDD — RED → GREEN → REFACTOR)."""
+
 from __future__ import annotations
 
 from unittest.mock import Mock, patch
-
 
 
 class TestTelegramModule:
@@ -28,10 +28,10 @@ class TestTelegramModule:
         }
 
         # Mock environment variables
-        with patch.dict("os.environ", {
-            "TELEGRAM_BOT_TOKEN": "test-token-123",
-            "TELEGRAM_CHAT_ID": "12345678"
-        }):
+        with patch.dict(
+            "os.environ",
+            {"TELEGRAM_BOT_TOKEN": "test-token-123", "TELEGRAM_CHAT_ID": "12345678"},
+        ):
             # Mock requests.post to simulate successful Telegram API call
             mock_response = Mock()
             mock_response.status_code = 200
@@ -39,7 +39,9 @@ class TestTelegramModule:
 
             # Mock both HAS_REQUESTS flag and requests module
             with patch("superharness.modules.actions.telegram.HAS_REQUESTS", True):
-                with patch("superharness.modules.actions.telegram.requests", create=True) as mock_requests:
+                with patch(
+                    "superharness.modules.actions.telegram.requests", create=True
+                ) as mock_requests:
                     mock_requests.post.return_value = mock_response
                     result = telegram_send(context, settings)
 
@@ -75,10 +77,10 @@ class TestTelegramModule:
         }
 
         # Mock environment variables
-        with patch.dict("os.environ", {
-            "TELEGRAM_BOT_TOKEN": "test-token-123",
-            "TELEGRAM_CHAT_ID": "12345678"
-        }):
+        with patch.dict(
+            "os.environ",
+            {"TELEGRAM_BOT_TOKEN": "test-token-123", "TELEGRAM_CHAT_ID": "12345678"},
+        ):
             # Mock requests.post to simulate successful Telegram API call
             mock_response = Mock()
             mock_response.status_code = 200
@@ -86,7 +88,9 @@ class TestTelegramModule:
 
             # Mock both HAS_REQUESTS flag and requests module
             with patch("superharness.modules.actions.telegram.HAS_REQUESTS", True):
-                with patch("superharness.modules.actions.telegram.requests", create=True) as mock_requests:
+                with patch(
+                    "superharness.modules.actions.telegram.requests", create=True
+                ) as mock_requests:
                     mock_requests.post.return_value = mock_response
                     result = telegram_send(context, settings)
 

@@ -9,6 +9,7 @@ Subcommands:
   remove <task-id>                       Remove a schedule
   run                                    Evaluate all schedules and enqueue due tasks (called by watcher)
 """
+
 from __future__ import annotations
 
 import os
@@ -39,6 +40,7 @@ def _load_schedules(path: str) -> list[dict]:
     if not os.path.exists(path):
         return []
     import yaml
+
     with open(path, encoding="utf-8") as f:
         data = yaml.safe_load(f) or {}
     return data.get("schedules", [])
@@ -46,9 +48,12 @@ def _load_schedules(path: str) -> list[dict]:
 
 def _save_schedules(path: str, schedules: list[dict]) -> None:
     import yaml
+
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w", encoding="utf-8") as f:
-        yaml.dump({"schedules": schedules}, f, default_flow_style=False, allow_unicode=True)
+        yaml.dump(
+            {"schedules": schedules}, f, default_flow_style=False, allow_unicode=True
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -59,10 +64,10 @@ def _save_schedules(path: str, schedules: list[dict]) -> None:
 _CRON_FIELDS = ("minute", "hour", "dom", "month", "dow")
 _CRON_RANGES = {
     "minute": (0, 59),
-    "hour":   (0, 23),
-    "dom":    (1, 31),
-    "month":  (1, 12),
-    "dow":    (0, 6),
+    "hour": (0, 23),
+    "dom": (1, 31),
+    "month": (1, 12),
+    "dow": (0, 6),
 }
 
 
@@ -70,7 +75,9 @@ def _parse_cron(expr: str) -> dict:
     """Parse a 5-field cron expression into a dict of field→value|None (None = *)."""
     parts = expr.strip().split()
     if len(parts) != 5:
-        raise ValueError(f"cron expression must have 5 fields, got {len(parts)}: {expr!r}")
+        raise ValueError(
+            f"cron expression must have 5 fields, got {len(parts)}: {expr!r}"
+        )
     result: dict[str, Optional[int]] = {}
     for field, part in zip(_CRON_FIELDS, parts):
         if part == "*":
@@ -79,10 +86,14 @@ def _parse_cron(expr: str) -> dict:
             try:
                 val = int(part)
             except ValueError:
-                raise ValueError(f"cron field '{field}' must be '*' or an integer, got: {part!r}")
+                raise ValueError(
+                    f"cron field '{field}' must be '*' or an integer, got: {part!r}"
+                )
             lo, hi = _CRON_RANGES[field]
             if not (lo <= val <= hi):
-                raise ValueError(f"cron field '{field}' value {val} out of range [{lo}, {hi}]")
+                raise ValueError(
+                    f"cron field '{field}' value {val} out of range [{lo}, {hi}]"
+                )
             result[field] = val
     return result
 
@@ -95,11 +106,13 @@ def _next_run(cron_expr: str, after: datetime) -> datetime:
     # Walk forward up to 527040 minutes (366 days) to find a match
     for _ in range(527040):
         match = (
-            (parsed["minute"] is None or candidate.minute == parsed["minute"]) and
-            (parsed["hour"]   is None or candidate.hour   == parsed["hour"])   and
-            (parsed["dom"]    is None or candidate.day    == parsed["dom"])     and
-            (parsed["month"]  is None or candidate.month  == parsed["month"])  and
-            (parsed["dow"]    is None or (candidate.weekday() + 1) % 7 == parsed["dow"])
+            (parsed["minute"] is None or candidate.minute == parsed["minute"])
+            and (parsed["hour"] is None or candidate.hour == parsed["hour"])
+            and (parsed["dom"] is None or candidate.day == parsed["dom"])
+            and (parsed["month"] is None or candidate.month == parsed["month"])
+            and (
+                parsed["dow"] is None or (candidate.weekday() + 1) % 7 == parsed["dow"]
+            )
         )
         if match:
             return candidate
@@ -115,8 +128,13 @@ def _next_run(cron_expr: str, after: datetime) -> datetime:
 DISTILL_JOB_ID = "__distill__"
 
 
-def cmd_add(project_dir: str, task_id: str, cron_expr: str,
-            agent: Optional[str] = None, kind: str = "task") -> int:
+def cmd_add(
+    project_dir: str,
+    task_id: str,
+    cron_expr: str,
+    agent: Optional[str] = None,
+    kind: str = "task",
+) -> int:
     """Register a scheduled job (a task dispatch, or an internal job like distill)."""
     try:
         _parse_cron(cron_expr)
@@ -133,22 +151,26 @@ def cmd_add(project_dir: str, task_id: str, cron_expr: str,
             s["cron"] = cron_expr
             s["agent"] = agent
             s["kind"] = kind
-            s["next_run"] = _next_run(cron_expr, _now_utc()).strftime("%Y-%m-%dT%H:%M:%SZ")
+            s["next_run"] = _next_run(cron_expr, _now_utc()).strftime(
+                "%Y-%m-%dT%H:%M:%SZ"
+            )
             s["updated_at"] = _now_str()
             _save_schedules(path, schedules)
             print(f"Updated schedule for {task_id}: {cron_expr}  next={s['next_run']}")
             return 0
 
     next_run = _next_run(cron_expr, _now_utc()).strftime("%Y-%m-%dT%H:%M:%SZ")
-    schedules.append({
-        "task_id": task_id,
-        "kind": kind,
-        "cron": cron_expr,
-        "agent": agent,
-        "next_run": next_run,
-        "created_at": _now_str(),
-        "enqueue_count": 0,
-    })
+    schedules.append(
+        {
+            "task_id": task_id,
+            "kind": kind,
+            "cron": cron_expr,
+            "agent": agent,
+            "next_run": next_run,
+            "created_at": _now_str(),
+            "enqueue_count": 0,
+        }
+    )
     _save_schedules(path, schedules)
     print(f"Scheduled {task_id} ({kind}): {cron_expr}  next={next_run}")
     return 0
@@ -179,13 +201,15 @@ def cmd_list(project_dir: str) -> int:
                 next_run += " (overdue)"
         except (ValueError, AttributeError):
             pass
-        print(fmt.format(
-            str(s.get("task_id", ""))[:20],
-            str(s.get("cron", ""))[:18],
-            next_run[:22],
-            str(s.get("enqueue_count", 0)),
-            str(s.get("agent") or ""),
-        ))
+        print(
+            fmt.format(
+                str(s.get("task_id", ""))[:20],
+                str(s.get("cron", ""))[:18],
+                next_run[:22],
+                str(s.get("enqueue_count", 0)),
+                str(s.get("agent") or ""),
+            )
+        )
     return 0
 
 
@@ -264,7 +288,8 @@ def _fire(s: dict, project_dir: str, dry_run: bool) -> bool:
         print(f"[dry-run] would enqueue: {task_id} (agent={agent or 'auto'})")
         return False
     rc = inbox_enqueue.main(
-        ["--project", project_dir, "--task", task_id] + (["--to", agent] if agent else [])
+        ["--project", project_dir, "--task", task_id]
+        + (["--to", agent] if agent else [])
     )
     if rc == 0:
         print(f"Enqueued scheduled task: {task_id}")
@@ -272,8 +297,9 @@ def _fire(s: dict, project_dir: str, dry_run: bool) -> bool:
     return False
 
 
-def cmd_run(project_dir: str, dry_run: bool = False,
-            quiet_hours: list[dict] | None = None) -> int:
+def cmd_run(
+    project_dir: str, dry_run: bool = False, quiet_hours: list[dict] | None = None
+) -> int:
     """Evaluate all schedules; fire any whose next_run has passed.
 
     Called by the watcher (or manually). Each due entry fires by kind
@@ -315,6 +341,7 @@ def cmd_run(project_dir: str, dry_run: bool = False,
                 fired_count += 1
         except Exception as e:  # never let one job wedge the watcher
             import logging
+
             logging.getLogger(__name__).warning(
                 "scheduled job %s failed: %s", task_id, e
             )
@@ -332,7 +359,9 @@ def cmd_run(project_dir: str, dry_run: bool = False,
     if updated and not dry_run:
         _save_schedules(path, schedules)
 
-    print(f"Scheduled run complete: {fired_count} fired, {len(schedules)} total schedules")
+    print(
+        f"Scheduled run complete: {fired_count} fired, {len(schedules)} total schedules"
+    )
     return 0
 
 
@@ -357,8 +386,12 @@ def main(argv: list[str] | None = None) -> int:
     # add
     p = sub.add_parser("add", help="Register a cron schedule for a task")
     p.add_argument("task_id", help="Task ID to schedule")
-    p.add_argument("--cron", required=True, help='5-field cron expression, e.g. "0 9 * * 1"')
-    p.add_argument("--agent", default=None, help="Target agent (claude-code or codex-cli)")
+    p.add_argument(
+        "--cron", required=True, help='5-field cron expression, e.g. "0 9 * * 1"'
+    )
+    p.add_argument(
+        "--agent", default=None, help="Target agent (claude-code or codex-cli)"
+    )
     p.add_argument("--project", "-p", default=None)
 
     # list

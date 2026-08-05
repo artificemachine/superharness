@@ -9,6 +9,7 @@ Exposes:
 The dashboard route and the CLI share the same DAO and the same id parser
 so behaviour stays consistent across both surfaces.
 """
+
 from __future__ import annotations
 
 import json

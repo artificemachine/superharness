@@ -7,14 +7,12 @@ Acceptance criteria:
 - Restarts the dashboard subprocess when mismatch detected
 - Logs restart with old and new version to ledger
 """
+
 from __future__ import annotations
 
 import importlib.util
-import os
-import subprocess
-import threading
 from pathlib import Path
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import MagicMock, patch
 
 
 def _load_dashboard_module(repo_root: Path):
@@ -29,6 +27,7 @@ def _load_dashboard_module(repo_root: Path):
 # ---------------------------------------------------------------------------
 # _get_installed_version helper
 # ---------------------------------------------------------------------------
+
 
 def test_get_installed_version_returns_string(repo_root):
     """_get_installed_version must return a non-empty string for an installed package."""
@@ -52,6 +51,7 @@ def test_get_installed_version_unknown_on_missing_package(repo_root):
 # ---------------------------------------------------------------------------
 # _append_ledger helper
 # ---------------------------------------------------------------------------
+
 
 def test_append_ledger_writes_line(repo_root, tmp_path):
     """_append_ledger must append the given line to .superharness/ledger.md."""
@@ -83,8 +83,58 @@ def test_append_ledger_creates_ledger_if_missing(repo_root, tmp_path):
 
 
 # ---------------------------------------------------------------------------
+# autohealth_check — authenticated read route
+# ---------------------------------------------------------------------------
+
+
+def test_autohealth_check_sends_dashboard_auth_token(repo_root):
+    """The watchdog must authenticate its protected status request."""
+    mod = _load_dashboard_module(repo_root)
+    response = MagicMock(status=200)
+    response.__enter__.return_value = response
+
+    with patch("urllib.request.urlopen", return_value=response) as mock_open:
+        assert mod.autohealth_check(9999, auth_token="test-dashboard-token") is True
+
+    request = mock_open.call_args.args[0]
+    assert request.get_header("X-superharness-token") == "test-dashboard-token"
+
+
+def test_autohealth_loop_reads_and_uses_the_project_token(repo_root, tmp_path):
+    """The watchdog must pass the running dashboard's token to its probe."""
+    mod = _load_dashboard_module(repo_root)
+    harness = tmp_path / ".superharness"
+    harness.mkdir()
+    token = "a" * 24
+    (harness / ".dashboard_auth_token").write_text(token)
+
+    calls = 0
+
+    def stop_after_one_health_check(_seconds):
+        nonlocal calls
+        calls += 1
+        if calls > 1:
+            raise SystemExit(0)
+
+    with (
+        patch.object(mod, "_get_installed_version", return_value="1.0.0"),
+        patch.object(mod, "autohealth_check", return_value=True) as health_check,
+        patch("subprocess.Popen", return_value=_make_fake_proc()),
+        patch("time.sleep", side_effect=stop_after_one_health_check),
+        patch("signal.signal"),
+    ):
+        try:
+            mod.autohealth_loop(project_dir=str(tmp_path), port=9999, interval=1)
+        except SystemExit:
+            pass
+
+    health_check.assert_called_once_with(9999, "127.0.0.1", auth_token=token)
+
+
+# ---------------------------------------------------------------------------
 # autohealth_loop — version mismatch detection
 # ---------------------------------------------------------------------------
+
 
 def _make_fake_proc(alive: bool = True) -> MagicMock:
     proc = MagicMock()

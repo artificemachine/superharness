@@ -9,9 +9,9 @@ Verifies:
   - Watcher writes structured heartbeat alongside legacy timestamp
   - Stale recovery consistent across runtimes
 """
+
 from __future__ import annotations
 
-import os
 import textwrap
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
@@ -23,8 +23,10 @@ from tests.helpers import REPO_ROOT
 
 def _import_contract():
     import sys
+
     sys.path.insert(0, str(REPO_ROOT / "src"))
     from superharness.engine import heartbeat_contract
+
     return heartbeat_contract
 
 
@@ -37,6 +39,7 @@ def _setup_project(tmp_path: Path) -> Path:
 # 1. Module exists
 # ---------------------------------------------------------------------------
 
+
 def test_heartbeat_contract_module_exists() -> None:
     module = REPO_ROOT / "src/superharness/engine/heartbeat_contract.py"
     assert module.exists(), f"heartbeat_contract.py not found at {module}"
@@ -45,6 +48,7 @@ def test_heartbeat_contract_module_exists() -> None:
 # ---------------------------------------------------------------------------
 # 2. Write and read round-trip
 # ---------------------------------------------------------------------------
+
 
 def test_write_and_read_heartbeat(tmp_path: Path) -> None:
     project = _setup_project(tmp_path)
@@ -63,6 +67,7 @@ def test_write_and_read_heartbeat(tmp_path: Path) -> None:
 # 3. Required schema fields present after write
 # ---------------------------------------------------------------------------
 
+
 def test_heartbeat_required_fields(tmp_path: Path) -> None:
     project = _setup_project(tmp_path)
     hc = _import_contract()
@@ -80,6 +85,7 @@ def test_heartbeat_required_fields(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 # 4. Optional fields round-trip
 # ---------------------------------------------------------------------------
+
 
 def test_heartbeat_optional_fields_roundtrip(tmp_path: Path) -> None:
     project = _setup_project(tmp_path)
@@ -109,9 +115,12 @@ def test_heartbeat_optional_fields_roundtrip(tmp_path: Path) -> None:
 # 5. Stale heartbeat detection
 # ---------------------------------------------------------------------------
 
+
 def test_stale_heartbeat_detection(tmp_path: Path) -> None:
     hc = _import_contract()
-    old_ts = (datetime.now(timezone.utc) - timedelta(seconds=300)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    old_ts = (datetime.now(timezone.utc) - timedelta(seconds=300)).strftime(
+        "%Y-%m-%dT%H:%M:%SZ"
+    )
     hb = hc.AgentHeartbeat(agent_id="watcher", written_at=old_ts)
     assert hc.is_stale(hb, stale_seconds=120) is True
 
@@ -119,6 +128,7 @@ def test_stale_heartbeat_detection(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 # 6. Fresh heartbeat is not stale
 # ---------------------------------------------------------------------------
+
 
 def test_fresh_heartbeat_not_stale(tmp_path: Path) -> None:
     hc = _import_contract()
@@ -129,6 +139,7 @@ def test_fresh_heartbeat_not_stale(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 # 7. Missing / invalid heartbeat file → returns None
 # ---------------------------------------------------------------------------
+
 
 def test_missing_heartbeat_returns_none(tmp_path: Path) -> None:
     hc = _import_contract()
@@ -148,11 +159,16 @@ def test_invalid_heartbeat_returns_none(tmp_path: Path) -> None:
 # 8. list_agent_heartbeats
 # ---------------------------------------------------------------------------
 
+
 def test_list_agent_heartbeats(tmp_path: Path) -> None:
     project = _setup_project(tmp_path)
     hc = _import_contract()
-    hc.write_heartbeat(str(project), hc.AgentHeartbeat(agent_id="watcher", runtime="native"))
-    hc.write_heartbeat(str(project), hc.AgentHeartbeat(agent_id="claude-code", runtime="native"))
+    hc.write_heartbeat(
+        str(project), hc.AgentHeartbeat(agent_id="watcher", runtime="native")
+    )
+    hc.write_heartbeat(
+        str(project), hc.AgentHeartbeat(agent_id="claude-code", runtime="native")
+    )
     listed = hc.list_agent_heartbeats(str(project))
     agent_ids = [hb.agent_id for hb in listed]
     assert "watcher" in agent_ids
@@ -170,19 +186,22 @@ def test_list_agent_heartbeats_empty_project(tmp_path: Path) -> None:
 # 9. Runtime-agnostic: external runtime writes YAML, watcher reads it
 # ---------------------------------------------------------------------------
 
+
 def test_external_runtime_heartbeat_readable(tmp_path: Path) -> None:
     project = _setup_project(tmp_path)
     hc = _import_contract()
     agents_dir = project / ".superharness" / "agents"
     agents_dir.mkdir(parents=True, exist_ok=True)
-    (agents_dir / "external-agent.heartbeat.yaml").write_text(textwrap.dedent("""\
+    (agents_dir / "external-agent.heartbeat.yaml").write_text(
+        textwrap.dedent("""\
         schema_version: "1"
         agent_id: external-agent
         runtime: external
         status: running
         active_task: feat.some-task
         written_at: "2026-04-05T14:30:45Z"
-    """))
+    """)
+    )
     listed = hc.list_agent_heartbeats(str(project))
     ext = next((h for h in listed if h.agent_id == "external-agent"), None)
     assert ext is not None, "External agent heartbeat not found"
@@ -195,6 +214,7 @@ def test_external_runtime_heartbeat_readable(tmp_path: Path) -> None:
 # 9b. v8 regression — external YAML stays visible when SQLite has watcher
 # ---------------------------------------------------------------------------
 
+
 def test_list_agent_heartbeats_merges_sqlite_with_external_yaml(tmp_path: Path) -> None:
     """When SQLite has watcher's heartbeat AND an external agent writes YAML,
     list_agent_heartbeats must include BOTH (not just SQLite).
@@ -206,29 +226,37 @@ def test_list_agent_heartbeats_merges_sqlite_with_external_yaml(tmp_path: Path) 
     hc = _import_contract()
 
     # SQLite gets watcher heartbeat (via the normal API)
-    hc.write_heartbeat(str(project), hc.AgentHeartbeat(agent_id="watcher", runtime="native", status="idle"))
+    hc.write_heartbeat(
+        str(project),
+        hc.AgentHeartbeat(agent_id="watcher", runtime="native", status="idle"),
+    )
 
     # External agent writes YAML directly, bypassing the SQLite-aware API
     agents_dir = project / ".superharness" / "agents"
     agents_dir.mkdir(parents=True, exist_ok=True)
-    (agents_dir / "external-agent.heartbeat.yaml").write_text(textwrap.dedent("""\
+    (agents_dir / "external-agent.heartbeat.yaml").write_text(
+        textwrap.dedent("""\
         schema_version: "1"
         agent_id: external-agent
         runtime: external
         status: running
         active_task: feat.some-task
         written_at: "2026-04-05T14:30:45Z"
-    """))
+    """)
+    )
 
     listed = hc.list_agent_heartbeats(str(project))
     agent_ids = [hb.agent_id for hb in listed]
     assert "watcher" in agent_ids, "watcher (from SQLite) missing"
-    assert "external-agent" in agent_ids, "external agent (YAML-only) hidden by SQLite-first short-circuit"
+    assert "external-agent" in agent_ids, (
+        "external agent (YAML-only) hidden by SQLite-first short-circuit"
+    )
 
 
 # ---------------------------------------------------------------------------
 # 10. age_seconds utility
 # ---------------------------------------------------------------------------
+
 
 def test_age_seconds_fresh(tmp_path: Path) -> None:
     hc = _import_contract()
@@ -239,7 +267,9 @@ def test_age_seconds_fresh(tmp_path: Path) -> None:
 
 def test_age_seconds_old(tmp_path: Path) -> None:
     hc = _import_contract()
-    old_ts = (datetime.now(timezone.utc) - timedelta(seconds=600)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    old_ts = (datetime.now(timezone.utc) - timedelta(seconds=600)).strftime(
+        "%Y-%m-%dT%H:%M:%SZ"
+    )
     hb = hc.AgentHeartbeat(agent_id="watcher", written_at=old_ts)
     age = hc.age_seconds(hb)
     assert age >= 595
@@ -248,6 +278,7 @@ def test_age_seconds_old(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 # 11. Watcher path is canonical (watcher.heartbeat.yaml, not in agents/)
 # ---------------------------------------------------------------------------
+
 
 def test_watcher_heartbeat_path(tmp_path: Path) -> None:
     hc = _import_contract()
@@ -267,24 +298,35 @@ def test_agent_heartbeat_path(tmp_path: Path) -> None:
 # 12. Stale recovery consistent across all runtimes
 # ---------------------------------------------------------------------------
 
+
 def test_stale_recovery_consistent_across_runtimes() -> None:
     hc = _import_contract()
-    old_ts = (datetime.now(timezone.utc) - timedelta(seconds=300)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    old_ts = (datetime.now(timezone.utc) - timedelta(seconds=300)).strftime(
+        "%Y-%m-%dT%H:%M:%SZ"
+    )
     for runtime in ("native", "codex-cli", "external", "custom-runtime"):
-        hb = hc.AgentHeartbeat(agent_id="test-agent", runtime=runtime, written_at=old_ts)
-        assert hc.is_stale(hb, stale_seconds=120) is True, f"Stale detection failed for runtime={runtime}"
+        hb = hc.AgentHeartbeat(
+            agent_id="test-agent", runtime=runtime, written_at=old_ts
+        )
+        assert hc.is_stale(hb, stale_seconds=120) is True, (
+            f"Stale detection failed for runtime={runtime}"
+        )
     for runtime in ("native", "codex-cli", "external", "custom-runtime"):
         hb = hc.AgentHeartbeat(agent_id="test-agent", runtime=runtime)
-        assert hc.is_stale(hb, stale_seconds=120) is False, f"Fresh heartbeat incorrectly stale for runtime={runtime}"
+        assert hc.is_stale(hb, stale_seconds=120) is False, (
+            f"Fresh heartbeat incorrectly stale for runtime={runtime}"
+        )
 
 
 # ---------------------------------------------------------------------------
 # 13. inbox_watch writes structured heartbeat alongside legacy timestamp
 # ---------------------------------------------------------------------------
 
+
 def test_inbox_watch_writes_structured_heartbeat(tmp_path: Path) -> None:
     """After _run_scripts, legacy timestamp file exists and SQLite has watcher heartbeat row."""
     import sys
+
     sys.path.insert(0, str(REPO_ROOT / "src"))
     from superharness.commands.inbox_watch import _run_scripts_heartbeat
     from superharness.engine.heartbeat_contract import read_heartbeat_db
@@ -304,9 +346,11 @@ def test_inbox_watch_writes_structured_heartbeat(tmp_path: Path) -> None:
 # 14. status.py _heartbeat_status falls back to legacy when structured absent
 # ---------------------------------------------------------------------------
 
+
 def test_status_falls_back_to_legacy_heartbeat(tmp_path: Path) -> None:
     """_heartbeat_status returns ok when only legacy timestamp file exists."""
     import sys
+
     sys.path.insert(0, str(REPO_ROOT / "src"))
     from superharness.commands.status import _heartbeat_status
 
@@ -317,12 +361,15 @@ def test_status_falls_back_to_legacy_heartbeat(tmp_path: Path) -> None:
     legacy.write_text(ts + "\n")
 
     level, detail = _heartbeat_status(str(project), str(project / ".superharness"))
-    assert level == "ok", f"Expected ok with fresh legacy heartbeat, got {level}: {detail}"
+    assert level == "ok", (
+        f"Expected ok with fresh legacy heartbeat, got {level}: {detail}"
+    )
 
 
 def test_status_uses_structured_heartbeat_when_present(tmp_path: Path) -> None:
     """_heartbeat_status prefers structured YAML when both files exist."""
     import sys
+
     sys.path.insert(0, str(REPO_ROOT / "src"))
     from superharness.commands.status import _heartbeat_status
     from superharness.engine.heartbeat_contract import write_heartbeat, AgentHeartbeat
@@ -332,12 +379,15 @@ def test_status_uses_structured_heartbeat_when_present(tmp_path: Path) -> None:
     write_heartbeat(str(project), hb)
 
     level, detail = _heartbeat_status(str(project), str(project / ".superharness"))
-    assert level == "ok", f"Expected ok with fresh structured heartbeat, got {level}: {detail}"
+    assert level == "ok", (
+        f"Expected ok with fresh structured heartbeat, got {level}: {detail}"
+    )
 
 
 # ---------------------------------------------------------------------------
 # 16. _heartbeat_status falls back to source project when worker heartbeat stale
 # ---------------------------------------------------------------------------
+
 
 def test_status_worker_stale_falls_back_to_source(tmp_path: Path) -> None:
     """When watcher.yaml points to a worker dir whose heartbeat is stale,
@@ -347,6 +397,7 @@ def test_status_worker_stale_falls_back_to_source(tmp_path: Path) -> None:
     worker directory, causing permanent false-positive stale reports for projects
     that were previously managed via the launchd watcher_worker path."""
     import sys
+
     sys.path.insert(0, str(REPO_ROOT / "src"))
     from superharness.commands.status import _heartbeat_status
 
@@ -364,7 +415,9 @@ def test_status_worker_stale_falls_back_to_source(tmp_path: Path) -> None:
     )
     # Operator wrote a fresh heartbeat to the source project
     fresh = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-    (project / ".superharness" / "watcher.heartbeat").write_text(fresh + "\n", encoding="utf-8")
+    (project / ".superharness" / "watcher.heartbeat").write_text(
+        fresh + "\n", encoding="utf-8"
+    )
 
     level, detail = _heartbeat_status(str(project), str(project / ".superharness"))
     assert level == "ok", (

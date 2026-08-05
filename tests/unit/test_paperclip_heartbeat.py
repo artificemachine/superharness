@@ -1,4 +1,5 @@
 """Tests for agent_heartbeats table (paperclip.heartbeat feature)."""
+
 from __future__ import annotations
 
 import pytest
@@ -26,9 +27,13 @@ def test_upsert_creates_row(conn):
 
 
 def test_upsert_updates_existing_row(conn):
-    heartbeat_dao.upsert(conn, agent="claude-code", task_id="t-1", status="alive", now=NOW)
+    heartbeat_dao.upsert(
+        conn, agent="claude-code", task_id="t-1", status="alive", now=NOW
+    )
     conn.commit()
-    row = heartbeat_dao.upsert(conn, agent="claude-code", task_id="t-2", status="paused", now=LATER)
+    row = heartbeat_dao.upsert(
+        conn, agent="claude-code", task_id="t-2", status="paused", now=LATER
+    )
     conn.commit()
     assert row.task_id == "t-2"
     assert row.status == "paused"

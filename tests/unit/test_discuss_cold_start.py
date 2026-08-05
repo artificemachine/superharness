@@ -1,4 +1,5 @@
 """Cold-start native discussion discovery and acknowledgement tests."""
+
 from __future__ import annotations
 
 import json
@@ -42,15 +43,18 @@ def _seed_cold_start(
     finally:
         conn.close()
 
-    assert create_task(
-        project_dir=str(project),
-        task_id=f"{DISCUSSION_ID}/round-1",
-        title="Discussion round 1: sender-first nonce COLD-START-42",
-        owner="claude-code",
-        status="in_progress",
-        project_path=str(project),
-        workflow="discussion",
-    ) == 0
+    assert (
+        create_task(
+            project_dir=str(project),
+            task_id=f"{DISCUSSION_ID}/round-1",
+            title="Discussion round 1: sender-first nonce COLD-START-42",
+            owner="claude-code",
+            status="in_progress",
+            project_path=str(project),
+            workflow="discussion",
+        )
+        == 0
+    )
 
     conn = get_connection(str(project))
     try:
@@ -105,13 +109,16 @@ def test_manual_reply_acknowledges_shared_inbox_and_exposes_message(
     discussion_dir = _seed_cold_start(project, tmp_path / "state", monkeypatch)
     capsys.readouterr()
 
-    assert cmd_submit_round(
-        str(discussion_dir),
-        round_=1,
-        agent="codex-cli",
-        verdict="partial",
-        position="RECEIPT_ACK COLD-START-42",
-    ) == 0
+    assert (
+        cmd_submit_round(
+            str(discussion_dir),
+            round_=1,
+            agent="codex-cli",
+            verdict="partial",
+            position="RECEIPT_ACK COLD-START-42",
+        )
+        == 0
+    )
     submit_result = json.loads(capsys.readouterr().out)
     assert submit_result["acknowledged_inbox_ids"] == ["inbox-codex-cli"]
 
@@ -124,10 +131,13 @@ def test_manual_reply_acknowledges_shared_inbox_and_exposes_message(
     finally:
         conn.close()
 
-    assert cmd_rounds(
-        str(project / ".superharness" / "discussions"),
-        DISCUSSION_ID,
-    ) == 0
+    assert (
+        cmd_rounds(
+            str(project / ".superharness" / "discussions"),
+            DISCUSSION_ID,
+        )
+        == 0
+    )
     rounds_output = capsys.readouterr().out
     assert "codex-cli: verdict=partial" in rounds_output
     assert "RECEIPT_ACK COLD-START-42" in rounds_output

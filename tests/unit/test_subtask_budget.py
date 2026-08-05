@@ -1,11 +1,11 @@
 """Tests for per-subtask budget tracking and result aggregation."""
+
 from __future__ import annotations
 
 from pathlib import Path
 from unittest.mock import patch
 
 import pytest
-import yaml
 
 from superharness.engine.sdk_runner import SDKRunner, BudgetExceededError
 from superharness.engine.subtask_aggregator import (
@@ -19,6 +19,7 @@ from superharness.engine.subtask_aggregator import (
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _setup_contract(tmp_path: Path) -> Path:
     harness = tmp_path / ".superharness"
     harness.mkdir()
@@ -26,21 +27,47 @@ def _setup_contract(tmp_path: Path) -> Path:
     from superharness.engine.db import get_connection, init_db
     from superharness.engine import tasks_dao
     from superharness.engine.tasks_dao import TaskRow
+
     conn = get_connection(str(tmp_path))
     init_db(conn)
     now = "2026-01-01T00:00:00Z"
     subtasks = [
-        {"id": "T-42.1", "title": "Write middleware", "model_tier": "standard",
-         "owner": "claude-code", "estimated_tokens": 45000, "estimated_cost_usd": 0.28, "status": "pending"},
-        {"id": "T-42.2", "title": "Add Redis backend", "model_tier": "mini",
-         "owner": "claude-code", "estimated_tokens": 12000, "estimated_cost_usd": 0.02, "status": "pending"},
+        {
+            "id": "T-42.1",
+            "title": "Write middleware",
+            "model_tier": "standard",
+            "owner": "claude-code",
+            "estimated_tokens": 45000,
+            "estimated_cost_usd": 0.28,
+            "status": "pending",
+        },
+        {
+            "id": "T-42.2",
+            "title": "Add Redis backend",
+            "model_tier": "mini",
+            "owner": "claude-code",
+            "estimated_tokens": 12000,
+            "estimated_cost_usd": 0.02,
+            "status": "pending",
+        },
     ]
     extras = {"subtasks": subtasks, "estimated_cost_usd": 0.30}
     row = TaskRow(
-        id="T-42", title="Add rate limiting", owner="claude-code", status="in_progress",
-        effort="medium", project_path=str(tmp_path), development_method="tdd",
-        acceptance_criteria=[], test_types=[], out_of_scope=[], definition_of_done=[],
-        context=None, tdd=None, version=1, created_at=now,
+        id="T-42",
+        title="Add rate limiting",
+        owner="claude-code",
+        status="in_progress",
+        effort="medium",
+        project_path=str(tmp_path),
+        development_method="tdd",
+        acceptance_criteria=[],
+        test_types=[],
+        out_of_scope=[],
+        definition_of_done=[],
+        context=None,
+        tdd=None,
+        version=1,
+        created_at=now,
         extras_json=_json.dumps(extras),
     )
     tasks_dao.upsert(conn, row)
@@ -53,6 +80,7 @@ def _get_task_from_sqlite(project: Path, task_id: str) -> dict:
     import json as _json
     from superharness.engine.db import get_connection
     from superharness.engine import tasks_dao
+
     conn = get_connection(str(project))
     try:
         row = tasks_dao.get(conn, task_id)
@@ -115,6 +143,7 @@ class TestSDKRunnerSubtaskBudget:
     def test_subtask_budget_enforced(self, tmp_path):
         """SDKRunner raises BudgetExceededError if subtask budget exceeded."""
         import sys
+
         mock_sdk = self._make_mock_sdk("ok", 100000, 50000)
         with patch("superharness.engine.sdk_runner._try_import_sdk", return_value=True):
             with patch.dict(sys.modules, {"claude_agent_sdk": mock_sdk}):
@@ -129,6 +158,7 @@ class TestSDKRunnerSubtaskBudget:
     def test_subtask_cost_recorded(self, tmp_path):
         """Actual cost per run is accessible after execution."""
         import sys
+
         mock_sdk = self._make_mock_sdk("ok", 1000, 500)
         with patch("superharness.engine.sdk_runner._try_import_sdk", return_value=True):
             with patch.dict(sys.modules, {"claude_agent_sdk": mock_sdk}):
@@ -186,7 +216,9 @@ class TestSubtaskAggregator:
 
         results = [
             SubtaskResult("T-42.1", "done", 48000, 0.31, "claude-sonnet-4-6", "OK"),
-            SubtaskResult("T-42.2", "done", 11000, 0.019, "claude-haiku-4-5-20251001", "OK"),
+            SubtaskResult(
+                "T-42.2", "done", 11000, 0.019, "claude-haiku-4-5-20251001", "OK"
+            ),
         ]
 
         agg = SubtaskAggregator(str(project))
@@ -207,7 +239,9 @@ class TestSubtaskAggregator:
 
         results = [
             SubtaskResult("T-42.1", "done", 48000, 0.31, "claude-sonnet-4-6", "OK"),
-            SubtaskResult("T-42.2", "done", 11000, 0.019, "claude-haiku-4-5-20251001", "OK"),
+            SubtaskResult(
+                "T-42.2", "done", 11000, 0.019, "claude-haiku-4-5-20251001", "OK"
+            ),
         ]
 
         agg = SubtaskAggregator(str(project))
@@ -222,7 +256,9 @@ class TestSubtaskAggregator:
 
         results = [
             SubtaskResult("T-42.1", "done", 48000, 0.31, "claude-sonnet-4-6", "OK"),
-            SubtaskResult("T-42.2", "done", 11000, 0.019, "claude-haiku-4-5-20251001", "OK"),
+            SubtaskResult(
+                "T-42.2", "done", 11000, 0.019, "claude-haiku-4-5-20251001", "OK"
+            ),
         ]
 
         agg = SubtaskAggregator(str(project))
@@ -236,7 +272,15 @@ class TestSubtaskAggregator:
 
         results = [
             SubtaskResult("T-42.1", "done", 48000, 0.31, "claude-sonnet-4-6", "OK"),
-            SubtaskResult("T-42.2", "failed", 0, 0.0, "claude-haiku-4-5-20251001", "", error="timeout"),
+            SubtaskResult(
+                "T-42.2",
+                "failed",
+                0,
+                0.0,
+                "claude-haiku-4-5-20251001",
+                "",
+                error="timeout",
+            ),
         ]
 
         agg = SubtaskAggregator(str(project))
@@ -292,7 +336,9 @@ class TestAggregateSubtaskResults:
 
         results = [
             SubtaskResult("T-42.1", "done", 48000, 0.31, "claude-sonnet-4-6", "OK"),
-            SubtaskResult("T-42.2", "done", 11000, 0.019, "claude-haiku-4-5-20251001", "OK"),
+            SubtaskResult(
+                "T-42.2", "done", 11000, 0.019, "claude-haiku-4-5-20251001", "OK"
+            ),
         ]
 
         summary = aggregate_subtask_results(str(project), "T-42", results)

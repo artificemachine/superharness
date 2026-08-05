@@ -23,7 +23,7 @@ def _setup_project(tmp_path: Path) -> Path:
                 "  - id: mcp-docs",
                 "    owner: codex-cli",
                 "    status: todo",
-                f"    project_path: '{project.as_posix()}'" ,
+                f"    project_path: '{project.as_posix()}'",
             ]
         )
         + "\n"
@@ -124,8 +124,9 @@ def test_dispatch_fails_on_readonly_harness_dir(repo_root, tmp_path) -> None:
     harness.chmod(stat.S_IRWXU)
 
     # Dispatch treats lock-creation failure as "another dispatcher active" and skips gracefully.
-    assert "skipping" in result.stdout.lower() or result.returncode != 0, \
+    assert "skipping" in result.stdout.lower() or result.returncode != 0, (
         "dispatch should either skip or fail on read-only .superharness dir"
+    )
 
 
 @_skip_if_root
@@ -139,7 +140,15 @@ def test_delegate_fails_on_readonly_contract(repo_root, tmp_path) -> None:
     result = run_bash(
         script,
         cwd=repo_root,
-        args=["--to", "codex-cli", "--project", str(project), "--task", "mcp-docs", "--print-only"],
+        args=[
+            "--to",
+            "codex-cli",
+            "--project",
+            str(project),
+            "--task",
+            "mcp-docs",
+            "--print-only",
+        ],
         env={"PATH": "/usr/bin:/bin"},
     )
 
@@ -155,7 +164,9 @@ def test_contract_hygiene_fails_on_unreadable_contract(repo_root, tmp_path) -> N
     contract = project / ".superharness" / "contract.yaml"
     contract.chmod(0)
 
-    script = repo_root / "src" / "superharness" / "scripts" / "check-contract-hygiene.sh"
+    script = (
+        repo_root / "src" / "superharness" / "scripts" / "check-contract-hygiene.sh"
+    )
     result = run_bash(
         script,
         cwd=repo_root,
@@ -201,5 +212,8 @@ def test_watch_fails_on_readonly_project_dir(repo_root, tmp_path) -> None:
     harness.chmod(stat.S_IRWXU)
 
     # Watch should fail or report an error when it can't create lock dir
-    assert result.returncode != 0 or "permission" in result.stderr.lower() or "error" in result.stderr.lower(), \
-        f"watch should fail on read-only .superharness (rc={result.returncode})"
+    assert (
+        result.returncode != 0
+        or "permission" in result.stderr.lower()
+        or "error" in result.stderr.lower()
+    ), f"watch should fail on read-only .superharness (rc={result.returncode})"

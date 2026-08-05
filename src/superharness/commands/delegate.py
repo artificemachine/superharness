@@ -3,20 +3,23 @@
 Builds a prompt for the target agent (claude-code or codex-cli) and either
 prints it (--print-only) or launches the CLI or SDK.
 """
+
 from __future__ import annotations
 
+import argparse
 import os
-import re
 import subprocess
 import sys
 from pathlib import Path
 
 from superharness.engine.adapter_registry import flagship_1m
+from superharness.engine.context_hint import build_context_hint
 from superharness.engine.sdk_runner import sdk_available, SDKRunner
-from superharness.engine.orchestrator import Orchestrator, DecompositionResult
+from superharness.engine.orchestrator import DecompositionResult
 from superharness.engine.taxonomy import VALID_EFFORTS
 from superharness.utils.paths import is_project_initialized
 import logging
+
 logger = logging.getLogger(__name__)
 
 
@@ -27,15 +30,15 @@ _JSON_CTX: dict = {}
 def _abort(msg: str, code: int = 1) -> None:
     if _JSON_MODE:
         from superharness.utils.json_output import emit_error
+
         emit_error(msg, exit_code=code, **_JSON_CTX)
     print(msg, file=sys.stderr)
     sys.exit(code)
 
 
-from superharness.engine.context_hint import build_context_hint
-
-
-def _rotate_launcher_logs(log_dir: Path, task_id: str, agent: str, keep: int = 5) -> None:
+def _rotate_launcher_logs(
+    log_dir: Path, task_id: str, agent: str, keep: int = 5
+) -> None:
     """Keep only the most recent N log files for a given task+agent combination.
 
     Args:
@@ -45,7 +48,9 @@ def _rotate_launcher_logs(log_dir: Path, task_id: str, agent: str, keep: int = 5
         keep: Number of most recent logs to keep (default: 5)
     """
     pattern = f"{task_id}-{agent}-*.log"
-    log_files = sorted(log_dir.glob(pattern), key=lambda p: p.stat().st_mtime, reverse=True)
+    log_files = sorted(
+        log_dir.glob(pattern), key=lambda p: p.stat().st_mtime, reverse=True
+    )
 
     # Delete all but the most recent `keep` files
     for old_log in log_files[keep:]:
@@ -59,12 +64,14 @@ def _rotate_launcher_logs(log_dir: Path, task_id: str, agent: str, keep: int = 5
 # Profile helpers
 # ---------------------------------------------------------------------------
 
+
 def _read_profile_field(project_dir: str, field: str, default: str) -> str:
     profile_file = os.path.join(project_dir, ".superharness", "profile.yaml")
     if not os.path.isfile(profile_file):
         return default
     try:
         import yaml
+
         with open(profile_file) as f:
             doc = yaml.safe_load(f) or {}
         val = doc.get(field)
@@ -78,14 +85,17 @@ def _read_profile_field(project_dir: str, field: str, default: str) -> str:
 # Contract helpers (direct YAML reads — avoids subprocess for simple fields)
 # ---------------------------------------------------------------------------
 
+
 def _get_contract_id(project_dir: str) -> str:
     from superharness.engine import state_reader
+
     doc = state_reader.get_contract_doc(project_dir)
     return str(doc.get("id") or "") or "unknown-contract"
 
 
 def _get_task_acceptance_criteria(project_dir: str, task_id: str) -> list[str]:
     from superharness.engine import state_reader
+
     task = state_reader.get_task(project_dir, task_id)
     if task:
         ac = task.get("acceptance_criteria")
@@ -96,6 +106,7 @@ def _get_task_acceptance_criteria(project_dir: str, task_id: str) -> list[str]:
 
 def _get_task_title(project_dir: str, task_id: str) -> str:
     from superharness.engine import state_reader
+
     task = state_reader.get_task(project_dir, task_id)
     return str((task or {}).get("title") or "")
 
@@ -103,6 +114,7 @@ def _get_task_title(project_dir: str, task_id: str) -> str:
 def _get_task_field(project_dir: str, task_id: str, field: str) -> str | None:
     """Return a string field from a task, or None if absent."""
     from superharness.engine import state_reader
+
     task = state_reader.get_task(project_dir, task_id)
     if not task:
         return None
@@ -130,9 +142,12 @@ def _get_task_budget(project_dir: str, task_id: str, effort: str) -> float | Non
     return EFFORT_BUDGET_MAP.get(effort)
 
 
-def _save_context_snapshot(project_dir: str, task_id: str, result: dict, model: str | None = None) -> None:
+def _save_context_snapshot(
+    project_dir: str, task_id: str, result: dict, model: str | None = None
+) -> None:
     """Save a context snapshot after dispatch for future warm-start reference."""
     import subprocess
+
     snapshot_dir = os.path.join(project_dir, ".superharness", "context-cache")
     os.makedirs(snapshot_dir, exist_ok=True)
     snapshot = {
@@ -145,7 +160,10 @@ def _save_context_snapshot(project_dir: str, task_id: str, result: dict, model: 
     try:
         r = subprocess.run(
             ["git", "diff", "--name-only", "HEAD"],
-            capture_output=True, text=True, check=False, timeout=5,
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=5,
             cwd=project_dir,
         )
         snapshot["files_touched"] = [f for f in r.stdout.strip().splitlines() if f]
@@ -154,6 +172,7 @@ def _save_context_snapshot(project_dir: str, task_id: str, result: dict, model: 
         snapshot["files_touched"] = []
     try:
         from superharness.engine.yaml_helpers import round_trip_dump
+
         round_trip_dump(snapshot, os.path.join(snapshot_dir, f"{task_id}.yaml"))
     except Exception as e:
         logger.warning("delegate.py unexpected error: %s", e, exc_info=True)
@@ -164,6 +183,7 @@ def _save_context_snapshot(project_dir: str, task_id: str, result: dict, model: 
     try:
         from superharness.engine.db import managed_connection
         from superharness.engine import usage_dao
+
         with managed_connection(project_dir) as conn:
             usage_dao.record(
                 conn,
@@ -177,6 +197,8 @@ def _save_context_snapshot(project_dir: str, task_id: str, result: dict, model: 
             )
     except Exception as e:
         logger.warning("delegate.py failed to record task_usage: %s", e, exc_info=True)
+
+
 def _get_task_previously_failed(project_dir: str, task_id: str) -> bool:
     status = _get_task_field(project_dir, task_id, "status")
     return status == "failed"
@@ -188,6 +210,7 @@ def _get_latest_handoff_task(handoff_dir: str, to: str) -> tuple[str, str]:
     try:
         from superharness.engine.db import managed_connection
         from superharness.engine import handoffs_dao
+
         with managed_connection(project_dir) as conn:
             rows = handoffs_dao.get_for_agent(conn, to_agent=to)
         for row in rows:
@@ -198,7 +221,10 @@ def _get_latest_handoff_task(handoff_dir: str, to: str) -> tuple[str, str]:
         return "", ""
     except Exception as e:
         import logging
-        logging.getLogger(__name__).warning("_get_latest_handoff_task SQLite error: %s", e)
+
+        logging.getLogger(__name__).warning(
+            "_get_latest_handoff_task SQLite error: %s", e
+        )
         return "", ""
 
 
@@ -218,6 +244,7 @@ def _check_dispatch_gates(project_dir: str, task_id: str, target: str) -> int | 
         1 if a gate blocks (caller should abort dispatch).
     """
     from datetime import datetime, date as _date
+
     today = _date.today()
 
     # Gate 1: scheduled_after
@@ -227,7 +254,10 @@ def _check_dispatch_gates(project_dir: str, task_id: str, target: str) -> int | 
             sched_date = datetime.strptime(scheduled_after.strip(), "%Y-%m-%d").date()
             if today < sched_date:
                 days_left = (sched_date - today).days
-                print(f"⛔ Task '{task_id}' is not ready — scheduled after {scheduled_after} ({days_left} day(s) from now).", file=sys.stderr)
+                print(
+                    f"⛔ Task '{task_id}' is not ready — scheduled after {scheduled_after} ({days_left} day(s) from now).",
+                    file=sys.stderr,
+                )
                 return 1
         except ValueError:
             pass
@@ -239,12 +269,16 @@ def _check_dispatch_gates(project_dir: str, task_id: str, target: str) -> int | 
             due_date = datetime.strptime(due_by.strip(), "%Y-%m-%d").date()
             if today > due_date:
                 days_overdue = (today - due_date).days
-                print(f"⚠️ Task '{task_id}' is overdue — due by {due_by} ({days_overdue} day(s) ago).", file=sys.stderr)
+                print(
+                    f"⚠️ Task '{task_id}' is overdue — due by {due_by} ({days_overdue} day(s) ago).",
+                    file=sys.stderr,
+                )
         except ValueError:
             pass
 
     # Gate 3: depends_on / blocked_by
     from superharness.engine import state_reader as _sr
+
     task_obj = _sr.get_task(project_dir, task_id)
     _dep_id_set: list[str] = []
     if task_obj:
@@ -256,18 +290,29 @@ def _check_dispatch_gates(project_dir: str, task_id: str, target: str) -> int | 
             if dep_status not in ("done", "archived"):
                 blockers.append(f"{dep_id} (status: {dep_status or 'not found'})")
         if blockers:
-            print(f"blocked: task '{task_id}' depends on unfinished tasks:", file=sys.stderr)
+            print(
+                f"blocked: task '{task_id}' depends on unfinished tasks:",
+                file=sys.stderr,
+            )
             for b in blockers:
                 print(f"   - {b}", file=sys.stderr)
             try:
                 from superharness.engine.ledger_dao import decision_log
-                decision_log(project_dir, "gate_block", task_id=task_id, agent=target,
-                             reason=f"unfinished dependencies: {', '.join(blockers)}")
+
+                decision_log(
+                    project_dir,
+                    "gate_block",
+                    task_id=task_id,
+                    agent=target,
+                    reason=f"unfinished dependencies: {', '.join(blockers)}",
+                )
             except Exception as e:
                 logger.warning("delegate.py unexpected error: %s", e, exc_info=True)
             return 1
 
     return None  # all gates pass
+
+
 from superharness.engine.next_action import (  # noqa: E402
     _DISC_ROUND_RE,
     infer_workflow as _infer_workflow,
@@ -285,6 +330,7 @@ EXIT_PERMANENT_BLOCK = 2
 # ---------------------------------------------------------------------------
 # Orchestrator helpers
 # ---------------------------------------------------------------------------
+
 
 def _record_decomposition(
     project_dir: str,
@@ -322,16 +368,22 @@ def _record_decomposition(
                         normalised_st.append(st)
 
                     extras["subtasks"] = normalised_st
-                    extras["estimated_cost_usd"] = round(decomposition.total_estimated_cost_usd, 4)
-                    extras["budget_usd"] = round(decomposition.recommended_budget_usd, 4)
+                    extras["estimated_cost_usd"] = round(
+                        decomposition.total_estimated_cost_usd, 4
+                    )
+                    extras["budget_usd"] = round(
+                        decomposition.recommended_budget_usd, 4
+                    )
 
-                    tasks_dao.update(conn, task_id, parent.version, {
-                        "extras_json": _j.dumps(extras)
-                    })
+                    tasks_dao.update(
+                        conn, task_id, parent.version, {"extras_json": _j.dumps(extras)}
+                    )
 
                 # 2. Record ledger event
                 ledger_dao.record(
-                    conn, task_id=task_id, agent="orchestrator",
+                    conn,
+                    task_id=task_id,
+                    agent="orchestrator",
                     action="decompose",
                     details={"subtask_count": len(decomposition.subtasks)},
                     now=now,
@@ -445,16 +497,26 @@ def build_discussion_prompt(
 
 def _get_round_context(disc_dir: str, round_: int, agent: str) -> dict:
     result = subprocess.run(
-        [sys.executable, "-m", "superharness.engine.discussion",
-         "round_context",
-         "--discussion-dir", disc_dir,
-         "--round", str(round_),
-         "--agent", agent],
-        capture_output=True, text=True, check=False,
+        [
+            sys.executable,
+            "-m",
+            "superharness.engine.discussion",
+            "round_context",
+            "--discussion-dir",
+            disc_dir,
+            "--round",
+            str(round_),
+            "--agent",
+            agent,
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
     )
     if result.returncode != 0:
         _abort("Failed to get discussion context")
     import json
+
     return json.loads(result.stdout)
 
 
@@ -471,7 +533,9 @@ def _build_prior_context(ctx: dict) -> str:
                 lines.append("Points:")
                 for pt in pts:
                     if isinstance(pt, dict):
-                        lines.append(f"  - {pt.get('id', '')}: {pt.get('verdict', '')} — {pt.get('rationale', '')}")
+                        lines.append(
+                            f"  - {pt.get('id', '')}: {pt.get('verdict', '')} — {pt.get('rationale', '')}"
+                        )
             lines.append("")
     return "\n".join(lines)
 
@@ -480,19 +544,28 @@ def _build_prior_context(ctx: dict) -> str:
 # Confirmation helpers (mirrors Bash confirm_* functions)
 # ---------------------------------------------------------------------------
 
+
 def _confirm_non_interactive_risk(target: str, codex_bypass: bool) -> None:
     if target == "codex-cli" and codex_bypass:
         risk_msg = "Risk: non-interactive Codex bypass disables sandbox and approval prompts. Continue?"
     else:
-        risk_msg = "Risk: non-interactive mode runs without live user supervision. Continue?"
+        risk_msg = (
+            "Risk: non-interactive mode runs without live user supervision. Continue?"
+        )
 
     env_val = os.environ.get("SUPERHARNESS_CONFIRM_NON_INTERACTIVE", "")
     if env_val in ("YES", "yes", "Y", "y"):
         return
 
     if not sys.stdin.isatty():
-        print("Refusing non-interactive launch without explicit confirmation.", file=sys.stderr)
-        print("Set SUPERHARNESS_CONFIRM_NON_INTERACTIVE=YES to allow unattended launch.", file=sys.stderr)
+        print(
+            "Refusing non-interactive launch without explicit confirmation.",
+            file=sys.stderr,
+        )
+        print(
+            "Set SUPERHARNESS_CONFIRM_NON_INTERACTIVE=YES to allow unattended launch.",
+            file=sys.stderr,
+        )
         sys.exit(1)
 
     sys.stderr.write(f"{risk_msg} [y/N]: ")
@@ -509,7 +582,9 @@ def _confirm_dangerous_flag_risk(env_name: str, risk_msg: str) -> None:
         return
 
     if not sys.stdin.isatty():
-        print("Refusing dangerous launch without explicit confirmation.", file=sys.stderr)
+        print(
+            "Refusing dangerous launch without explicit confirmation.", file=sys.stderr
+        )
         print(f"Set {env_name}=YES to allow this specific bypass.", file=sys.stderr)
         sys.exit(1)
 
@@ -524,6 +599,7 @@ def _confirm_dangerous_flag_risk(env_name: str, risk_msg: str) -> None:
 # ---------------------------------------------------------------------------
 # Launch
 # ---------------------------------------------------------------------------
+
 
 def _launch_agent(
     target: str,
@@ -547,7 +623,11 @@ def _launch_agent(
 
     audit.info(
         "dispatch: target=%s project=%s non_interactive=%s codex_bypass=%s model=%s",
-        target, project_dir, non_interactive, codex_bypass, model or "<default>",
+        target,
+        project_dir,
+        non_interactive,
+        codex_bypass,
+        model or "<default>",
     )
     log.info("launch_agent target=%s prompt_len=%d", target, len(prompt))
     log.debug("prompt redacted=%s", redact(prompt[:300]))
@@ -588,12 +668,17 @@ def _launch_agent(
     try:
         from superharness.engine.db import get_connection, init_db, now_iso
         from superharness.engine import heartbeat_dao
+
         conn = get_connection(project_dir)
         try:
             init_db(conn)
             heartbeat_dao.upsert(
-                conn, agent=target, task_id=task_id,
-                status="launched", pid=os.getpid(), now=now_iso(),
+                conn,
+                agent=target,
+                task_id=task_id,
+                status="launched",
+                pid=os.getpid(),
+                now=now_iso(),
             )
             conn.commit()
         finally:
@@ -603,7 +688,7 @@ def _launch_agent(
 
     display_label = f" {label}" if label else ""
     agent_name = target.replace("-cli", "").replace("-code", "").capitalize()
-    
+
     # Print launcher path to satisfy integration tests
     print(f"Launching {agent_name}{display_label} ({os.path.basename(launcher)})...")
 
@@ -621,13 +706,16 @@ def _expand_path() -> None:
         "/usr/local/sbin",
     ]
     current = os.environ.get("PATH", "")
-    additions = [p for p in extra if p not in current.split(os.pathsep) and os.path.isdir(p)]
+    additions = [
+        p for p in extra if p not in current.split(os.pathsep) and os.path.isdir(p)
+    ]
     if additions:
         os.environ["PATH"] = current + os.pathsep + os.pathsep.join(additions)
 
 
 def _cmd_exists(name: str) -> bool:
     import shutil
+
     _expand_path()
     return shutil.which(name) is not None
 
@@ -635,6 +723,7 @@ def _cmd_exists(name: str) -> bool:
 # ---------------------------------------------------------------------------
 # Main delegate logic
 # ---------------------------------------------------------------------------
+
 
 def _fire_on_delegate(project_dir: str, target: str, task_id: str) -> None:
     """Fire on_delegate lifecycle hooks (openclaw routing, telegram notify, …).
@@ -645,13 +734,15 @@ def _fire_on_delegate(project_dir: str, target: str, task_id: str) -> None:
     try:
         from pathlib import Path
         from superharness.modules.runner import run_hooks
+
         run_hooks(
             "on_delegate",
             {
                 "task_id": task_id,
                 "target": target,
                 "task_title": _get_task_title(project_dir, task_id),
-                "task_description": _get_task_field(project_dir, task_id, "context") or "",
+                "task_description": _get_task_field(project_dir, task_id, "context")
+                or "",
                 "event": "on_delegate",
             },
             Path(project_dir),
@@ -716,6 +807,7 @@ def delegate(
         return gate_result
 
     from superharness.engine import state_reader as _sr
+
     task_obj = _sr.get_task(project_dir, task_id)
 
     # Gate 3b: existence — a task ID that doesn't resolve at all must fail
@@ -742,8 +834,14 @@ def delegate(
             )
             try:
                 from superharness.engine.ledger_dao import decision_log
-                decision_log(project_dir, "gate_block", task_id=task_id, agent=target,
-                             reason="empty task: no AC, DoD, or context for plan-only dispatch")
+
+                decision_log(
+                    project_dir,
+                    "gate_block",
+                    task_id=task_id,
+                    agent=target,
+                    reason="empty task: no AC, DoD, or context for plan-only dispatch",
+                )
             except Exception as e:
                 logger.warning("delegate.py unexpected error: %s", e, exc_info=True)
                 pass
@@ -753,7 +851,9 @@ def delegate(
     # Terminal statuses (done/failed/stopped) pass through — reconcile handles them.
     # --plan-only: relax the allowed set so the agent can propose a plan on a
     # todo/implementation task without first needing plan_approved.
-    _task_status = task_obj.get("status", "")  # task_obj is guaranteed non-None past Gate 3b
+    _task_status = task_obj.get(
+        "status", ""
+    )  # task_obj is guaranteed non-None past Gate 3b
     _workflow = _infer_workflow(task_id, task_obj)
     _DISPATCH_TERMINAL_STATUSES = {"done", "failed", "stopped"}
     # Auto-route: todo+implementation → plan-only (soft-route, not a permanent block)
@@ -767,8 +867,13 @@ def delegate(
     if plan_only:
         _DISPATCH_ALLOWED_STATUSES = _plan_only_allowed_statuses(_workflow)
     else:
-        _DISPATCH_ALLOWED_STATUSES = _allowed_statuses_for_workflow(_workflow, for_review=for_review)
-    if _task_status not in _DISPATCH_ALLOWED_STATUSES and _task_status not in _DISPATCH_TERMINAL_STATUSES:
+        _DISPATCH_ALLOWED_STATUSES = _allowed_statuses_for_workflow(
+            _workflow, for_review=for_review
+        )
+    if (
+        _task_status not in _DISPATCH_ALLOWED_STATUSES
+        and _task_status not in _DISPATCH_TERMINAL_STATUSES
+    ):
         if _workflow == "implementation":
             print(
                 f"blocked: task '{task_id}' status is '{_task_status}' — "
@@ -787,9 +892,15 @@ def delegate(
         # Permanent lifecycle block — non-retryable.
         try:
             from superharness.engine.ledger_dao import decision_log
+
             _allowed = ", ".join(sorted(_DISPATCH_ALLOWED_STATUSES))
-            decision_log(project_dir, "gate_block", task_id=task_id, agent=target,
-                         reason=f"status '{_task_status}' not allowed for workflow '{_workflow}' (allowed: {_allowed})")
+            decision_log(
+                project_dir,
+                "gate_block",
+                task_id=task_id,
+                agent=target,
+                reason=f"status '{_task_status}' not allowed for workflow '{_workflow}' (allowed: {_allowed})",
+            )
         except Exception as e:
             logger.warning("delegate.py unexpected error: %s", e, exc_info=True)
             pass
@@ -802,6 +913,7 @@ def delegate(
     if not print_only and not skip_preflight and task_obj is not None:
         try:
             from superharness.engine.preflight import run_preflight
+
             pf = run_preflight(
                 project_dir=project_dir,
                 task=dict(task_obj),
@@ -812,8 +924,14 @@ def delegate(
             if not pf.can_dispatch:
                 try:
                     from superharness.engine.ledger_dao import decision_log
-                    decision_log(project_dir, "gate_block", task_id=task_id, agent=target,
-                                 reason=f"preflight: {pf.format_summary(verbose=False)}")
+
+                    decision_log(
+                        project_dir,
+                        "gate_block",
+                        task_id=task_id,
+                        agent=target,
+                        reason=f"preflight: {pf.format_summary(verbose=False)}",
+                    )
                 except Exception as e:
                     logger.warning("delegate.py unexpected error: %s", e, exc_info=True)
                     pass
@@ -840,6 +958,7 @@ def delegate(
     if role and role != "worker" and not model_override:
         try:
             from superharness.engine.model_router_roles import ModelRouter
+
             _router = ModelRouter.from_project(project_dir)
             resolved_model = _router.model_for(role)
             model_source = f"role:{role}"
@@ -865,14 +984,18 @@ def delegate(
             resolved_effort = task_effort
 
     # 3. Auto-classification (skip if print_only — don't call Claude for a preview)
-    if not print_only and not no_auto_model and (not resolved_model or not resolved_effort):
+    if (
+        not print_only
+        and not no_auto_model
+        and (not resolved_model or not resolved_effort)
+    ):
         try:
             from superharness.engine.adapter_registry import (
                 clear_manifest_cache,
                 resolve_model as _resolve_model,
             )
             from superharness.engine.model_router import classify_task, resolve_tier
-            
+
             # Force reload of manifests (prevents stale "sonnet" fallback)
             clear_manifest_cache()
 
@@ -887,7 +1010,9 @@ def delegate(
             )
             if not resolved_model:
                 _m = _resolve_model(target, classified_tier)
-                resolved_model = _m.get("id", classified_tier) if isinstance(_m, dict) else _m
+                resolved_model = (
+                    _m.get("id", classified_tier) if isinstance(_m, dict) else _m
+                )
                 model_source = "auto-classified"
             if not resolved_effort:
                 resolved_effort = classified_effort
@@ -900,7 +1025,11 @@ def delegate(
         profile_model = _read_profile_field(project_dir, "default_model", "")
         if profile_model:
             try:
-                from superharness.engine.model_router import resolve_model as _resolve_model, resolve_tier
+                from superharness.engine.model_router import (
+                    resolve_model as _resolve_model,
+                    resolve_tier,
+                )
+
                 tier = resolve_tier(profile_model)
                 if tier:
                     resolved_model = _resolve_model(target, tier)
@@ -919,6 +1048,7 @@ def delegate(
     if not resolved_model:
         try:
             from superharness.engine.model_router import resolve_model as _resolve_model
+
             resolved_model = _resolve_model(target, "standard")
         except Exception as e:
             logger.warning("delegate.py unexpected error: %s", e, exc_info=True)
@@ -929,7 +1059,11 @@ def delegate(
 
     # If model_override was a tier name, resolve to agent-specific model
     try:
-        from superharness.engine.model_router import resolve_tier, resolve_model as _resolve_model
+        from superharness.engine.model_router import (
+            resolve_tier,
+            resolve_model as _resolve_model,
+        )
+
         tier = resolve_tier(resolved_model)
         if tier:
             resolved_model = _resolve_model(target, tier)
@@ -942,7 +1076,10 @@ def delegate(
     # ChatGPT. Without this, gpt-5.3-codex reaches the codex CLI and 400s.
     try:
         from superharness.engine.model_router import _apply_chatgpt_auth_override
-        resolved_model = _apply_chatgpt_auth_override(target, resolved_model, project_dir)
+
+        resolved_model = _apply_chatgpt_auth_override(
+            target, resolved_model, project_dir
+        )
     except Exception as e:
         logger.warning("delegate.py unexpected error: %s", e, exc_info=True)
         pass
@@ -956,15 +1093,22 @@ def delegate(
     # The orchestrator would reroute every agent to the same "best" model,
     # defeating the purpose of multi-agent deliberation.
     is_discussion_round = "/round-" in task_id
-    if should_orchestrate and not is_discussion_round and (not print_only or orchestrate):
+    if (
+        should_orchestrate
+        and not is_discussion_round
+        and (not print_only or orchestrate)
+    ):
         try:
             from superharness.engine.orchestrator import Orchestrator
+
             orch = Orchestrator(project_dir=project_dir)
             task_data = {
                 "id": task_id,
                 "title": _get_task_title(project_dir, task_id) or task_id,
                 "owner": target,
-                "acceptance_criteria": _get_task_acceptance_criteria(project_dir, task_id),
+                "acceptance_criteria": _get_task_acceptance_criteria(
+                    project_dir, task_id
+                ),
             }
             routing = orch.route(task_data)
 
@@ -978,7 +1122,9 @@ def delegate(
             if routing.decompose and routing.subtasks:
                 print(f"  Decomposed into {len(routing.subtasks)} subtasks:")
                 for st in routing.subtasks:
-                    print(f"    - {st['id']}: {st['title']} [{st['owner']} / {st['model_tier']}]")
+                    print(
+                        f"    - {st['id']}: {st['title']} [{st['owner']} / {st['model_tier']}]"
+                    )
                 print(f"  Estimated cost: ${routing.total_estimated_cost_usd:.4f}")
                 print(f"  Recommended budget: ${routing.recommended_budget_usd:.4f}")
 
@@ -993,14 +1139,18 @@ def delegate(
                     resolved_effort = routing.effort
                 model_source = "orchestrator"
             else:
-                print(f"  Plan:     direct dispatch (no decomposition)")
+                print("  Plan:     direct dispatch (no decomposition)")
                 # Apply routing: override target/model/effort
                 target = routing.owner
                 resolved_model = _resolve_model(target, routing.tier)
                 resolved_effort = routing.effort
                 model_source = "orchestrator"
         except Exception as e:
-            logger.warning("delegate.py orchestrator failed, falling back to standard dispatch: %s", e, exc_info=True)
+            logger.warning(
+                "delegate.py orchestrator failed, falling back to standard dispatch: %s",
+                e,
+                exc_info=True,
+            )
             # Fall through to existing dispatch path
 
     # Acceptance criteria
@@ -1039,7 +1189,9 @@ def delegate(
             "     green: <the minimal implementation that will make them pass>\n"
             "     refactor: <cleanup planned after green, or 'none'>\n"
             "   risks: <open questions, unknowns, dependencies>\n"
-            "3. Run `shux task status --id " + task_id + " --status plan_proposed` to transition the task.\n"
+            "3. Run `shux task status --id "
+            + task_id
+            + " --status plan_proposed` to transition the task.\n"
             "4. Stop. Do not proceed to implementation. The owner must review and approve the plan first.\n"
         )
 
@@ -1093,13 +1245,18 @@ def delegate(
         print(f"Topic: {disc_topic}")
 
     else:
-        # Check for user-provided instructions file (not a state artifact — noqa: state-read)
+        # Check for user-provided instructions file (not a managed runtime artifact).
         instructions_file = os.path.join(handoff_dir, f"{task_id}-instructions.md")
         user_instructions = ""
         if os.path.isfile(instructions_file):
-            user_instructions = Path(instructions_file).read_text(encoding="utf-8").strip()  # noqa: state-read
+            user_instructions = (
+                Path(instructions_file).read_text(encoding="utf-8")  # shipguard:ignore state-read: user-supplied task instructions
+                .strip()
+            )
             if user_instructions:
-                user_instructions = f"\n\nUser instructions for this task:\n{user_instructions}"
+                user_instructions = (
+                    f"\n\nUser instructions for this task:\n{user_instructions}"
+                )
 
         # Build context hint to reduce cold-start exploration time
         context_hint = build_context_hint(project_dir, task_obj or {})
@@ -1177,9 +1334,12 @@ def delegate(
         task_title = _get_task_title(project_dir, task_id)
         try:
             from superharness.engine.osm import vault_search
+
             vault_results = vault_search(task_title or task_id)
             if vault_results:
-                vault_block = "\n\nVault notes relevant to this task (via obsidian-semantic):\n"
+                vault_block = (
+                    "\n\nVault notes relevant to this task (via obsidian-semantic):\n"
+                )
                 for r in vault_results:
                     preview = r.get("preview", "")[:120].replace("\n", " ")
                     vault_block += f"  - {r['path']} (similarity: {r['similarity']})\n    {preview}\n"
@@ -1190,6 +1350,7 @@ def delegate(
         # Inject project rules so the agent knows constraints before starting
         try:
             from superharness.commands.rules import all_rules_text
+
             rules_text = all_rules_text(project_dir)
             if rules_text:
                 prompt += f"\n\nProject rules (run `shux rules` to see full list):\n{rules_text}"
@@ -1207,7 +1368,7 @@ def delegate(
 
     # SDK vs CLI dispatch — auto-detect: use SDK if available, fall back to CLI
     # Current limit: only claude-code supports the SDK runner
-    supports_sdk = (target == "claude-code")
+    supports_sdk = target == "claude-code"
     use_sdk = via_sdk if via_sdk is not None else (sdk_available() and supports_sdk)
     if use_sdk and not sdk_available():
         print("⚠️  SDK not available — falling back to CLI", file=sys.stderr)
@@ -1223,15 +1384,24 @@ def delegate(
         print("-----------------")
         print(prompt)
         _launch_agent(
-            target, prompt, project_dir, non_interactive, codex_bypass,
-            label=label, model=resolved_model, effort=resolved_effort,
-            task_id=task_id, print_only=True, yolo=yolo,
+            target,
+            prompt,
+            project_dir,
+            non_interactive,
+            codex_bypass,
+            label=label,
+            model=resolved_model,
+            effort=resolved_effort,
+            task_id=task_id,
+            print_only=True,
+            yolo=yolo,
         )
         return 0
 
     # Budget guard — warn or block before any dispatch
     try:
         from superharness.engine.model_budget import check_budget, BudgetStatus
+
         budget_result = check_budget(project_dir)
         if budget_result.status == BudgetStatus.WARN:
             print(f"\n⚠️  {budget_result.message}")
@@ -1262,6 +1432,7 @@ def delegate(
                 log_file.parent.mkdir(parents=True, exist_ok=True)
             else:
                 from datetime import datetime
+
                 log_dir = Path(harness_dir) / "launcher-logs"
                 log_dir.mkdir(exist_ok=True)
                 timestamp = datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
@@ -1295,9 +1466,16 @@ def delegate(
         _confirm_non_interactive_risk(target, codex_bypass)
 
     _launch_agent(
-        target, prompt, project_dir, non_interactive, codex_bypass,
-        label=label, model=resolved_model, effort=resolved_effort,
-        task_id=task_id, yolo=yolo,
+        target,
+        prompt,
+        project_dir,
+        non_interactive,
+        codex_bypass,
+        label=label,
+        model=resolved_model,
+        effort=resolved_effort,
+        task_id=task_id,
+        yolo=yolo,
     )
     return 0  # unreachable after exec, but satisfies type checker
 
@@ -1305,6 +1483,7 @@ def delegate(
 # ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
+
 
 def _build_parser() -> "argparse.ArgumentParser":
     import argparse
@@ -1319,85 +1498,143 @@ def _build_parser() -> "argparse.ArgumentParser":
         formatter_class=_CapUsage,
         add_help=True,
     )
-    from superharness.engine.adapter_registry import list_adapters as _list_adapters_for_help
-    parser.add_argument("--to", required=False, dest="target", default=None,
-                        help=f"Target agent: {', '.join(_list_adapters_for_help()) or 'claude-code, codex-cli, gemini-cli, opencode'}")
-    parser.add_argument("--project", "-p", default=None,
-                        help="Project directory (default: current directory)")
-    parser.add_argument("--task", "-t", default="",
-                        help="Task ID from project contract (default: latest handoff for target)")
-    parser.add_argument("--print-only", action="store_true", default=False,
-                        help="Print the generated prompt without launching the agent")
-    parser.add_argument("--non-interactive", action="store_true", default=False,
-                        help="Launch agent without live supervision (requires confirmation or env var)")
-    parser.add_argument("--yolo", action="store_true", default=False,
-                        help="Dangerously skip permissions and apply changes without asking")
-    parser.add_argument("--codex-bypass", action="store_true", default=False,
-                        help="Codex only: use --dangerously-bypass-approvals-and-sandbox")
-    parser.add_argument("--for-review", action="store_true", default=False,
-                        help="Allow dispatch of review_requested tasks for review workflow only")
+    from superharness.engine.adapter_registry import (
+        list_adapters as _list_adapters_for_help,
+    )
+
     parser.add_argument(
-        "--model", default=None,
+        "--to",
+        required=False,
+        dest="target",
+        default=None,
+        help=f"Target agent: {', '.join(_list_adapters_for_help()) or 'claude-code, codex-cli, gemini-cli, opencode'}",
+    )
+    parser.add_argument(
+        "--project",
+        "-p",
+        default=None,
+        help="Project directory (default: current directory)",
+    )
+    parser.add_argument(
+        "--task",
+        "-t",
+        default="",
+        help="Task ID from project contract (default: latest handoff for target)",
+    )
+    parser.add_argument(
+        "--print-only",
+        action="store_true",
+        default=False,
+        help="Print the generated prompt without launching the agent",
+    )
+    parser.add_argument(
+        "--non-interactive",
+        action="store_true",
+        default=False,
+        help="Launch agent without live supervision (requires confirmation or env var)",
+    )
+    parser.add_argument(
+        "--yolo",
+        action="store_true",
+        default=False,
+        help="Dangerously skip permissions and apply changes without asking",
+    )
+    parser.add_argument(
+        "--codex-bypass",
+        action="store_true",
+        default=False,
+        help="Codex only: use --dangerously-bypass-approvals-and-sandbox",
+    )
+    parser.add_argument(
+        "--for-review",
+        action="store_true",
+        default=False,
+        help="Allow dispatch of review_requested tasks for review workflow only",
+    )
+    parser.add_argument(
+        "--model",
+        default=None,
         help="Override model. Accepts tier (mini/standard/max) or model name (sonnet, gpt-5.3-codex, etc.)",
     )
     parser.add_argument(
-        "--effort", default=None,
+        "--effort",
+        default=None,
         choices=list(VALID_EFFORTS),
         help="Override thinking effort (low/medium/high)",
     )
     parser.add_argument(
-        "--no-auto-model", action="store_true", default=False,
+        "--no-auto-model",
+        action="store_true",
+        default=False,
         help="Skip auto-classification, use profile defaults or standard/medium",
     )
     parser.add_argument(
-        "--via", default=None,
+        "--via",
+        default=None,
         choices=["cli", "sdk"],
         help="Force dispatch method (default: auto-detect — SDK if installed, CLI otherwise)",
     )
     parser.add_argument(
-        "--role", default="worker",
+        "--role",
+        default="worker",
         choices=["orchestrator", "worker", "validator", "code_reviewer"],
         help="Agent role: drives model selection and dispatch payload policy. "
-             "validator/code_reviewer enforce fresh-worktree + minimal payload.",
+        "validator/code_reviewer enforce fresh-worktree + minimal payload.",
     )
     parser.add_argument(
-        "--orchestrate", action="store_true", default=False,
+        "--orchestrate",
+        action="store_true",
+        default=False,
         help="Force orchestrator mode: decompose task into subtasks (also the default — use --no-orchestrate to skip)",
     )
     parser.add_argument(
-        "--no-orchestrate", action="store_true", default=False,
+        "--no-orchestrate",
+        action="store_true",
+        default=False,
         help="Skip orchestrator — dispatch directly without analysis (for trivial fix/chore tasks)",
     )
     parser.add_argument(
-        "--skip-preflight", action="store_true", default=False,
+        "--skip-preflight",
+        action="store_true",
+        default=False,
         help="Skip pre-flight analysis (useful when you know the task is ready)",
     )
     parser.add_argument(
-        "--force", action="store_true", default=False,
+        "--force",
+        action="store_true",
+        default=False,
         help="Override budget block for this dispatch",
     )
     parser.add_argument(
-        "--plan-only", action="store_true", default=False,
+        "--plan-only",
+        action="store_true",
+        default=False,
         dest="plan_only",
         help="Agent proposes a TDD plan and stops (no implementation). "
-             "Relaxes gate 4 so todo+implementation tasks are dispatchable.",
+        "Relaxes gate 4 so todo+implementation tasks are dispatchable.",
     )
     parser.add_argument(
-        "--1m-context", action="store_true", default=False,
+        "--1m-context",
+        action="store_true",
+        default=False,
         dest="context_1m",
         help=f"Force max-1m tier ({flagship_1m()}) for this dispatch. "
-             "Implies effort=max. Use when prompt exceeds ~200K tokens.",
+        "Implies effort=max. Use when prompt exceeds ~200K tokens.",
     )
     parser.add_argument(
-        "--ship-on-complete", action="store_true", default=False,
+        "--ship-on-complete",
+        action="store_true",
+        default=False,
         dest="ship_on_complete",
         help="Override: inject SHIP-ON-COMPLETE directive for this dispatch even "
-             "if the contract task does not have ship_on_complete: true.",
+        "if the contract task does not have ship_on_complete: true.",
     )
     parser.add_argument(
-        "--json", action="store_true", default=False,
+        "--json",
+        action="store_true",
+        default=False,
         help="Emit machine-readable JSON on stdout instead of human text. "
-             "Implies --print-only when no --via is forced.",
+        "Implies --print-only when no --via is forced.",
     )
     return parser
 
@@ -1418,13 +1655,19 @@ def main(argv: list[str] | None = None) -> None:
         opts.print_only = True
 
     from superharness.engine.adapter_registry import list_adapters
+
     valid_agents = list_adapters()
     if opts.target is None:
         parser.error("--to is required")
     if opts.target not in valid_agents:
         if _JSON_MODE:
             from superharness.utils.json_output import emit_error
-            emit_error(f"--to must be one of: {', '.join(valid_agents)}", exit_code=2, **_JSON_CTX)
+
+            emit_error(
+                f"--to must be one of: {', '.join(valid_agents)}",
+                exit_code=2,
+                **_JSON_CTX,
+            )
         print(f"--to must be one of: {', '.join(valid_agents)}", file=sys.stderr)
         sys.exit(2)
 
@@ -1443,6 +1686,7 @@ def main(argv: list[str] | None = None) -> None:
 
     if _JSON_MODE:
         import io
+
         _orig_stdout = sys.stdout
         sys.stdout = io.StringIO()
         try:
@@ -1457,7 +1701,9 @@ def main(argv: list[str] | None = None) -> None:
                 model_override=opts.model or "",
                 effort_override=opts.effort or "",
                 no_auto_model=opts.no_auto_model,
-                via_sdk=True if opts.via == "sdk" else (False if opts.via == "cli" else None),
+                via_sdk=True
+                if opts.via == "sdk"
+                else (False if opts.via == "cli" else None),
                 orchestrate=opts.orchestrate,
                 no_orchestrate=opts.no_orchestrate,
                 skip_preflight=opts.skip_preflight,
@@ -1474,16 +1720,21 @@ def main(argv: list[str] | None = None) -> None:
         if "Generated prompt:" in captured:
             prompt_text = captured.split("-----------------", 1)[-1].strip()
         from superharness.utils.json_output import emit_json
-        emit_json({
-            "task_id": opts.task,
-            "to": opts.target,
-            "print_only": bool(opts.print_only),
-            "plan_only": bool(opts.plan_only),
-            "orchestrate": bool(opts.orchestrate),
-            "role": getattr(opts, "role", "worker") or "worker",
-            "prompt": prompt_text,
-            "prompt_length": len(prompt_text),
-        }, ok=(rc == 0), exit_code=rc)
+
+        emit_json(
+            {
+                "task_id": opts.task,
+                "to": opts.target,
+                "print_only": bool(opts.print_only),
+                "plan_only": bool(opts.plan_only),
+                "orchestrate": bool(opts.orchestrate),
+                "role": getattr(opts, "role", "worker") or "worker",
+                "prompt": prompt_text,
+                "prompt_length": len(prompt_text),
+            },
+            ok=(rc == 0),
+            exit_code=rc,
+        )
 
     rc = delegate(
         project_dir=project_dir,

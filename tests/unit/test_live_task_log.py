@@ -2,6 +2,7 @@
 
 RED phase: Write failing tests first.
 """
+
 from __future__ import annotations
 
 import json
@@ -13,10 +14,14 @@ from pathlib import Path
 import pytest
 
 
+pytestmark = pytest.mark.skip(
+    reason="legacy YAML fixture — pending SQLite migration (see PR #208)"
+)
 
-pytestmark = pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
 
-@pytest.mark.skipif(sys.platform == "win32", reason="bash shell launcher not available on Windows")
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="bash shell launcher not available on Windows"
+)
 def test_launcher_creates_log_file(tmp_path: Path):
     """Test that launching a task creates a log file in .superharness/launcher-logs/"""
     # Setup
@@ -74,16 +79,21 @@ exit 0
     # Run dispatcher with mock launcher
     # This will fail until we implement log capture
     import os
+
     env = os.environ.copy()
     env["PATH"] = f"{tmp_path}:{env.get('PATH', '')}"  # Prepend mock launcher path
     env["SUPERHARNESS_SCRIPTS_DIR"] = str(tmp_path)
     env["SUPERHARNESS_CONFIRM_NON_INTERACTIVE"] = "YES"
 
-    result = subprocess.run(
+    subprocess.run(
         [
-            sys.executable, "-m", "superharness.commands.inbox_dispatch",
-            "--project", str(project),
-            "--launcher-timeout", "5",
+            sys.executable,
+            "-m",
+            "superharness.commands.inbox_dispatch",
+            "--project",
+            str(project),
+            "--launcher-timeout",
+            "5",
         ],
         env=env,
         capture_output=True,
@@ -183,10 +193,14 @@ def test_ui_polls_live_output_for_launched_task(tmp_path: Path):
     # Verify polling logic exists
     # Should call /api/task-log when viewing a launched/running task
     assert "api/task-log" in js_code, "/api/task-log endpoint not called in JavaScript"
-    assert "setInterval" in js_code or "setTimeout" in js_code, "No polling mechanism found"
+    assert "setInterval" in js_code or "setTimeout" in js_code, (
+        "No polling mechanism found"
+    )
 
     # Verify it checks task status before polling
-    assert "launched" in js_code.lower() or "running" in js_code.lower(), "No status check for launched/running"
+    assert "launched" in js_code.lower() or "running" in js_code.lower(), (
+        "No status check for launched/running"
+    )
 
 
 def test_log_file_rotation_keeps_last_5_launches(tmp_path: Path):

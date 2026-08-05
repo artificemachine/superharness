@@ -8,7 +8,9 @@ from typing import Any, cast
 from superharness.engine.state_errors import StateError
 
 import logging
+
 logger = logging.getLogger(__name__)
+
 
 @dataclass(frozen=True)
 class LedgerRow:
@@ -18,6 +20,7 @@ class LedgerRow:
     action: str
     details: dict[str, Any] | None
     created_at: str
+
 
 def record(
     conn: sqlite3.Connection,
@@ -65,12 +68,13 @@ def _insert(
         VALUES (?, ?, ?, ?, ?)
         RETURNING id, task_id, agent, action, details, created_at
         """,
-        (task_id, agent, action, details_json, now)
+        (task_id, agent, action, details_json, now),
     )
     row = cursor.fetchone()
     if not row:
         raise StateError("Failed to record ledger entry: no row returned")
     return _row_to_ledger(row)
+
 
 def get_recent(
     conn: sqlite3.Connection,
@@ -80,7 +84,9 @@ def get_recent(
     limit: int = 100,
 ) -> list[LedgerRow]:
     """Get recent ledger entries."""
-    query = "SELECT id, task_id, agent, action, details, created_at FROM ledger WHERE 1=1"
+    query = (
+        "SELECT id, task_id, agent, action, details, created_at FROM ledger WHERE 1=1"
+    )
     params: list[Any] = []
     if task_id:
         query += " AND task_id = ?"
@@ -88,15 +94,16 @@ def get_recent(
     if agent:
         query += " AND agent = ?"
         params.append(agent)
-    
+
     query += " ORDER BY created_at DESC, id DESC LIMIT ?"
     params.append(limit)
-    
+
     try:
         cursor = conn.execute(query, params)
         return [_row_to_ledger(row) for row in cursor.fetchall()]
     except sqlite3.Error as e:
         raise StateError(f"Failed to get recent ledger entries: {e}") from e
+
 
 def _row_to_ledger(row: sqlite3.Row) -> LedgerRow:
     details = json.loads(row["details"]) if row["details"] else None
@@ -106,7 +113,7 @@ def _row_to_ledger(row: sqlite3.Row) -> LedgerRow:
         agent=row["agent"],
         action=row["action"],
         details=cast("dict[str, Any] | None", details),
-        created_at=row["created_at"]
+        created_at=row["created_at"],
     )
 
 
@@ -148,6 +155,9 @@ def decision_log(
     except Exception as e:
         logger.warning("ledger_dao.py unexpected error: %s", e, exc_info=True)
         pass
+
+
 def _now_utc() -> str:
     from datetime import datetime, timezone
+
     return datetime.now(timezone.utc).isoformat()

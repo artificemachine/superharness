@@ -17,6 +17,7 @@ These tests validate the fix end-to-end at the component boundary level:
 - E2E-4: get_connection env var takes priority over project_dir for XDG hash
 - E2E-5: env var is cleared between dispatches (no cross-task leakage)
 """
+
 from __future__ import annotations
 
 import os
@@ -26,6 +27,7 @@ from pathlib import Path
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_dispatch_ctx(project_dir: str, worktree_dir: str | None = None):
     """Build a minimal DispatchContext for _prepare_launch_context."""
@@ -46,7 +48,9 @@ def _make_dispatch_ctx(project_dir: str, worktree_dir: str | None = None):
     ctx.item_to = "claude-code"
     ctx.item_task = "task-e2e-test"
     ctx.item_id = "inbox-e2e-001"
-    ctx.task_log = str(Path(project_dir) / ".superharness" / "launcher-logs" / "test.log")
+    ctx.task_log = str(
+        Path(project_dir) / ".superharness" / "launcher-logs" / "test.log"
+    )
     ctx.worktree_dir = worktree_dir
     ctx.exec_project = worktree_dir or project_dir
     ctx.launch_args = ["echo", "noop"]
@@ -63,8 +67,14 @@ def _seed_task(project_dir: str, task_id: str) -> None:
         conn.execute(
             "INSERT OR IGNORE INTO tasks "
             "(id, title, owner, status, workflow, created_at) VALUES (?,?,?,?,?,?)",
-            (task_id, "E2E test task", "claude-code", "todo",
-             "implementation", "2026-05-19T00:00:00Z"),
+            (
+                task_id,
+                "E2E test task",
+                "claude-code",
+                "todo",
+                "implementation",
+                "2026-05-19T00:00:00Z",
+            ),
         )
         conn.commit()
     finally:
@@ -74,6 +84,7 @@ def _seed_task(project_dir: str, task_id: str) -> None:
 # ---------------------------------------------------------------------------
 # E2E-1: spawn_env carries SUPERHARNESS_STATE_PROJECT when worktree is set
 # ---------------------------------------------------------------------------
+
 
 def test_spawn_env_contains_state_project_when_worktree_active(tmp_path: Path) -> None:
     """_prepare_launch_context must inject SUPERHARNESS_STATE_PROJECT into
@@ -104,6 +115,7 @@ def test_spawn_env_contains_state_project_when_worktree_active(tmp_path: Path) -
 # E2E-2: spawn_env does NOT inject SUPERHARNESS_STATE_PROJECT without worktree
 # ---------------------------------------------------------------------------
 
+
 def test_spawn_env_omits_state_project_without_worktree(tmp_path: Path) -> None:
     """Without a worktree, SUPERHARNESS_STATE_PROJECT must not appear in
     spawn_env (don't override normal dispatch that already uses the real path)."""
@@ -125,6 +137,7 @@ def test_spawn_env_omits_state_project_without_worktree(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 # E2E-3: state_reader.get_task resolves via env var from worktree path
 # ---------------------------------------------------------------------------
+
 
 def test_state_reader_get_task_via_state_project_env(tmp_path: Path) -> None:
     """state_reader.get_task called with a worktree path must still find the
@@ -167,6 +180,7 @@ def test_state_reader_get_task_via_state_project_env(tmp_path: Path) -> None:
 # E2E-4: get_connection prefers env var over project_dir for XDG hash
 # ---------------------------------------------------------------------------
 
+
 def test_get_connection_env_var_takes_priority_over_project_dir(tmp_path: Path) -> None:
     """When SUPERHARNESS_STATE_PROJECT is set, get_connection must open the
     database at the env-var path's XDG location, not the project_dir's."""
@@ -192,9 +206,7 @@ def test_get_connection_env_var_takes_priority_over_project_dir(tmp_path: Path) 
         os.environ["SUPERHARNESS_STATE_PROJECT"] = str(real_project)
         conn_via = get_connection(str(worktree))
         init_db(conn_via)
-        row = conn_via.execute(
-            "SELECT id FROM tasks WHERE id='sentinel'"
-        ).fetchone()
+        row = conn_via.execute("SELECT id FROM tasks WHERE id='sentinel'").fetchone()
         assert row is not None, (
             "get_connection with SUPERHARNESS_STATE_PROJECT must open the "
             "real project's DB and find the sentinel task"
@@ -210,6 +222,7 @@ def test_get_connection_env_var_takes_priority_over_project_dir(tmp_path: Path) 
 # ---------------------------------------------------------------------------
 # E2E-5: env var isolation — no leakage between consecutive dispatches
 # ---------------------------------------------------------------------------
+
 
 def test_state_project_env_var_not_leaked_between_dispatches(tmp_path: Path) -> None:
     """Two consecutive _prepare_launch_context calls must not cross-contaminate:

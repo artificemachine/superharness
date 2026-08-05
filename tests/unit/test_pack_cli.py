@@ -1,18 +1,17 @@
 """Tests for superharness pack CLI command."""
+
 from __future__ import annotations
 
-import io
 import sys
-import tarfile
 from pathlib import Path
 
-import pytest
 import yaml
 
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_project(tmp_path: Path) -> Path:
     """Create a minimal fake project with .superharness/."""
@@ -51,10 +50,13 @@ def _run_pack(argv: list[str]) -> tuple[int, str, str]:
 # Tests
 # ---------------------------------------------------------------------------
 
+
 def test_pack_export_command_creates_file(tmp_path):
     project = _make_project(tmp_path / "myproject")
 
-    code, out, err = _run_pack(["export", "--project", str(project), "--output", str(tmp_path / "out.tar.gz")])
+    code, out, err = _run_pack(
+        ["export", "--project", str(project), "--output", str(tmp_path / "out.tar.gz")]
+    )
 
     assert code == 0, f"stderr: {err}"
     assert (tmp_path / "out.tar.gz").exists()
@@ -65,7 +67,9 @@ def test_pack_export_command_with_output_flag(tmp_path):
     project = _make_project(tmp_path / "myproject")
     named_output = tmp_path / "custom-name.superharness.pack.tar.gz"
 
-    code, out, err = _run_pack(["export", "--project", str(project), "--output", str(named_output)])
+    code, out, err = _run_pack(
+        ["export", "--project", str(project), "--output", str(named_output)]
+    )
 
     assert code == 0, f"stderr: {err}"
     assert named_output.exists()
@@ -97,7 +101,9 @@ def test_pack_import_collision_skip(tmp_path):
     original = b"original content\n"
     (sh / "contract.yaml").write_bytes(original)
 
-    code, out, err = _run_pack(["import", str(pack_file), "--project", str(dest), "--collision", "skip"])
+    code, out, err = _run_pack(
+        ["import", str(pack_file), "--project", str(dest), "--collision", "skip"]
+    )
 
     assert code == 0, f"stderr: {err}"
     assert (sh / "contract.yaml").read_bytes() == original
@@ -113,7 +119,9 @@ def test_pack_import_collision_overwrite(tmp_path):
     sh.mkdir(parents=True)
     (sh / "contract.yaml").write_bytes(b"original content\n")
 
-    code, out, err = _run_pack(["import", str(pack_file), "--project", str(dest), "--collision", "overwrite"])
+    code, out, err = _run_pack(
+        ["import", str(pack_file), "--project", str(dest), "--collision", "overwrite"]
+    )
 
     assert code == 0, f"stderr: {err}"
     content = (sh / "contract.yaml").read_text()

@@ -1,12 +1,22 @@
 """Tests for skills loader (cherry-picked from hermes-agent)."""
-import pytest
-from superharness.skills.loader import save_skill, load_skill, discover_skills, list_skill_names, delete_skill
+
+from superharness.skills.loader import (
+    save_skill,
+    load_skill,
+    discover_skills,
+    list_skill_names,
+    delete_skill,
+)
 
 
 class TestSkills:
     def test_save_and_load_skill(self, tmp_path):
-        skill = {"name": "deploy-staging", "description": "Deploy to staging",
-                 "tags": ["deploy", "ci"], "steps": [{"run": "git push"}]}
+        skill = {
+            "name": "deploy-staging",
+            "description": "Deploy to staging",
+            "tags": ["deploy", "ci"],
+            "steps": [{"run": "git push"}],
+        }
         ok = save_skill(str(tmp_path), "deploy-staging", skill)
         assert ok is True
         loaded = load_skill(str(tmp_path), "deploy-staging")
@@ -17,7 +27,9 @@ class TestSkills:
         assert load_skill(str(tmp_path), "nonexistent") is None
 
     def test_discover_by_tag(self, tmp_path):
-        save_skill(str(tmp_path), "deploy", {"name": "deploy", "tags": ["deploy", "ci"]})
+        save_skill(
+            str(tmp_path), "deploy", {"name": "deploy", "tags": ["deploy", "ci"]}
+        )
         save_skill(str(tmp_path), "format", {"name": "format", "tags": ["style"]})
         results = discover_skills(str(tmp_path), tags=["deploy"])
         assert len(results) == 1

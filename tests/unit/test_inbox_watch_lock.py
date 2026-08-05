@@ -24,8 +24,7 @@ def _write_project(tmp_path: Path) -> Path:
         f"    project_path: '{project.as_posix()}'\n"
     )
     (harness / "inbox.yaml").write_text(
-        "# Delegation inbox\n"
-        "# status: pending|launched|running|done|failed|stale\n\n"
+        "# Delegation inbox\n# status: pending|launched|running|done|failed|stale\n\n"
     )
     seed_sqlite_from_yaml(project)
     return project
@@ -33,6 +32,7 @@ def _write_project(tmp_path: Path) -> Path:
 
 def _actual_lock_dir(project: Path) -> Path:
     from superharness.engine.platform_runtime import watcher_lock_path
+
     return Path(watcher_lock_path(str(project)))
 
 
@@ -52,10 +52,13 @@ def test_watch_auto_breaks_stale_lock(repo_root, tmp_path) -> None:
             script,
             cwd=repo_root,
             args=[
-                "--project", str(project),
-                "--to", "claude-code",
+                "--project",
+                str(project),
+                "--to",
+                "claude-code",
                 "--print-only",
-                "--lock-stale-minutes", "30",
+                "--lock-stale-minutes",
+                "30",
             ],
         )
 
@@ -80,10 +83,13 @@ def test_watch_respects_fresh_lock(repo_root, tmp_path) -> None:
             script,
             cwd=repo_root,
             args=[
-                "--project", str(project),
-                "--to", "claude-code",
+                "--project",
+                str(project),
+                "--to",
+                "claude-code",
                 "--print-only",
-                "--lock-stale-minutes", "30",
+                "--lock-stale-minutes",
+                "30",
             ],
         )
 
@@ -107,8 +113,10 @@ def test_watch_auto_breaks_orphaned_lock_when_pid_is_dead(repo_root, tmp_path) -
             script,
             cwd=repo_root,
             args=[
-                "--project", str(project),
-                "--to", "claude-code",
+                "--project",
+                str(project),
+                "--to",
+                "claude-code",
                 "--print-only",
             ],
         )
@@ -126,11 +134,16 @@ def test_watch_auto_breaks_orphaned_lock_when_pid_is_dead(repo_root, tmp_path) -
                 pass
 
 
-def test_watch_auto_breaks_pidless_lock_when_heartbeat_is_stale(repo_root, tmp_path) -> None:
+def test_watch_auto_breaks_pidless_lock_when_heartbeat_is_stale(
+    repo_root, tmp_path
+) -> None:
     project = _write_project(tmp_path)
     heartbeat = project / ".superharness" / "watcher.heartbeat"
     heartbeat.write_text(
-        (datetime.now(timezone.utc) - timedelta(minutes=5)).strftime("%Y-%m-%dT%H:%M:%SZ") + "\n"
+        (datetime.now(timezone.utc) - timedelta(minutes=5)).strftime(
+            "%Y-%m-%dT%H:%M:%SZ"
+        )
+        + "\n"
     )
     lock_dir = _actual_lock_dir(project)
     lock_dir.mkdir(parents=True, exist_ok=True)
@@ -143,10 +156,13 @@ def test_watch_auto_breaks_pidless_lock_when_heartbeat_is_stale(repo_root, tmp_p
             script,
             cwd=repo_root,
             args=[
-                "--project", str(project),
-                "--to", "claude-code",
+                "--project",
+                str(project),
+                "--to",
+                "claude-code",
                 "--print-only",
-                "--interval", "30",
+                "--interval",
+                "30",
             ],
         )
 
@@ -164,7 +180,9 @@ def test_watch_auto_breaks_pidless_lock_when_heartbeat_is_stale(repo_root, tmp_p
 def test_watch_keeps_pidless_lock_when_heartbeat_is_fresh(repo_root, tmp_path) -> None:
     project = _write_project(tmp_path)
     heartbeat = project / ".superharness" / "watcher.heartbeat"
-    heartbeat.write_text(datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ") + "\n")
+    heartbeat.write_text(
+        datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ") + "\n"
+    )
     lock_dir = _actual_lock_dir(project)
     lock_dir.mkdir(parents=True, exist_ok=True)
 
@@ -174,10 +192,13 @@ def test_watch_keeps_pidless_lock_when_heartbeat_is_fresh(repo_root, tmp_path) -
             script,
             cwd=repo_root,
             args=[
-                "--project", str(project),
-                "--to", "claude-code",
+                "--project",
+                str(project),
+                "--to",
+                "claude-code",
                 "--print-only",
-                "--interval", "30",
+                "--interval",
+                "30",
             ],
         )
 
@@ -207,10 +228,13 @@ def test_watch_lock_stale_disabled_with_zero(repo_root, tmp_path) -> None:
             script,
             cwd=repo_root,
             args=[
-                "--project", str(project),
-                "--to", "claude-code",
+                "--project",
+                str(project),
+                "--to",
+                "claude-code",
                 "--print-only",
-                "--lock-stale-minutes", "0",
+                "--lock-stale-minutes",
+                "0",
             ],
         )
 
@@ -231,10 +255,13 @@ def test_watch_passes_launcher_timeout_to_dispatch(repo_root, tmp_path) -> None:
         script,
         cwd=repo_root,
         args=[
-            "--project", str(project),
-            "--to", "claude-code",
+            "--project",
+            str(project),
+            "--to",
+            "claude-code",
             "--print-only",
-            "--launcher-timeout", "60",
+            "--launcher-timeout",
+            "60",
         ],
     )
 
@@ -250,11 +277,15 @@ def test_watch_accepts_recover_options(repo_root, tmp_path) -> None:
         script,
         cwd=repo_root,
         args=[
-            "--project", str(project),
-            "--to", "claude-code",
+            "--project",
+            str(project),
+            "--to",
+            "claude-code",
             "--print-only",
-            "--recover-timeout-minutes", "7",
-            "--recover-action", "retry",
+            "--recover-timeout-minutes",
+            "7",
+            "--recover-action",
+            "retry",
         ],
     )
 
@@ -269,8 +300,10 @@ def test_watch_rejects_invalid_recover_action(repo_root, tmp_path) -> None:
         script,
         cwd=repo_root,
         args=[
-            "--project", str(project),
-            "--recover-action", "invalid",
+            "--project",
+            str(project),
+            "--recover-action",
+            "invalid",
         ],
     )
 
@@ -286,8 +319,10 @@ def test_watch_rejects_invalid_recover_timeout_minutes(repo_root, tmp_path) -> N
         script,
         cwd=repo_root,
         args=[
-            "--project", str(project),
-            "--recover-timeout-minutes", "oops",
+            "--project",
+            str(project),
+            "--recover-timeout-minutes",
+            "oops",
         ],
     )
 
@@ -305,17 +340,25 @@ def test_watch_foreground_exits_on_sigterm(repo_root, tmp_path) -> None:
     import subprocess as sp
 
     proc = sp.Popen(
-        ["bash", str(script),
-         "--project", str(project),
-         "--foreground",
-         "--interval", "60",
-         "--print-only"],
-        stdout=sp.PIPE, stderr=sp.PIPE, text=True,
+        [
+            "bash",
+            str(script),
+            "--project",
+            str(project),
+            "--foreground",
+            "--interval",
+            "60",
+            "--print-only",
+        ],
+        stdout=sp.PIPE,
+        stderr=sp.PIPE,
+        text=True,
         cwd=repo_root,
     )
 
     # Wait for watcher startup message
     import select
+
     ready, _, _ = select.select([proc.stdout], [], [], 5)
     assert ready, "Foreground watcher did not produce output within 5s"
 
@@ -336,9 +379,11 @@ def test_watch_foreground_rejects_zero_interval(repo_root, tmp_path) -> None:
         script,
         cwd=repo_root,
         args=[
-            "--project", str(project),
+            "--project",
+            str(project),
             "--foreground",
-            "--interval", "0",
+            "--interval",
+            "0",
         ],
     )
     assert result.returncode == 2
@@ -377,8 +422,10 @@ def test_watch_rejects_invalid_lock_stale_minutes(repo_root, tmp_path) -> None:
         script,
         cwd=repo_root,
         args=[
-            "--project", str(project),
-            "--lock-stale-minutes", "abc",
+            "--project",
+            str(project),
+            "--lock-stale-minutes",
+            "abc",
         ],
     )
 

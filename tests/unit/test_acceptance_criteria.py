@@ -24,7 +24,9 @@ def _run_delegate_py(cwd, args: list[str] | None = None, env: dict | None = None
             else:
                 merged[k] = v
     cmd = [sys.executable, "-m", "superharness.commands.delegate"] + (args or [])
-    return subprocess.run(cmd, cwd=str(cwd), text=True, capture_output=True, env=merged, check=False)
+    return subprocess.run(
+        cmd, cwd=str(cwd), text=True, capture_output=True, env=merged, check=False
+    )
 
 
 def _setup_project(tmp_path: Path, status: str = "plan_approved") -> Path:
@@ -50,6 +52,7 @@ def _setup_project(tmp_path: Path, status: str = "plan_approved") -> Path:
         + "\n"
     )
     from tests.helpers import seed_sqlite_from_yaml
+
     seed_sqlite_from_yaml(project)
     return project
 
@@ -67,12 +70,18 @@ def test_task_create_with_criteria(repo_root, tmp_path) -> None:
         cwd=repo_root,
         args=[
             "create",
-            "--project", str(project),
-            "--id", "my-task",
-            "--title", "Test task",
-            "--owner", "claude-code",
-            "--criteria", "All tests pass",
-            "--criteria", "No lint errors",
+            "--project",
+            str(project),
+            "--id",
+            "my-task",
+            "--title",
+            "Test task",
+            "--owner",
+            "claude-code",
+            "--criteria",
+            "All tests pass",
+            "--criteria",
+            "No lint errors",
         ],
     )
     assert result.returncode == 0, result.stderr
@@ -93,10 +102,14 @@ def test_task_create_without_criteria_omits_field(repo_root, tmp_path) -> None:
         cwd=repo_root,
         args=[
             "create",
-            "--project", str(project),
-            "--id", "no-ac-task",
-            "--title", "No criteria",
-            "--owner", "codex-cli",
+            "--project",
+            str(project),
+            "--id",
+            "no-ac-task",
+            "--title",
+            "No criteria",
+            "--owner",
+            "codex-cli",
         ],
     )
     assert result.returncode == 0, result.stderr
@@ -117,9 +130,18 @@ def test_engine_reads_acceptance_criteria(repo_root, tmp_path) -> None:
     contract_file.write_text(yaml.dump(doc))
 
     import sys
+
     result = run_cmd(
-        [sys.executable, "-m", "superharness.engine.contract",
-         "task_acceptance_criteria", "--file", str(contract_file), "--task", "existing-task"],
+        [
+            sys.executable,
+            "-m",
+            "superharness.engine.contract",
+            "task_acceptance_criteria",
+            "--file",
+            str(contract_file),
+            "--task",
+            "existing-task",
+        ],
         cwd=repo_root,
     )
     assert result.returncode == 0
@@ -132,9 +154,18 @@ def test_engine_returns_empty_when_no_criteria(repo_root, tmp_path) -> None:
     contract_file = project / ".superharness" / "contract.yaml"
 
     import sys
+
     result = run_cmd(
-        [sys.executable, "-m", "superharness.engine.contract",
-         "task_acceptance_criteria", "--file", str(contract_file), "--task", "existing-task"],
+        [
+            sys.executable,
+            "-m",
+            "superharness.engine.contract",
+            "task_acceptance_criteria",
+            "--file",
+            str(contract_file),
+            "--task",
+            "existing-task",
+        ],
         cwd=repo_root,
     )
     assert result.returncode == 0
@@ -154,7 +185,15 @@ def test_delegate_prompt_includes_criteria(repo_root, tmp_path) -> None:
 
     result = _run_delegate_py(
         repo_root,
-        args=["--to", "codex-cli", "--project", str(project), "--task", "existing-task", "--print-only"],
+        args=[
+            "--to",
+            "codex-cli",
+            "--project",
+            str(project),
+            "--task",
+            "existing-task",
+            "--print-only",
+        ],
         env={"PATH": "/usr/bin:/bin"},
     )
     assert result.returncode == 0, result.stderr
@@ -167,7 +206,15 @@ def test_delegate_prompt_omits_criteria_when_none(repo_root, tmp_path) -> None:
     project = _setup_project(tmp_path)
     result = _run_delegate_py(
         repo_root,
-        args=["--to", "codex-cli", "--project", str(project), "--task", "existing-task", "--print-only"],
+        args=[
+            "--to",
+            "codex-cli",
+            "--project",
+            str(project),
+            "--task",
+            "existing-task",
+            "--print-only",
+        ],
         env={"PATH": "/usr/bin:/bin"},
     )
     assert result.returncode == 0, result.stderr
@@ -192,11 +239,16 @@ def test_task_status_done_warns_about_criteria(repo_root, tmp_path) -> None:
         cwd=repo_root,
         args=[
             "status",
-            "--project", str(project),
-            "--id", "existing-task",
-            "--status", "done",
-            "--actor", "codex-cli",
-            "--summary", "Completed",
+            "--project",
+            str(project),
+            "--id",
+            "existing-task",
+            "--status",
+            "done",
+            "--actor",
+            "codex-cli",
+            "--summary",
+            "Completed",
         ],
     )
     assert result.returncode == 0, result.stderr
@@ -213,11 +265,16 @@ def test_task_status_done_no_warning_without_criteria(repo_root, tmp_path) -> No
         cwd=repo_root,
         args=[
             "status",
-            "--project", str(project),
-            "--id", "existing-task",
-            "--status", "done",
-            "--actor", "codex-cli",
-            "--summary", "Completed",
+            "--project",
+            str(project),
+            "--id",
+            "existing-task",
+            "--status",
+            "done",
+            "--actor",
+            "codex-cli",
+            "--summary",
+            "Completed",
         ],
     )
     assert result.returncode == 0, result.stderr

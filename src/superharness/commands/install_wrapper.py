@@ -1,4 +1,5 @@
 """install-wrapper command — symlink superharness into PATH."""
+
 from __future__ import annotations
 
 import os
@@ -9,11 +10,17 @@ def main(argv: list[str] | None = None) -> None:
     import argparse
 
     p = argparse.ArgumentParser(prog="install-wrapper")
-    p.add_argument("-t", "--target-dir", default=os.path.join(os.path.expanduser("~"), ".local", "bin"))
+    p.add_argument(
+        "-t",
+        "--target-dir",
+        default=os.path.join(os.path.expanduser("~"), ".local", "bin"),
+    )
     opts = p.parse_args(argv)
 
     # locate the repo root (this file is src/superharness/commands/install_wrapper.py)
-    root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+    root = os.path.dirname(
+        os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    )
     source = os.path.join(root, "superharness")
     target = os.path.join(opts.target_dir, "superharness")
 

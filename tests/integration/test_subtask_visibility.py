@@ -3,6 +3,7 @@
 Builds a minimal .superharness/ fixture with a parent task that has subtasks,
 then exercises adapter-payload, contract, recall, and context end-to-end.
 """
+
 from __future__ import annotations
 
 import json
@@ -101,8 +102,12 @@ def test_adapter_payload_includes_subtask_status(project: Path):
 @pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
 def test_contract_include_subtasks_renders_nested(project: Path):
     rc, out, err = _run(
-        ["superharness.commands.contract_today",
-         "--project", str(project), "--include-subtasks"],
+        [
+            "superharness.commands.contract_today",
+            "--project",
+            str(project),
+            "--include-subtasks",
+        ],
         project,
     )
     assert rc == 0, f"stderr: {err}"
@@ -140,8 +145,7 @@ def test_recall_finds_subtask_by_title(project: Path):
 
 def test_context_resolves_subtask_id(project: Path):
     rc, out, err = _run(
-        ["superharness.commands.context",
-         "--project", str(project), "parent-done.1"],
+        ["superharness.commands.context", "--project", str(project), "parent-done.1"],
         project,
     )
     assert rc == 0, f"stderr: {err}"
@@ -156,8 +160,7 @@ def test_context_resolves_subtask_id(project: Path):
 
 def test_context_top_level_task_unchanged(project: Path):
     rc, out, err = _run(
-        ["superharness.commands.context",
-         "--project", str(project), "parent-active"],
+        ["superharness.commands.context", "--project", str(project), "parent-active"],
         project,
     )
     assert rc == 0, f"stderr: {err}"

@@ -3,23 +3,23 @@
 Verifies that all path-handling utilities behave correctly on Windows-style
 paths even when running on POSIX, and that Python version checks are robust.
 """
+
 from __future__ import annotations
 
 import os
 import platform
 import sys
-from pathlib import Path, PurePosixPath, PureWindowsPath
-from unittest.mock import patch
-
-import pytest
+from pathlib import PureWindowsPath
 
 
 # ---------------------------------------------------------------------------
 # Path normalization — watcher_lock_path is deterministic and OS-safe
 # ---------------------------------------------------------------------------
 
+
 def test_watcher_lock_path_is_deterministic():
     from superharness.engine.platform_runtime import watcher_lock_path
+
     path_a = watcher_lock_path("/some/project")
     path_b = watcher_lock_path("/some/project")
     assert path_a == path_b
@@ -27,6 +27,7 @@ def test_watcher_lock_path_is_deterministic():
 
 def test_watcher_lock_path_differs_per_project():
     from superharness.engine.platform_runtime import watcher_lock_path
+
     a = watcher_lock_path("/project/alpha")
     b = watcher_lock_path("/project/beta")
     assert a != b
@@ -34,6 +35,7 @@ def test_watcher_lock_path_differs_per_project():
 
 def test_watcher_lock_path_no_spaces():
     from superharness.engine.platform_runtime import watcher_lock_path
+
     # Path must be file-system safe (no unescaped spaces in the filename)
     p = watcher_lock_path("/Users/user name with spaces/project")
     basename = os.path.basename(p)
@@ -42,6 +44,7 @@ def test_watcher_lock_path_no_spaces():
 
 def test_watcher_lock_path_under_tmp():
     from superharness.engine.platform_runtime import watcher_lock_path, tmp_dir
+
     p = watcher_lock_path("/some/project")
     assert p.startswith(tmp_dir())
 
@@ -49,6 +52,7 @@ def test_watcher_lock_path_under_tmp():
 def test_tmp_dir_is_writable():
     from superharness.engine.platform_runtime import tmp_dir
     import tempfile
+
     d = tmp_dir()
     assert os.path.isdir(d)
     # Verify writable by creating a temp file
@@ -59,6 +63,7 @@ def test_tmp_dir_is_writable():
 def test_watcher_lock_path_long_project_path():
     """Very long paths should still produce a short, fixed-length lock path."""
     from superharness.engine.platform_runtime import watcher_lock_path
+
     long_path = "/" + "/".join(["very_long_dir_name"] * 20)
     p = watcher_lock_path(long_path)
     # The basename should be deterministic and not exceed 255 chars
@@ -67,6 +72,7 @@ def test_watcher_lock_path_long_project_path():
 
 def test_watcher_lock_path_unicode_project():
     from superharness.engine.platform_runtime import watcher_lock_path
+
     p = watcher_lock_path("/projects/proj-名前-αβγ")
     # Should not raise and should return a valid string
     assert isinstance(p, str)
@@ -77,24 +83,29 @@ def test_watcher_lock_path_unicode_project():
 # Sync excludes — standard noise dirs are excluded from worker copies
 # ---------------------------------------------------------------------------
 
+
 def test_sync_excludes_contains_git():
     from superharness.engine.platform_runtime import _SYNC_EXCLUDES
+
     assert ".git" in _SYNC_EXCLUDES
 
 
 def test_sync_excludes_contains_superharness():
     from superharness.engine.platform_runtime import _SYNC_EXCLUDES
+
     assert ".superharness" in _SYNC_EXCLUDES
 
 
 def test_sync_excludes_contains_venv():
     from superharness.engine.platform_runtime import _SYNC_EXCLUDES
+
     assert ".venv" in _SYNC_EXCLUDES
 
 
 # ---------------------------------------------------------------------------
 # Runtime pinning validation — Python version guards
 # ---------------------------------------------------------------------------
+
 
 def test_python_version_at_least_3_10():
     """superharness requires Python 3.10+ (match statement, X|Y union types)."""
@@ -120,6 +131,7 @@ def test_python_minor_integer():
 # Platform detection — platform.system() returns expected values
 # ---------------------------------------------------------------------------
 
+
 def test_platform_system_is_known_value():
     val = platform.system()
     assert val in ("Darwin", "Linux", "Windows", ""), f"Unexpected platform: {val}"
@@ -135,6 +147,7 @@ def test_platform_detection_does_not_crash():
 # ---------------------------------------------------------------------------
 # PurePosixPath vs PureWindowsPath — cross-platform parsing sanity
 # ---------------------------------------------------------------------------
+
 
 def test_pure_windows_path_segments():
     p = PureWindowsPath(r"C:\Users\testuser\projects\superharness")
@@ -158,6 +171,7 @@ def test_normpath_handles_mixed_separators():
 # ---------------------------------------------------------------------------
 # Worker copy excludes applied correctly on POSIX paths
 # ---------------------------------------------------------------------------
+
 
 def test_sync_worker_excludes_git(tmp_path):
     from superharness.engine.platform_runtime import sync_worker_copy

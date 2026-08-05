@@ -6,6 +6,7 @@ requested `--result pass` is downgraded to "not verified" and the command
 exits non-zero. This is the security module's `block_on: critical` contract,
 which previously never fired (no command called run_hooks for on_verify).
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -50,7 +51,8 @@ def test_verify_fires_on_verify_hook_with_context(tmp_path, monkeypatch):
 
     calls = []
     monkeypatch.setattr(
-        runner_mod, "run_hooks",
+        runner_mod,
+        "run_hooks",
         lambda event, ctx, pdir: calls.append((event, ctx, pdir)) or [],
     )
 
@@ -70,11 +72,17 @@ def test_verify_pass_blocked_by_hook_records_not_verified(tmp_path, monkeypatch)
     _seed(project)
 
     monkeypatch.setattr(
-        runner_mod, "run_hooks",
+        runner_mod,
+        "run_hooks",
         lambda event, ctx, pdir: [
-            {"module": "security", "event": "on_verify", "success": False,
-             "blocked": True, "block_on": "critical",
-             "message": "shipguard found critical issues"}
+            {
+                "module": "security",
+                "event": "on_verify",
+                "success": False,
+                "blocked": True,
+                "block_on": "critical",
+                "message": "shipguard found critical issues",
+            }
         ],
     )
 

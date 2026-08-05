@@ -3,6 +3,7 @@ non-ephemeral SUPERHARNESS_STATE_DIR.
 
 See docs/PLAN-steal-omnigent.md iteration 1.
 """
+
 from __future__ import annotations
 
 import pytest

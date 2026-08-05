@@ -15,6 +15,7 @@ Only checks top-level (module-scope) function/class defs — nested defs
 (closures, decorated overloads inside a class) are legitimately allowed to
 repeat a name across different scopes and are out of scope for this check.
 """
+
 from __future__ import annotations
 
 import ast
@@ -31,7 +32,9 @@ def _duplicate_top_level_names(path: Path) -> list[str]:
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
             name = node.name
             if name in seen:
-                dupes.append(f"{name} (first at line {seen[name]}, redefined at line {node.lineno})")
+                dupes.append(
+                    f"{name} (first at line {seen[name]}, redefined at line {node.lineno})"
+                )
             else:
                 seen[name] = node.lineno
     return dupes

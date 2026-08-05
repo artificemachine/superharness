@@ -10,6 +10,7 @@ Two independent layers:
      status to a status that is not reachable from it) via logger.warning
      instead of print(..., file=sys.stderr).
 """
+
 from __future__ import annotations
 
 import logging
@@ -19,7 +20,6 @@ import pytest
 from superharness.engine import db as db_module
 from superharness.engine import state_writer, tasks_dao
 from superharness.engine.next_action import ALL_STATUSES
-from superharness.engine.state_errors import StateError
 
 
 def _make_task(conn, task_id: str = "t-guard", status: str = "todo") -> None:
@@ -27,8 +27,17 @@ def _make_task(conn, task_id: str = "t-guard", status: str = "todo") -> None:
         "INSERT INTO tasks (id, title, owner, status, created_at, "
         "acceptance_criteria, test_types, out_of_scope, definition_of_done) "
         "VALUES (?,?,?,?,?,?,?,?,?)",
-        (task_id, "Guard Test Task", "claude-code", status, "2026-07-19T00:00:00Z",
-         "[]", "[]", "[]", "[]"),
+        (
+            task_id,
+            "Guard Test Task",
+            "claude-code",
+            status,
+            "2026-07-19T00:00:00Z",
+            "[]",
+            "[]",
+            "[]",
+            "[]",
+        ),
     )
     conn.commit()
 
@@ -36,6 +45,7 @@ def _make_task(conn, task_id: str = "t-guard", status: str = "todo") -> None:
 # ---------------------------------------------------------------------------
 # tasks_dao.update — VALID_STATUSES floor
 # ---------------------------------------------------------------------------
+
 
 def test_update_rejects_garbage_status(tmp_path):
     project_dir = str(tmp_path)
@@ -77,7 +87,10 @@ def test_update_without_status_key_is_unaffected(tmp_path):
 # state_writer.set_task_status — illegal transition logs a warning, not print
 # ---------------------------------------------------------------------------
 
-def test_invalid_transition_logs_warning_not_print(tmp_path, caplog, monkeypatch, capsys):
+
+def test_invalid_transition_logs_warning_not_print(
+    tmp_path, caplog, monkeypatch, capsys
+):
     project_dir = str(tmp_path)
 
     # Known pollution bug (arch/logging): logging_utils.get_logger()

@@ -26,6 +26,7 @@ Arguments prefixed with "@" are read from a file. The command refuses to
 write if the referenced task id is not in contract.yaml, or if required
 fields for the chosen phase are missing.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -37,6 +38,7 @@ from pathlib import Path
 from typing import Any
 
 import logging
+
 logger = logging.getLogger(__name__)
 
 try:
@@ -58,6 +60,7 @@ _JSON_CTX: dict = {}
 def _abort(msg: str, code: int = 1) -> None:
     if _JSON_MODE:
         from superharness.utils.json_output import emit_error
+
         emit_error(msg, exit_code=code, **_JSON_CTX)
     print(msg, file=sys.stderr)
     sys.exit(code)
@@ -89,6 +92,7 @@ def _load_contract_doc(contract_file: Path) -> dict:
     """Load contract doc from state_reader (SQLite exclusively)."""
     try:
         from superharness.engine import state_reader as _sr
+
         project_dir = str(contract_file.parent.parent)
         return _sr.get_contract_doc(project_dir)
     except Exception as e:
@@ -104,10 +108,11 @@ def _load_task_policy(contract_file: Path, task_id: str) -> tuple[bool, str]:
     task = None
     try:
         from superharness.engine.subtask import find_task_or_subtask
+
         task, _ = find_task_or_subtask(doc, task_id)
     except Exception as e:
         logger.warning("handoff_write.py unexpected error: %s", e, exc_info=True)
-        for t in (doc.get("tasks") or []):
+        for t in doc.get("tasks") or []:
             if isinstance(t, dict) and str(t.get("id", "")) == task_id:
                 task = t
                 break
@@ -129,11 +134,12 @@ def _task_exists(contract_file: Path, task_id: str) -> bool:
         return False
     try:
         from superharness.engine.subtask import find_task_or_subtask
+
         task, _ = find_task_or_subtask(doc, task_id)
         return task is not None
     except Exception as e:
         logger.warning("handoff_write.py unexpected error: %s", e, exc_info=True)
-        for t in (doc.get("tasks") or []):
+        for t in doc.get("tasks") or []:
             if isinstance(t, dict) and str(t.get("id", "")) == task_id:
                 return True
         return False
@@ -154,7 +160,15 @@ def _build_plan_handoff(
 
     tdd_enforced = require_tdd and workflow in _TDD_ENFORCED_WORKFLOWS
     if tdd_enforced:
-        missing = [f for f, v in [("--tdd-red", tdd_red), ("--tdd-green", tdd_green), ("--tdd-refactor", tdd_refactor)] if not v]
+        missing = [
+            f
+            for f, v in [
+                ("--tdd-red", tdd_red),
+                ("--tdd-green", tdd_green),
+                ("--tdd-refactor", tdd_refactor),
+            ]
+            if not v
+        ]
         if missing:
             _abort(
                 f"error: {', '.join(missing)} required "
@@ -204,7 +218,9 @@ def _build_report_handoff(args: argparse.Namespace) -> dict[str, Any]:
     if context:
         payload["context"] = context
     else:
-        payload["context"] = f"[auto-generated] report from {args.from_agent} for task {args.task_id}"
+        payload["context"] = (
+            f"[auto-generated] report from {args.from_agent} for task {args.task_id}"
+        )
     if args.tests_passed is not None:
         payload["tests_passed"] = bool(args.tests_passed)
     return payload
@@ -255,22 +271,32 @@ def write_handoff(
 
     # ── SQLite is the source of truth (mandatory). YAML is export-only. ──
     from superharness.engine.state_writer import write_handoff_to_db
-    write_handoff_to_db(str(project_dir), payload,
-                        task_id=args.task_id, phase=args.phase)
+
+    write_handoff_to_db(
+        str(project_dir), payload, task_id=args.task_id, phase=args.phase
+    )
 
     # Optional YAML export — best-effort, never blocks the write path.
     handoffs_dir = project_dir / ".superharness" / "handoffs"
     handoffs_dir.mkdir(parents=True, exist_ok=True)
     fname = args.out or _handoff_filename(
-        args.task_id, args.phase, args.from_agent, str(payload["date"]),
+        args.task_id,
+        args.phase,
+        args.from_agent,
+        str(payload["date"]),
     )
     target = handoffs_dir / fname
     if target.exists() and not args.force:
         _abort(f"handoff already exists: {target} (use --force to overwrite)", 1)
     try:
-        target.write_text(yaml.safe_dump(
-            payload, default_flow_style=False, allow_unicode=True, sort_keys=False,
-        ))
+        target.write_text(
+            yaml.safe_dump(
+                payload,
+                default_flow_style=False,
+                allow_unicode=True,
+                sort_keys=False,
+            )
+        )
     except OSError:
         pass  # export-only; failure is non-fatal
 
@@ -282,58 +308,114 @@ def _build_parser() -> argparse.ArgumentParser:
         prog="handoff write",
         description="Author a plan or report handoff (SQLite SoT, YAML export optional).",
     )
-    p.add_argument("--project", "-p", default=None, help="Project directory (default: cwd)")
-    p.add_argument("--task", required=True, dest="task_id", help="Task ID from contract.yaml")
     p.add_argument(
-        "--phase", required=True, choices=sorted(VALID_PHASES),
+        "--project", "-p", default=None, help="Project directory (default: cwd)"
+    )
+    p.add_argument(
+        "--task", required=True, dest="task_id", help="Task ID from contract.yaml"
+    )
+    p.add_argument(
+        "--phase",
+        required=True,
+        choices=sorted(VALID_PHASES),
         help="Handoff phase: plan (plan_proposed) or report (report_ready)",
     )
     p.add_argument(
-        "--from", required=True, dest="from_agent", choices=sorted(VALID_FROM),
+        "--from",
+        required=True,
+        dest="from_agent",
+        choices=sorted(VALID_FROM),
         help="Authoring agent or 'owner'",
     )
     p.add_argument(
-        "--to", required=True, dest="to_agent", choices=sorted(VALID_TO),
+        "--to",
+        required=True,
+        dest="to_agent",
+        choices=sorted(VALID_TO),
         help="Target recipient",
     )
-    p.add_argument("--status", default=None,
-                   help="Lifecycle status (default: plan_proposed for plan, report_ready for report)")
+    p.add_argument(
+        "--status",
+        default=None,
+        help="Lifecycle status (default: plan_proposed for plan, report_ready for report)",
+    )
     p.add_argument("--date", default=None, help="ISO timestamp (default: now UTC)")
 
     # Plan-specific
     p.add_argument("--plan", default=None, help="Plan text or @path/to/file.md")
-    p.add_argument("--tdd-red", dest="tdd_red", default=None, help="TDD red phase or @file")
-    p.add_argument("--tdd-green", dest="tdd_green", default=None, help="TDD green phase or @file")
-    p.add_argument("--tdd-refactor", dest="tdd_refactor", default=None, help="TDD refactor phase or @file")
+    p.add_argument(
+        "--tdd-red", dest="tdd_red", default=None, help="TDD red phase or @file"
+    )
+    p.add_argument(
+        "--tdd-green", dest="tdd_green", default=None, help="TDD green phase or @file"
+    )
+    p.add_argument(
+        "--tdd-refactor",
+        dest="tdd_refactor",
+        default=None,
+        help="TDD refactor phase or @file",
+    )
     p.add_argument("--risks", default=None, help="Risks/open questions or @file")
 
     # Report-specific
     p.add_argument("--outcome", default=None, help="Outcome summary or @file")
     p.add_argument("--context", default=None, help="Context for next session or @file")
     p.add_argument(
-        "--tests-passed", dest="tests_passed",
-        action=argparse.BooleanOptionalAction, default=None,
+        "--tests-passed",
+        dest="tests_passed",
+        action=argparse.BooleanOptionalAction,
+        default=None,
         help="Set tests_passed: true|false on report handoff",
     )
 
     # Self-reported token/cost usage (optional, any phase) — best-effort
     # substitute for agents with no programmatic usage data (Codex CLI,
     # Gemini CLI, OpenCode). See src/superharness/engine/usage_dao.py.
-    p.add_argument("--input-tokens", dest="input_tokens", type=int, default=None,
-                   help="Self-reported input token count")
-    p.add_argument("--output-tokens", dest="output_tokens", type=int, default=None,
-                   help="Self-reported output token count")
-    p.add_argument("--cost-usd", dest="cost_usd", type=float, default=None,
-                   help="Self-reported cost in USD")
-    p.add_argument("--model", dest="model", default=None,
-                   help="Model used for this dispatch (e.g. codex-cli, claude-sonnet-5)")
+    p.add_argument(
+        "--input-tokens",
+        dest="input_tokens",
+        type=int,
+        default=None,
+        help="Self-reported input token count",
+    )
+    p.add_argument(
+        "--output-tokens",
+        dest="output_tokens",
+        type=int,
+        default=None,
+        help="Self-reported output token count",
+    )
+    p.add_argument(
+        "--cost-usd",
+        dest="cost_usd",
+        type=float,
+        default=None,
+        help="Self-reported cost in USD",
+    )
+    p.add_argument(
+        "--model",
+        dest="model",
+        default=None,
+        help="Model used for this dispatch (e.g. codex-cli, claude-sonnet-5)",
+    )
 
-    p.add_argument("--out", default=None,
-                   help="Override output filename (default: <task>-<phase>-<date>-<from>.yaml)")
-    p.add_argument("--force", action="store_true", default=False,
-                   help="Overwrite existing handoff file")
-    p.add_argument("--json", action="store_true", default=False,
-                   help="Emit machine-readable JSON result on stdout.")
+    p.add_argument(
+        "--out",
+        default=None,
+        help="Override output filename (default: <task>-<phase>-<date>-<from>.yaml)",
+    )
+    p.add_argument(
+        "--force",
+        action="store_true",
+        default=False,
+        help="Overwrite existing handoff file",
+    )
+    p.add_argument(
+        "--json",
+        action="store_true",
+        default=False,
+        help="Emit machine-readable JSON result on stdout.",
+    )
     return p
 
 
@@ -361,11 +443,16 @@ def main(argv: list[str] | None = None) -> None:
 
     if _JSON_MODE:
         from superharness.utils.json_output import emit_json
-        emit_json({
-            "task_id": args.task_id,
-            "phase": args.phase,
-            "path": result.get("path"),
-        }, ok=(rc == 0), exit_code=rc)
+
+        emit_json(
+            {
+                "task_id": args.task_id,
+                "phase": args.phase,
+                "path": result.get("path"),
+            },
+            ok=(rc == 0),
+            exit_code=rc,
+        )
 
     print(f"Wrote handoff: {result['path']}")
     sys.exit(rc)

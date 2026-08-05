@@ -17,6 +17,7 @@ Heuristics enforced:
 The suggested_action drives the watcher: "close" auto-closes, "operator_review"
 leaves the task for the operator, "fail" marks the task failed.
 """
+
 from __future__ import annotations
 
 import os
@@ -94,7 +95,9 @@ def _check_referenced_files(report: dict, project_dir: str) -> list[str]:
     return failures
 
 
-def verify_report(report: dict, contract_task: dict, project_dir: str) -> ReportVerification:
+def verify_report(
+    report: dict, contract_task: dict, project_dir: str
+) -> ReportVerification:
     """Verify a report handoff against quality heuristics.
 
     Args:
@@ -116,12 +119,19 @@ def verify_report(report: dict, contract_task: dict, project_dir: str) -> Report
         return ReportVerification(passed=True, failures=[], suggested_action="close")
 
     # Determine routing: hard failures → fail, soft failures → operator_review
-    hard_keywords = ("tests_passed is", "outcome is too short", "outcome field is empty")
+    hard_keywords = (
+        "tests_passed is",
+        "outcome is too short",
+        "outcome field is empty",
+    )
     has_hard_failure = any(any(k in f for k in hard_keywords) for f in failures)
-    action: Literal["close", "operator_review", "fail"] = (
-        "operator_review" if not has_hard_failure or "tests_passed" in " ".join(failures)
+    (
+        "operator_review"
+        if not has_hard_failure or "tests_passed" in " ".join(failures)
         else "fail"
     )
     # Soft routing rule: if all failures are warnings (context, pr_url), still operator_review
     # Hard rule: tests_passed false → operator_review (operator can see why and decide)
-    return ReportVerification(passed=False, failures=failures, suggested_action="operator_review")
+    return ReportVerification(
+        passed=False, failures=failures, suggested_action="operator_review"
+    )

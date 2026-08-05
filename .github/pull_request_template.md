@@ -17,7 +17,8 @@
 
 ## Tests
 
-- [ ] `pytest tests/ -q` passes
+- [ ] Offline suite: `pytest tests/ -q` passes (no provider or agent CLI)
+- [ ] Live-provider smoke test run when relevant: `SUPERHARNESS_ALLOW_LIVE_TESTS=1 RUN_PROVIDER_SMOKE=1 pytest tests/integration/test_summarizer_smoke.py -q`
 - [ ] `shipguard scan .` passes
 - [ ] New/changed behavior has test coverage (TDD: failing test added first)
 - [ ] `CHANGELOG.md` entry appended at EOF (append-only)

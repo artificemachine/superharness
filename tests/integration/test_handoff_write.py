@@ -1,4 +1,5 @@
 """Integration tests for shux handoff write."""
+
 from __future__ import annotations
 
 import json
@@ -58,16 +59,27 @@ def _run(args: list[str], cwd: Path):
 
 def test_write_plan_handoff_inline_args(project: Path):
     rc, out, err = _run(
-        ["write",
-         "--project", str(project),
-         "--task", "t-handoff",
-         "--phase", "plan",
-         "--from", "claude-code",
-         "--to", "owner",
-         "--plan", "Scope: add JSON output to five commands",
-         "--tdd-red", "tests/.../test_cli_json_output.py",
-         "--tdd-green", "Add --json flag",
-         "--tdd-refactor", "Extract emit_json helper"],
+        [
+            "write",
+            "--project",
+            str(project),
+            "--task",
+            "t-handoff",
+            "--phase",
+            "plan",
+            "--from",
+            "claude-code",
+            "--to",
+            "owner",
+            "--plan",
+            "Scope: add JSON output to five commands",
+            "--tdd-red",
+            "tests/.../test_cli_json_output.py",
+            "--tdd-green",
+            "Add --json flag",
+            "--tdd-refactor",
+            "Extract emit_json helper",
+        ],
         project,
     )
     assert rc == 0, f"stderr: {err}"
@@ -87,16 +99,31 @@ def test_write_plan_handoff_inline_args(project: Path):
 
 def test_write_plan_handoff_from_file(project: Path, tmp_path: Path):
     plan_file = tmp_path / "plan.md"
-    plan_file.write_text("# Plan\n\nReplace stderr scraping with --json output on 5 commands.")
+    plan_file.write_text(
+        "# Plan\n\nReplace stderr scraping with --json output on 5 commands."
+    )
     rc, out, err = _run(
-        ["write",
-         "--project", str(project),
-         "--task", "t-handoff", "--phase", "plan",
-         "--from", "claude-code", "--to", "owner",
-         "--plan", f"@{plan_file}",
-         "--tdd-red", "failing tests",
-         "--tdd-green", "minimal impl",
-         "--tdd-refactor", "cleanup"],
+        [
+            "write",
+            "--project",
+            str(project),
+            "--task",
+            "t-handoff",
+            "--phase",
+            "plan",
+            "--from",
+            "claude-code",
+            "--to",
+            "owner",
+            "--plan",
+            f"@{plan_file}",
+            "--tdd-red",
+            "failing tests",
+            "--tdd-green",
+            "minimal impl",
+            "--tdd-refactor",
+            "cleanup",
+        ],
         project,
     )
     assert rc == 0, f"stderr: {err}"
@@ -107,17 +134,30 @@ def test_write_plan_handoff_from_file(project: Path, tmp_path: Path):
 
 def test_write_report_handoff(project: Path):
     rc, out, err = _run(
-        ["write",
-         "--project", str(project),
-         "--task", "t-handoff", "--phase", "report",
-         "--from", "claude-code", "--to", "owner",
-         "--outcome", "Shipped JSON helper and --json on 5 commands",
-         "--context", "See tests/integration/test_cli_json_output.py for expected payloads",
-         "--tests-passed"],
+        [
+            "write",
+            "--project",
+            str(project),
+            "--task",
+            "t-handoff",
+            "--phase",
+            "report",
+            "--from",
+            "claude-code",
+            "--to",
+            "owner",
+            "--outcome",
+            "Shipped JSON helper and --json on 5 commands",
+            "--context",
+            "See tests/integration/test_cli_json_output.py for expected payloads",
+            "--tests-passed",
+        ],
         project,
     )
     assert rc == 0, f"stderr: {err}"
-    files = list((project / ".superharness" / "handoffs").glob("t-handoff-report-*.yaml"))
+    files = list(
+        (project / ".superharness" / "handoffs").glob("t-handoff-report-*.yaml")
+    )
     assert len(files) == 1
     doc = yaml.safe_load(files[0].read_text())
     assert doc["phase"] == "report"
@@ -129,11 +169,23 @@ def test_write_report_handoff(project: Path):
 
 def test_write_refuses_missing_task(project: Path):
     rc, out, err = _run(
-        ["write",
-         "--project", str(project),
-         "--task", "does-not-exist", "--phase", "plan",
-         "--from", "claude-code", "--to", "owner",
-         "--plan", "x", "--tdd-red", "y"],
+        [
+            "write",
+            "--project",
+            str(project),
+            "--task",
+            "does-not-exist",
+            "--phase",
+            "plan",
+            "--from",
+            "claude-code",
+            "--to",
+            "owner",
+            "--plan",
+            "x",
+            "--tdd-red",
+            "y",
+        ],
         project,
     )
     assert rc != 0
@@ -144,11 +196,21 @@ def test_write_refuses_missing_task(project: Path):
 
 def test_write_refuses_plan_without_tdd(project: Path):
     rc, out, err = _run(
-        ["write",
-         "--project", str(project),
-         "--task", "t-handoff", "--phase", "plan",
-         "--from", "claude-code", "--to", "owner",
-         "--plan", "some plan"],
+        [
+            "write",
+            "--project",
+            str(project),
+            "--task",
+            "t-handoff",
+            "--phase",
+            "plan",
+            "--from",
+            "claude-code",
+            "--to",
+            "owner",
+            "--plan",
+            "some plan",
+        ],
         project,
     )
     assert rc != 0
@@ -157,10 +219,19 @@ def test_write_refuses_plan_without_tdd(project: Path):
 
 def test_write_refuses_report_without_outcome(project: Path):
     rc, out, err = _run(
-        ["write",
-         "--project", str(project),
-         "--task", "t-handoff", "--phase", "report",
-         "--from", "claude-code", "--to", "owner"],
+        [
+            "write",
+            "--project",
+            str(project),
+            "--task",
+            "t-handoff",
+            "--phase",
+            "report",
+            "--from",
+            "claude-code",
+            "--to",
+            "owner",
+        ],
         project,
     )
     assert rc != 0
@@ -169,11 +240,21 @@ def test_write_refuses_report_without_outcome(project: Path):
 
 def test_write_resolves_subtask_id(project: Path):
     rc, out, err = _run(
-        ["write",
-         "--project", str(project),
-         "--task", "parent-a.1", "--phase", "report",
-         "--from", "claude-code", "--to", "owner",
-         "--outcome", "subtask verified"],
+        [
+            "write",
+            "--project",
+            str(project),
+            "--task",
+            "parent-a.1",
+            "--phase",
+            "report",
+            "--from",
+            "claude-code",
+            "--to",
+            "owner",
+            "--outcome",
+            "subtask verified",
+        ],
         project,
     )
     assert rc == 0, f"stderr: {err}"
@@ -181,12 +262,28 @@ def test_write_resolves_subtask_id(project: Path):
 
 def test_write_json_mode(project: Path):
     rc, out, err = _run(
-        ["write",
-         "--project", str(project),
-         "--task", "t-handoff", "--phase", "plan",
-         "--from", "claude-code", "--to", "owner",
-         "--plan", "p", "--tdd-red", "r", "--tdd-green", "g", "--tdd-refactor", "rf",
-         "--json"],
+        [
+            "write",
+            "--project",
+            str(project),
+            "--task",
+            "t-handoff",
+            "--phase",
+            "plan",
+            "--from",
+            "claude-code",
+            "--to",
+            "owner",
+            "--plan",
+            "p",
+            "--tdd-red",
+            "r",
+            "--tdd-green",
+            "g",
+            "--tdd-refactor",
+            "rf",
+            "--json",
+        ],
         project,
     )
     assert rc == 0, f"stderr: {err}"
@@ -200,11 +297,26 @@ def test_write_json_mode(project: Path):
 def test_write_refuses_overwrite_without_force(project: Path):
     common = [
         "write",
-        "--project", str(project),
-        "--task", "t-handoff", "--phase", "plan",
-        "--from", "claude-code", "--to", "owner",
-        "--plan", "p", "--tdd-red", "r", "--tdd-green", "g", "--tdd-refactor", "rf",
-        "--out", "fixed-name.yaml",
+        "--project",
+        str(project),
+        "--task",
+        "t-handoff",
+        "--phase",
+        "plan",
+        "--from",
+        "claude-code",
+        "--to",
+        "owner",
+        "--plan",
+        "p",
+        "--tdd-red",
+        "r",
+        "--tdd-green",
+        "g",
+        "--tdd-refactor",
+        "rf",
+        "--out",
+        "fixed-name.yaml",
     ]
     rc1, *_ = _run(common, project)
     assert rc1 == 0

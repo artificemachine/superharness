@@ -10,6 +10,7 @@ Non-interactive (flag-based):
 Interactive (TTY, no flags):
     shux workflow   — runs a 3-question questionnaire
 """
+
 from __future__ import annotations
 
 import json
@@ -20,6 +21,7 @@ from pathlib import Path
 import yaml
 
 import logging
+
 logger = logging.getLogger(__name__)
 
 VALID_AUTONOMY = ("ai_driven",)
@@ -30,11 +32,11 @@ _AUTONOMY_LABELS = {
 }
 _PRESET_LABELS = {
     "implementation": "TDD-friendly, full lifecycle",
-    "quick":          "todo → in_progress → done",
-    "discussion":     "discussion / async",
-    "review":         "peer review cycle",
-    "approval":       "explicit approval gate",
-    "note":           "documentation only",
+    "quick": "todo → in_progress → done",
+    "discussion": "discussion / async",
+    "review": "peer review cycle",
+    "approval": "explicit approval gate",
+    "note": "documentation only",
 }
 
 
@@ -66,7 +68,9 @@ def _effective(profile: dict) -> dict:
         "autonomy": str(profile.get("autonomy") or "ai_driven"),
         "workflow": {
             "default_preset": str(wf.get("default_preset") or "implementation"),
-            "require_tdd": bool(wf.get("require_tdd", True) if "require_tdd" in wf else True),
+            "require_tdd": bool(
+                wf.get("require_tdd", True) if "require_tdd" in wf else True
+            ),
         },
     }
 
@@ -116,7 +120,13 @@ def _interactive(project: str) -> None:
 
     print()
     current_tdd = eff["workflow"]["require_tdd"]
-    yn = input(f"Require TDD red/green/refactor in plan handoffs? [{'Y' if current_tdd else 'y'}/{'n' if current_tdd else 'N'}] ").strip().lower()
+    yn = (
+        input(
+            f"Require TDD red/green/refactor in plan handoffs? [{'Y' if current_tdd else 'y'}/{'n' if current_tdd else 'N'}] "
+        )
+        .strip()
+        .lower()
+    )
     if yn in ("y", "yes"):
         wf["require_tdd"] = True
     elif yn in ("n", "no"):
@@ -135,32 +145,49 @@ def cmd_workflow(argv: list[str] | None = None) -> None:
         description="Read/write project-level workflow policy.",
         add_help=True,
     )
-    p.add_argument("--project", "-p", default=None,
-                   help="Project directory (default: cwd)")
-    p.add_argument("--autonomy", choices=list(VALID_AUTONOMY),
-                   help="Set autonomy level")
-    p.add_argument("--default-preset", choices=list(VALID_PRESETS),
-                   dest="default_preset",
-                   help="Set default workflow preset for new tasks")
-    p.add_argument("--require-tdd", dest="require_tdd", action="store_true",
-                   default=None, help="Require TDD fields in plan handoffs")
-    p.add_argument("--no-require-tdd", dest="require_tdd", action="store_false",
-                   help="Make TDD fields optional")
-    p.add_argument("--show", action="store_true",
-                   help="Print current settings")
-    p.add_argument("--json", action="store_true",
-                   help="Output as JSON (use with --show)")
+    p.add_argument(
+        "--project", "-p", default=None, help="Project directory (default: cwd)"
+    )
+    p.add_argument(
+        "--autonomy", choices=list(VALID_AUTONOMY), help="Set autonomy level"
+    )
+    p.add_argument(
+        "--default-preset",
+        choices=list(VALID_PRESETS),
+        dest="default_preset",
+        help="Set default workflow preset for new tasks",
+    )
+    p.add_argument(
+        "--require-tdd",
+        dest="require_tdd",
+        action="store_true",
+        default=None,
+        help="Require TDD fields in plan handoffs",
+    )
+    p.add_argument(
+        "--no-require-tdd",
+        dest="require_tdd",
+        action="store_false",
+        help="Make TDD fields optional",
+    )
+    p.add_argument("--show", action="store_true", help="Print current settings")
+    p.add_argument(
+        "--json", action="store_true", help="Output as JSON (use with --show)"
+    )
 
     opts = p.parse_args(argv if argv is not None else sys.argv[1:])
 
     project = opts.project or os.getcwd()
     project = os.path.realpath(project)
 
-    has_flags = any([opts.autonomy, opts.default_preset, opts.require_tdd is not None,
-                     opts.show])
+    has_flags = any(
+        [opts.autonomy, opts.default_preset, opts.require_tdd is not None, opts.show]
+    )
 
     # Non-TTY, no flags → print current settings and exit
-    _stdin_is_tty = sys.stdin is not None and getattr(sys.stdin, "isatty", lambda: False)()
+    _stdin_is_tty = (
+        sys.stdin is not None and getattr(sys.stdin, "isatty", lambda: False)()
+    )
     if not has_flags and not _stdin_is_tty:
         profile = _load_profile(project)
         eff = _effective(profile)
@@ -199,9 +226,7 @@ def cmd_workflow(argv: list[str] | None = None) -> None:
 
     if opts.autonomy is not None:
         if opts.autonomy not in VALID_AUTONOMY:
-            _abort(
-                f"error: --autonomy must be one of: {', '.join(VALID_AUTONOMY)}", 2
-            )
+            _abort(f"error: --autonomy must be one of: {', '.join(VALID_AUTONOMY)}", 2)
         profile["autonomy"] = opts.autonomy
 
     wf = profile.setdefault("workflow", {})

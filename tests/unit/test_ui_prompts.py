@@ -1,4 +1,5 @@
 """Tests for superharness.ui.prompts — RED phase for I1."""
+
 from __future__ import annotations
 
 import subprocess
@@ -26,6 +27,7 @@ from superharness.ui.prompts import (
 # print helpers — smoke only (no crash, correct prefix)
 # ---------------------------------------------------------------------------
 
+
 def test_print_helpers_do_not_raise(capsys):
     print_header("Section")
     print_info("info text")
@@ -43,6 +45,7 @@ def test_print_helpers_do_not_raise(capsys):
 # ---------------------------------------------------------------------------
 # prompt()
 # ---------------------------------------------------------------------------
+
 
 def test_prompt_returns_stripped_input():
     with patch("builtins.input", return_value="  hello  "):
@@ -85,6 +88,7 @@ def test_prompt_exits_on_eof_error():
 # prompt_yes_no()
 # ---------------------------------------------------------------------------
 
+
 def test_prompt_yes_no_default_true_empty_returns_true():
     with patch("builtins.input", return_value=""):
         assert prompt_yes_no("Continue?", default=True) is True
@@ -121,6 +125,7 @@ def test_prompt_yes_no_exits_on_keyboard_interrupt():
 # prompt_choice()
 # ---------------------------------------------------------------------------
 
+
 def test_prompt_choice_numbered_fallback_returns_correct_index():
     # curses disabled: numbered input path
     with patch("superharness.ui.prompts._curses_choice", return_value=-1):
@@ -154,6 +159,7 @@ def test_prompt_choice_invalid_numbered_input_loops():
 # prompt_checklist()
 # ---------------------------------------------------------------------------
 
+
 def test_prompt_checklist_returns_selected_indices():
     with patch("superharness.ui.prompts._curses_checklist", return_value=[0, 2]):
         result = prompt_checklist("Select", ["a", "b", "c"])
@@ -177,6 +183,7 @@ def test_prompt_checklist_cancel_with_no_preselected_returns_empty():
 # is_interactive_stdin()
 # ---------------------------------------------------------------------------
 
+
 def test_is_interactive_stdin_false_in_subprocess():
     """When stdin is a pipe (not a TTY), must return False."""
     code = (
@@ -188,7 +195,9 @@ def test_is_interactive_stdin_false_in_subprocess():
         input=b"",
         capture_output=True,
     )
-    assert r.returncode == 0, f"is_interactive_stdin returned True in a pipe: {r.stderr}"
+    assert r.returncode == 0, (
+        f"is_interactive_stdin returned True in a pipe: {r.stderr}"
+    )
 
 
 def test_is_interactive_stdin_true_when_stdin_is_tty():
@@ -205,6 +214,7 @@ def test_is_interactive_stdin_false_when_stdin_has_no_isatty():
 # ---------------------------------------------------------------------------
 # smoke test (importable + __main__ entry point)
 # ---------------------------------------------------------------------------
+
 
 def test_smoke_import():
     import superharness.ui.prompts  # noqa: F401

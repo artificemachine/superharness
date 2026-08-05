@@ -6,6 +6,7 @@ nonexistent subdirectory, which made `script(1)` exit 1 and marked every
 discussion round-1+ dispatch as failed. See docs/claude_superharness_review.md
 section "Launcher log path corrupts on any task ID containing /".
 """
+
 from __future__ import annotations
 
 import os
@@ -27,7 +28,9 @@ def test_multiple_slashes_are_sanitized():
 
 def test_parent_directory_escape_is_sanitized():
     assert _safe_task_id_for_path("..").find("..") == -1
-    assert _safe_task_id_for_path("../../etc/passwd") == "_/_/etc/passwd".replace("/", "_")
+    assert _safe_task_id_for_path("../../etc/passwd") == "_/_/etc/passwd".replace(
+        "/", "_"
+    )
 
 
 def test_sanitized_id_yields_single_file_path():
@@ -38,7 +41,9 @@ def test_sanitized_id_yields_single_file_path():
     launcher_log_dir = "/tmp/launcher-logs"
     task_id = "discuss-20260424T115728Z-84915-223275561/round-1"
     safe = _safe_task_id_for_path(task_id)
-    log_path = os.path.join(launcher_log_dir, f"{safe}-claude-code-20260424T120000Z.log")
+    log_path = os.path.join(
+        launcher_log_dir, f"{safe}-claude-code-20260424T120000Z.log"
+    )
     assert os.path.dirname(log_path) == launcher_log_dir, (
         f"log path escaped into subdirectory: {log_path}"
     )

@@ -9,6 +9,7 @@ import pytest
 # Helper: in-memory SQLite path for tests
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture
 def mem_db_path(tmp_path):
     """Return an in-memory -> file sqlite path in a tmp dir."""
@@ -24,6 +25,7 @@ def _now_utc():
 # Table creation
 # ---------------------------------------------------------------------------
 
+
 def test_ensure_table_creates_operator_memory_table(mem_db_path):
     """Table is created if it doesn't exist."""
     from superharness.engine.operator_memory import OperatorMemory
@@ -32,8 +34,11 @@ def test_ensure_table_creates_operator_memory_table(mem_db_path):
     om.ensure_table()
 
     import sqlite3
+
     conn = sqlite3.connect(mem_db_path)
-    cursor = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='operator_memory'")
+    cursor = conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='operator_memory'"
+    )
     assert cursor.fetchone() is not None
 
 
@@ -50,6 +55,7 @@ def test_ensure_table_is_idempotent(mem_db_path):
 # Schema: all expected columns
 # ---------------------------------------------------------------------------
 
+
 def test_operator_memory_schema_has_all_columns(mem_db_path):
     """Verify every expected column exists."""
     from superharness.engine.operator_memory import OperatorMemory
@@ -58,12 +64,19 @@ def test_operator_memory_schema_has_all_columns(mem_db_path):
     om.ensure_table()
 
     import sqlite3
+
     conn = sqlite3.connect(mem_db_path)
     cursor = conn.execute("PRAGMA table_info('operator_memory')")
     cols = {row[1] for row in cursor.fetchall()}
     expected = {
-        "id", "pattern_signature", "resolution", "confidence",
-        "hit_count", "miss_count", "created_at", "last_used_at",
+        "id",
+        "pattern_signature",
+        "resolution",
+        "confidence",
+        "hit_count",
+        "miss_count",
+        "created_at",
+        "last_used_at",
     }
     assert cols == expected
 
@@ -71,6 +84,7 @@ def test_operator_memory_schema_has_all_columns(mem_db_path):
 # ---------------------------------------------------------------------------
 # find_pattern
 # ---------------------------------------------------------------------------
+
 
 def test_find_pattern_returns_none_for_unknown_signature(mem_db_path):
     from superharness.engine.operator_memory import OperatorMemory
@@ -113,6 +127,7 @@ def test_find_pattern_is_case_sensitive_signature(mem_db_path):
 # record_match
 # ---------------------------------------------------------------------------
 
+
 def test_record_match_increments_hit_count(mem_db_path):
     from superharness.engine.operator_memory import OperatorMemory
 
@@ -152,6 +167,7 @@ def test_record_match_raises_when_signature_not_found(mem_db_path):
 # ---------------------------------------------------------------------------
 # Confidence scoring
 # ---------------------------------------------------------------------------
+
 
 def test_confidence_rises_with_hits(mem_db_path):
     from superharness.engine.operator_memory import OperatorMemory
@@ -200,6 +216,7 @@ def test_confidence_balanced_with_mixed(mem_db_path):
 # record_new
 # ---------------------------------------------------------------------------
 
+
 def test_record_new_stores_entry_with_defaults(mem_db_path):
     from superharness.engine.operator_memory import OperatorMemory
 
@@ -233,6 +250,7 @@ def test_record_new_duplicate_raises_error(mem_db_path):
 # forget
 # ---------------------------------------------------------------------------
 
+
 def test_forget_removes_entry(mem_db_path):
     from superharness.engine.operator_memory import OperatorMemory
 
@@ -256,6 +274,7 @@ def test_forget_nonexistent_is_noop(mem_db_path):
 # ---------------------------------------------------------------------------
 # list_all
 # ---------------------------------------------------------------------------
+
 
 def test_list_all_returns_all_patterns(mem_db_path):
     from superharness.engine.operator_memory import OperatorMemory
@@ -284,6 +303,7 @@ def test_list_all_empty_table(mem_db_path):
 # ---------------------------------------------------------------------------
 # prune_stale — removes low-confidence entries
 # ---------------------------------------------------------------------------
+
 
 def test_prune_stale_removes_low_confidence_entries(mem_db_path):
     from superharness.engine.operator_memory import OperatorMemory
@@ -318,6 +338,7 @@ def test_prune_stale_removes_low_confidence_entries(mem_db_path):
 # ---------------------------------------------------------------------------
 # past_iso helper for tests that need stale timing
 # ---------------------------------------------------------------------------
+
 
 def test_find_pattern_with_high_confidence(mem_db_path):
     """When confidence >= 0.8, find_pattern returns the entry and last_used_at is updated."""

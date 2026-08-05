@@ -1,4 +1,5 @@
 """MCP handoff tools — Iteration 7."""
+
 from __future__ import annotations
 
 import os
@@ -19,6 +20,7 @@ def get_handoffs(project_path: str, phase: str | None = None) -> list[dict]:
     """Return handoffs from SQLite, optionally filtered by phase (plan|report|done)."""
     try:
         from superharness.engine import state_reader as _sr
+
         rows = _sr.get_handoffs(project_path)
         if phase:
             rows = [r for r in rows if str(r.get("phase", "")) == phase]
@@ -38,6 +40,7 @@ def write_handoff(
     Returns the YAML export file path for backward compat."""
     # ── SQLite is the source of truth (mandatory). ──
     from superharness.engine.state_writer import write_handoff_to_db
+
     write_handoff_to_db(project_path, content, task_id=task_id, phase=phase)
 
     # Optional YAML export — best-effort, never blocks the write path.
@@ -52,6 +55,7 @@ def write_handoff(
                 yaml.dump(content, f, allow_unicode=True, default_flow_style=False)
             else:
                 import json
+
                 f.write(json.dumps(content, indent=2))
     except OSError:
         pass  # export-only; failure is non-fatal

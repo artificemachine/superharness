@@ -14,10 +14,10 @@ Before this fix:
 Side-effect fence: no real daemon is spawned in these tests. `_stop_daemon`'s
 process-signalling is asserted with `os.kill`/`_is_pid_alive` stubbed.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
-from unittest.mock import patch
 
 import pytest
 
@@ -37,6 +37,7 @@ from superharness.commands import daemon_monitor
 # (adopts rather than spawns, and launches as `-m`), plus a Windows-safety
 # assertion inherited from `pid_alive` no longer being reimplemented here.
 # ---------------------------------------------------------------------------
+
 
 class _Stop(Exception):
     pass
@@ -59,8 +60,14 @@ class TestMonitorAdoptsWatcher:
 
         with pytest.raises(_Stop):
             daemon_monitor.run_monitor(
-                str(tmp_path), 30, str(tmp_path / "out.log"), str(tmp_path / "err.log"),
-                watcher_pid=4242, spawn=fake_spawn, sleep=lambda s: None, alive=fake_alive,
+                str(tmp_path),
+                30,
+                str(tmp_path / "out.log"),
+                str(tmp_path / "err.log"),
+                watcher_pid=4242,
+                spawn=fake_spawn,
+                sleep=lambda s: None,
+                alive=fake_alive,
             )
 
         assert seen_pids and seen_pids[0] == 4242, (
@@ -80,8 +87,14 @@ class TestMonitorAdoptsWatcher:
 
         with pytest.raises(_Stop):
             daemon_monitor.run_monitor(
-                str(tmp_path), 30, str(tmp_path / "out.log"), str(tmp_path / "err.log"),
-                watcher_pid=4242, spawn=fake_spawn, sleep=lambda s: None, alive=fake_alive,
+                str(tmp_path),
+                30,
+                str(tmp_path / "out.log"),
+                str(tmp_path / "err.log"),
+                watcher_pid=4242,
+                spawn=fake_spawn,
+                sleep=lambda s: None,
+                alive=fake_alive,
             )
 
         assert not spawned, (
@@ -115,13 +128,17 @@ class TestMonitorAdoptsWatcher:
             raise _Stop()
 
         monkeypatch.setattr(daemon_mod.subprocess, "Popen", fake_popen)
-        monkeypatch.setattr(daemon_mod, "_check_version_and_upgrade", lambda project_dir: None)
+        monkeypatch.setattr(
+            daemon_mod, "_check_version_and_upgrade", lambda project_dir: None
+        )
         if hasattr(daemon_mod.os, "fork"):
             monkeypatch.setattr(daemon_mod.os, "fork", lambda: 0)
             monkeypatch.setattr(daemon_mod.os, "setsid", lambda: None, raising=False)
             monkeypatch.setattr(daemon_mod.os, "chdir", lambda p: None)
             monkeypatch.setattr(daemon_mod.os, "umask", lambda m: None, raising=False)
-            monkeypatch.setattr(daemon_mod.os, "closerange", lambda a, b: None, raising=False)
+            monkeypatch.setattr(
+                daemon_mod.os, "closerange", lambda a, b: None, raising=False
+            )
             monkeypatch.setattr(daemon_mod.os, "open", lambda *a, **k: 0)
             monkeypatch.setattr(daemon_mod.os, "execvpe", fake_execvpe)
 
@@ -137,6 +154,7 @@ class TestMonitorAdoptsWatcher:
 # ---------------------------------------------------------------------------
 # _stop_daemon — must kill the watcher, not only the monitor
 # ---------------------------------------------------------------------------
+
 
 def _write_state(project_dir: Path, pid: int, watcher_pid: int | None) -> None:
     state = {"pid": pid, "project": str(project_dir), "interval": 30}
@@ -162,7 +180,9 @@ class TestStopKillsWatcher:
 
         monkeypatch.setattr(daemon_mod, "_is_pid_alive", lambda pid: True)
         terminated = []
-        monkeypatch.setattr(daemon_mod, "terminate_group", lambda pid, **kwargs: terminated.append(pid))
+        monkeypatch.setattr(
+            daemon_mod, "terminate_group", lambda pid, **kwargs: terminated.append(pid)
+        )
 
         daemon_mod._stop_daemon(tmp_path)
 
@@ -183,11 +203,15 @@ class TestStopKillsWatcher:
 
         monkeypatch.setattr(daemon_mod, "_is_pid_alive", fake_alive)
         terminated = []
-        monkeypatch.setattr(daemon_mod, "terminate_group", lambda pid, **kwargs: terminated.append(pid))
+        monkeypatch.setattr(
+            daemon_mod, "terminate_group", lambda pid, **kwargs: terminated.append(pid)
+        )
 
         daemon_mod._stop_daemon(tmp_path)  # must not raise
 
-        assert terminated == [100], "must not attempt to terminate an already-dead watcher pid"
+        assert terminated == [100], (
+            "must not attempt to terminate an already-dead watcher pid"
+        )
 
     def test_stop_removes_state_file_after_terminating(self, tmp_path, monkeypatch):
         (tmp_path / ".superharness").mkdir()

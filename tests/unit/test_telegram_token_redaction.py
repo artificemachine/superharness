@@ -5,6 +5,7 @@ Covers the 2026-07-20 audit finding: `requests` exceptions carrying the full
 `logger.warning(..., exc_info=True)` / `logger.exception(...)`, which
 discloses the credential to anyone who can read the serving logs.
 """
+
 from __future__ import annotations
 
 import logging
@@ -29,7 +30,7 @@ def project_dir(tmp_path):
 
 def test_base_url_is_not_logged_verbatim(project_dir, caplog):
     """A requests exception carrying the full bot URL must not leak the token."""
-    listener = GatewayListener(
+    GatewayListener(
         token=TOKEN,
         allowed_senders=["42"],
         project_dir=project_dir,
@@ -41,7 +42,9 @@ def test_base_url_is_not_logged_verbatim(project_dir, caplog):
         f"Max retries exceeded with url: /bot{TOKEN}/getUpdates"
     )
 
-    with caplog.at_level(logging.WARNING, logger="superharness.modules.gateway.telegram_gateway"):
+    with caplog.at_level(
+        logging.WARNING, logger="superharness.modules.gateway.telegram_gateway"
+    ):
         try:
             raise err
         except requests.exceptions.ConnectionError as e:
@@ -83,7 +86,9 @@ def test_actions_telegram_error_path_is_redacted(caplog, monkeypatch):
 
     monkeypatch.setattr(actions_telegram, "requests", _BrokenSession())
 
-    with caplog.at_level(logging.WARNING, logger="superharness.modules.actions.telegram"):
+    with caplog.at_level(
+        logging.WARNING, logger="superharness.modules.actions.telegram"
+    ):
         result = actions_telegram.telegram_send(
             context={"task_id": "t-1", "event": "on_close", "summary": "done"},
             settings={},

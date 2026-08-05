@@ -3,18 +3,16 @@
 Wire detect_loop + LoopGuard into watcher log analyzer.
 When a tool loop is detected, escalate task to blocked.
 """
+
 from __future__ import annotations
 
-import json
 import os
 import tempfile
 from pathlib import Path
-from unittest.mock import patch
-
-import pytest
 
 
 # ── RED: detect_loop on launcher log ──────────────────────────────────────────
+
 
 def test_detect_loop_finds_error_loop() -> None:
     """detect_loop should detect same tool erroring 3x consecutively."""
@@ -81,17 +79,24 @@ Tool: write
 
 # ── RED: LoopGuard escalation ────────────────────────────────────────────────
 
+
 def test_loop_guard_warn_escalates_to_block() -> None:
     """LoopGuard should escalate from warn to block after WARN_ESCALATION_COUNT cycles."""
-    from superharness.engine.loop_detector import LoopGuard, LOOP_WARN_THRESHOLD
+    from superharness.engine.loop_detector import LoopGuard
 
     with tempfile.TemporaryDirectory() as td:
         guard = LoopGuard(td)
 
         # Simulate warn results (tool called LOOP_WARN_THRESHOLD times but not BLOCK)
-        warn_result = {"loop_detected": True, "warn": True, "block": False,
-                       "failure_loop": False, "pattern": "grep", "count": 3,
-                       "reason": "grep called 3 consecutive times"}
+        warn_result = {
+            "loop_detected": True,
+            "warn": True,
+            "block": False,
+            "failure_loop": False,
+            "pattern": "grep",
+            "count": 3,
+            "reason": "grep called 3 consecutive times",
+        }
 
         # First two cycles: warn only
         action1 = guard.check("task-1", warn_result)
@@ -113,11 +118,24 @@ def test_loop_guard_clean_resets_counter() -> None:
     with tempfile.TemporaryDirectory() as td:
         guard = LoopGuard(td)
 
-        warn_result = {"loop_detected": True, "warn": True, "block": False,
-                       "failure_loop": False, "pattern": "grep", "count": 3,
-                       "reason": "grep called 3 consecutive times"}
-        clean_result = {"loop_detected": False, "warn": False, "block": False,
-                        "failure_loop": False, "pattern": "", "count": 0, "reason": ""}
+        warn_result = {
+            "loop_detected": True,
+            "warn": True,
+            "block": False,
+            "failure_loop": False,
+            "pattern": "grep",
+            "count": 3,
+            "reason": "grep called 3 consecutive times",
+        }
+        clean_result = {
+            "loop_detected": False,
+            "warn": False,
+            "block": False,
+            "failure_loop": False,
+            "pattern": "",
+            "count": 0,
+            "reason": "",
+        }
 
         guard.check("task-1", warn_result)  # warn #1
         guard.check("task-1", clean_result)  # clean → reset
@@ -132,15 +150,22 @@ def test_loop_guard_direct_block() -> None:
     with tempfile.TemporaryDirectory() as td:
         guard = LoopGuard(td)
 
-        block_result = {"loop_detected": True, "warn": False, "block": True,
-                        "failure_loop": True, "pattern": "write",
-                        "count": 3, "reason": "write failed 3 consecutive times"}
+        block_result = {
+            "loop_detected": True,
+            "warn": False,
+            "block": True,
+            "failure_loop": True,
+            "pattern": "write",
+            "count": 3,
+            "reason": "write failed 3 consecutive times",
+        }
 
         action = guard.check("task-1", block_result)
         assert action["action"] == "block"
 
 
 # ── RED: watcher log analyzer integration ─────────────────────────────────────
+
 
 def test_log_analyzer_detects_loop_in_log(tmp_path: Path) -> None:
     """The watcher log analyzer function should detect loops in launcher logs."""

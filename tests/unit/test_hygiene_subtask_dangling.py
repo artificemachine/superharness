@@ -7,12 +7,10 @@ produce a hygiene warning. A done parent with all subtasks resolved
 An in-progress parent with open subtasks is not flagged — the gate only
 cares about closed parents that have dangling sub-work.
 """
+
 from __future__ import annotations
 
-import os
-import tempfile
 
-import pytest
 import yaml
 
 from superharness.engine.validate import run_validate
@@ -37,8 +35,8 @@ def _write_contract(tmp_path, tasks: list) -> str:
 def _done_task_with_subtasks(sub_statuses: list[str], task_id: str = "T-1") -> dict:
     subtasks = [
         {
-            "id": f"{task_id}.{i+1}",
-            "title": f"sub {i+1}",
+            "id": f"{task_id}.{i + 1}",
+            "title": f"sub {i + 1}",
             "status": s,
         }
         for i, s in enumerate(sub_statuses)
@@ -59,8 +57,14 @@ def _handoff_for(tmp_path, task_id: str) -> None:
     hfile = hdir / f"{task_id}-to-owner.yaml"
     hfile.write_text(yaml.dump({"task": task_id, "status": "done"}))
     from tests.helpers import seed_sqlite_handoff
-    seed_sqlite_handoff(tmp_path, task_id, phase="report", status="done",
-                        content=f"task: {task_id}\nstatus: done\n")
+
+    seed_sqlite_handoff(
+        tmp_path,
+        task_id,
+        phase="report",
+        status="done",
+        content=f"task: {task_id}\nstatus: done\n",
+    )
 
 
 def _ledger_mention(tmp_path, task_id: str) -> None:
@@ -69,6 +73,7 @@ def _ledger_mention(tmp_path, task_id: str) -> None:
     ledger = harness_dir / "ledger.md"
     ledger.write_text(f"- 2026-01-01 — actor — CLOSE: {task_id} — done\n")
     from tests.helpers import seed_sqlite_ledger
+
     seed_sqlite_ledger(tmp_path, action=f"CLOSE: {task_id} done", task_id=task_id)
 
 
@@ -134,7 +139,9 @@ class TestHygieneDanglingSubtasks:
         assert rc == 0
         assert "open subtask" not in out
 
-    def test_in_progress_parent_with_open_subtasks_is_not_flagged(self, tmp_path, capsys):
+    def test_in_progress_parent_with_open_subtasks_is_not_flagged(
+        self, tmp_path, capsys
+    ):
         task = {
             "id": "T-2",
             "title": "In progress parent",
@@ -143,7 +150,7 @@ class TestHygieneDanglingSubtasks:
             "subtasks": [{"id": "T-2.1", "title": "sub", "status": "pending"}],
         }
         project = _write_contract(tmp_path, [task])
-        rc = run_validate(project)
+        run_validate(project)
         out = capsys.readouterr().out
         assert "open subtask" not in out
 
@@ -159,7 +166,7 @@ class TestHygieneDanglingSubtasks:
         project = _write_contract(tmp_path, [task])
         _handoff_for(tmp_path, "T-3")
         _ledger_mention(tmp_path, "T-3")
-        rc = run_validate(project)
+        run_validate(project)
         out = capsys.readouterr().out
         assert "open subtask" not in out
 

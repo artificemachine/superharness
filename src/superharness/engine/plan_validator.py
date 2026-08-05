@@ -14,6 +14,7 @@ Heuristics enforced (any failure blocks auto-approval):
 
 Each failure is a human-readable string that surfaces in the dashboard.
 """
+
 from __future__ import annotations
 
 import re
@@ -73,9 +74,7 @@ def _check_acceptance_criteria(plan: dict, contract_task: dict) -> list[str]:
     if not crits:
         return []
     body = (plan.get("plan") or "").lower()
-    tdd_text = " ".join(
-        str(v) for v in (plan.get("tdd") or {}).values()
-    ).lower()
+    tdd_text = " ".join(str(v) for v in (plan.get("tdd") or {}).values()).lower()
     haystack = body + " " + tdd_text
     failures: list[str] = []
     for c in crits:
@@ -83,7 +82,9 @@ def _check_acceptance_criteria(plan: dict, contract_task: dict) -> list[str]:
             continue
         # Significant words: length > 2, exclude common stop words
         stops = {"the", "and", "for", "are", "not", "but", "any", "all", "with"}
-        words = [w for w in re.findall(r"\w+", c.lower()) if len(w) > 2 and w not in stops]
+        words = [
+            w for w in re.findall(r"\w+", c.lower()) if len(w) > 2 and w not in stops
+        ]
         if not words:
             continue
         # Pass if any significant word appears in plan/tdd. Catches "no mention at all".

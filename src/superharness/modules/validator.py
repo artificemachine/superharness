@@ -13,6 +13,7 @@ Usage::
     except ManifestValidationError as exc:
         print(f"Invalid manifest: {exc}")
 """
+
 from __future__ import annotations
 
 from typing import Any, Optional
@@ -100,9 +101,7 @@ class ManifestValidationError(Exception):
     def __init__(self, module_name: str, errors: list[dict[str, Any]]) -> None:
         self.module_name = module_name
         self.errors = errors
-        super().__init__(
-            f"Module '{module_name}' manifest validation failed: {errors}"
-        )
+        super().__init__(f"Module '{module_name}' manifest validation failed: {errors}")
 
 
 # ── Public validate function ───────────────────────────────────────────────────
@@ -123,7 +122,9 @@ def validate_manifest(data: dict[str, Any]) -> ModuleManifest:
     try:
         return ModuleManifest.model_validate(data)
     except ValidationError as exc:
-        module_name = data.get("name", "<unknown>") if isinstance(data, dict) else "<unknown>"
+        module_name = (
+            data.get("name", "<unknown>") if isinstance(data, dict) else "<unknown>"
+        )
         raise ManifestValidationError(
             module_name=str(module_name),
             errors=exc.errors(),

@@ -1,4 +1,5 @@
 """shux mcp CLI subcommands — Iteration 10."""
+
 from __future__ import annotations
 
 import json
@@ -29,24 +30,39 @@ def cmd_mcp():
 
 
 @cmd_mcp.command(name="start")
-@click.option("--port", "-p", type=int, default=7474, show_default=True,
-              help="Port to listen on.")
-@click.option("--host", "-H", default="127.0.0.1", show_default=True,
-              help="Address to bind. Use 0.0.0.0 to accept LAN connections from other hosts.")
-@click.option("--project", "project_path", default=None,
-              help="Project directory (default: cwd).")
-@click.option("--transport", default="streamable-http", show_default=True,
-              help="FastMCP transport: streamable-http or sse.")
-def cmd_mcp_start(port: int, host: str, project_path: str | None, transport: str) -> None:
+@click.option(
+    "--port", "-p", type=int, default=7474, show_default=True, help="Port to listen on."
+)
+@click.option(
+    "--host",
+    "-H",
+    default="127.0.0.1",
+    show_default=True,
+    help="Address to bind. Use 0.0.0.0 to accept LAN connections from other hosts.",
+)
+@click.option(
+    "--project", "project_path", default=None, help="Project directory (default: cwd)."
+)
+@click.option(
+    "--transport",
+    default="streamable-http",
+    show_default=True,
+    help="FastMCP transport: streamable-http or sse.",
+)
+def cmd_mcp_start(
+    port: int, host: str, project_path: str | None, transport: str
+) -> None:
     """Start the superharness MCP server."""
     project_dir = os.path.realpath(project_path or os.getcwd())
     from superharness.mcp.server import run_server
+
     run_server(project_dir, port=port, transport=transport, host=host)
 
 
 @cmd_mcp.command(name="status")
-@click.option("--project", "project_path", default=None,
-              help="Project directory (default: cwd).")
+@click.option(
+    "--project", "project_path", default=None, help="Project directory (default: cwd)."
+)
 def cmd_mcp_status(project_path: str | None) -> None:
     """Show running MCP server status."""
     project_dir = os.path.realpath(project_path or os.getcwd())
@@ -73,8 +89,9 @@ def cmd_mcp_status(project_path: str | None) -> None:
 
 
 @cmd_mcp.command(name="stop")
-@click.option("--project", "project_path", default=None,
-              help="Project directory (default: cwd).")
+@click.option(
+    "--project", "project_path", default=None, help="Project directory (default: cwd)."
+)
 def cmd_mcp_stop(project_path: str | None) -> None:
     """Stop the running MCP server."""
     project_dir = os.path.realpath(project_path or os.getcwd())

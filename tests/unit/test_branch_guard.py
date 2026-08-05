@@ -22,7 +22,9 @@ pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="requires bash")
         ("git status", "allow"),
     ],
 )
-def test_branch_guard_decisions(repo_root, tmp_path, command: str, decision: str) -> None:
+def test_branch_guard_decisions(
+    repo_root, tmp_path, command: str, decision: str
+) -> None:
     script = repo_root / "adapters/claude-code/hooks/branch-guard.sh"
     payload = json.dumps({"tool_input": {"command": command}})
 
@@ -36,7 +38,9 @@ def test_branch_guard_decisions(repo_root, tmp_path, command: str, decision: str
 
 def _decide(repo_root, cwd, command: str) -> str:
     script = repo_root / "adapters/claude-code/hooks/branch-guard.sh"
-    result = run_bash(script, cwd=cwd, stdin=json.dumps({"tool_input": {"command": command}}))
+    result = run_bash(
+        script, cwd=cwd, stdin=json.dumps({"tool_input": {"command": command}})
+    )
     assert result.returncode == 0, result.stderr
     return parse_json_output(result.stdout)["hookSpecificOutput"]["permissionDecision"]
 
@@ -74,7 +78,9 @@ def _repo_on_branch(tmp_path, branch: str):
         "git push -u origin fix/some-branch",
     ],
 )
-def test_feature_branch_pushes_are_not_blocked(repo_root, tmp_path, command: str) -> None:
+def test_feature_branch_pushes_are_not_blocked(
+    repo_root, tmp_path, command: str
+) -> None:
     """Regression: the guard must judge the push target, not the command string."""
     assert _decide(repo_root, tmp_path, command) == "allow"
 
@@ -91,7 +97,9 @@ def test_feature_branch_pushes_are_not_blocked(repo_root, tmp_path, command: str
         "echo start; git push origin main",
     ],
 )
-def test_disguised_pushes_to_protected_branches_are_blocked(repo_root, tmp_path, command: str) -> None:
+def test_disguised_pushes_to_protected_branches_are_blocked(
+    repo_root, tmp_path, command: str
+) -> None:
     """Regression: these all reached main under the previous regex."""
     assert _decide(repo_root, tmp_path, command) == "deny"
 
@@ -108,7 +116,10 @@ def test_bare_push_from_feature_branch_is_allowed(repo_root, tmp_path) -> None:
 
 
 def test_force_with_lease_is_allowed(repo_root, tmp_path) -> None:
-    assert _decide(repo_root, tmp_path, "git push --force-with-lease origin fix/x") == "allow"
+    assert (
+        _decide(repo_root, tmp_path, "git push --force-with-lease origin fix/x")
+        == "allow"
+    )
 
 
 def test_gitlab_mirror_remote_is_allowed(repo_root, tmp_path) -> None:

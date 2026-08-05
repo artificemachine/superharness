@@ -5,6 +5,7 @@ telling the user to run `superharness verify` first.
 
 On success: sets status=done, appends ledger, writes handoff YAML.
 """
+
 from __future__ import annotations
 
 import os
@@ -14,6 +15,7 @@ from datetime import datetime, timezone
 from superharness.utils.paths import is_project_initialized
 
 import logging
+
 logger = logging.getLogger(__name__)
 
 
@@ -46,10 +48,10 @@ _JSON_CTX: dict = {}
 def _abort(msg: str, code: int = 1) -> None:
     if _JSON_MODE:
         from superharness.utils.json_output import emit_error
+
         emit_error(msg, exit_code=code, **_JSON_CTX)
     print(msg, file=sys.stderr)
     sys.exit(code)
-
 
 
 _CLOSE_ALLOWED_STATUSES = {"report_ready", "review_passed"}
@@ -65,7 +67,8 @@ def _cancel_open_subtasks_in_extras(
 ) -> None:
     """Cancel every open subtask in extras dict in-place and write ledger entries."""
     from superharness.engine.subtask import is_subtask_resolved
-    for sub in (extras.get("subtasks") or []):
+
+    for sub in extras.get("subtasks") or []:
         if not isinstance(sub, dict):
             continue
         if is_subtask_resolved(str(sub.get("status", "pending"))):
@@ -111,7 +114,10 @@ def close_task(
 
     owner = str(task_row.owner or "")
     if owner and actor != owner and actor != "owner":
-        print(f"forbidden: actor '{actor}' cannot close task '{task_id}' owned by '{owner}'", file=sys.stderr)
+        print(
+            f"forbidden: actor '{actor}' cannot close task '{task_id}' owned by '{owner}'",
+            file=sys.stderr,
+        )
         return 1
 
     # Status lifecycle gate (bypass with --force for emergencies)
@@ -134,6 +140,7 @@ def close_task(
                 evaluate_subtask_gate_from_disk,
                 format_gate_error,
             )
+
             task_dict = {"id": task_id, "subtasks": extras.get("subtasks")}
             gate = evaluate_subtask_gate_from_disk(task_dict, project_dir)
             if gate.enabled and gate.blocking:
@@ -165,12 +172,15 @@ def close_task(
 
     # Bulk-cancel open subtasks when --cancel-remaining was requested
     if cancel_remaining and cancel_reason:
-        _cancel_open_subtasks_in_extras(extras, task_id, actor, cancel_reason, now, ledger_file)
+        _cancel_open_subtasks_in_extras(
+            extras, task_id, actor, cancel_reason, now, ledger_file
+        )
 
     # Log force-bypass to ledger when used
     if force:
         try:
             from superharness.engine.subtask_gate import evaluate_subtask_gate_from_disk
+
             task_dict = {"id": task_id, "subtasks": extras.get("subtasks")}
             gate = evaluate_subtask_gate_from_disk(task_dict, project_dir)
             if gate.enabled and gate.blocking:
@@ -194,7 +204,9 @@ def close_task(
         "updated_at": now,
     }
     if summary:
-        changes["context"] = (task_row.context or "") + (f"\nSummary: {summary}" if task_row.context else f"Summary: {summary}")
+        changes["context"] = (task_row.context or "") + (
+            f"\nSummary: {summary}" if task_row.context else f"Summary: {summary}"
+        )
     if cancel_remaining and cancel_reason:
         changes["extras_json"] = json.dumps(extras)
 
@@ -229,6 +241,7 @@ def close_task(
         handoff_data["context"] = context
     try:
         from superharness.commands.rules import all_rules_text
+
         rules_text = all_rules_text(project_dir)
         if rules_text:
             handoff_data["rules"] = rules_text
@@ -237,6 +250,7 @@ def close_task(
         pass
     try:
         from superharness.engine.state_writer import upsert_handoff
+
         if not upsert_handoff(project_dir, f"{task_id}-to-owner", handoff_data):
             raise OSError("upsert_handoff returned False")
     except Exception as e:
@@ -245,6 +259,7 @@ def close_task(
     # Sync inbox
     try:
         from superharness.commands.task import _sync_inbox_after_status
+
         _sync_inbox_after_status(project_dir, task_id, "done")
     except Exception as e:
         logger.warning("close.py unexpected error: %s", e, exc_info=True)
@@ -257,6 +272,7 @@ def close_task(
     try:
         from pathlib import Path
         from superharness.modules.runner import run_hooks
+
         run_hooks(
             "on_close",
             {
@@ -272,6 +288,7 @@ def close_task(
     # Worktree cleanup — remove the dispatch worktree recorded for this task
     try:
         from superharness.engine.db import get_connection, init_db
+
         conn = get_connection(project_dir)
         init_db(conn)
         row = conn.execute(
@@ -286,30 +303,40 @@ def close_task(
             # point anywhere on disk — verify containment instead of trusting it.
             logger.warning(
                 "Refusing to remove worktree_path %r for task %r: resolves "
-                "outside the superharness worktree root", wt_path, task_id,
+                "outside the superharness worktree root",
+                wt_path,
+                task_id,
             )
             wt_path = None
         if wt_path:
-            import shutil, subprocess
+            import shutil
+            import subprocess
+
             harness_link = os.path.join(wt_path, ".superharness")
             if os.path.islink(harness_link):
                 os.unlink(harness_link)
             rr = subprocess.run(
                 ["git", "-C", project_dir, "worktree", "remove", "--force", wt_path],
-                capture_output=True, check=False,
+                capture_output=True,
+                check=False,
             )
             if rr.returncode != 0 and os.path.isdir(wt_path):
                 shutil.rmtree(wt_path, ignore_errors=True)
             subprocess.run(
                 ["git", "-C", project_dir, "worktree", "prune"],
-                capture_output=True, check=False,
+                capture_output=True,
+                check=False,
             )
     except Exception as e:
-        print(f"Warning: failed to clean up worktree for '{task_id}': {e}", file=sys.stderr)
+        print(
+            f"Warning: failed to clean up worktree for '{task_id}': {e}",
+            file=sys.stderr,
+        )
 
     print(f"Closed task '{task_id}' (actor={actor})")
     if task_row.issue_url:
         from superharness.commands.issue_import import _detect_platform
+
         close_bin = "gh" if _detect_platform(task_row.issue_url) == "github" else "glab"
         print(f"Linked issue still open: {task_row.issue_url}")
         print(f"  close it: {close_bin} issue close {task_row.issue_url}")
@@ -331,27 +358,39 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--actor", default="claude-code")
     parser.add_argument("--summary", default="Task completed and verified")
     parser.add_argument(
-        "--skip-verify", action="store_true", default=False,
+        "--skip-verify",
+        action="store_true",
+        default=False,
         help="Bypass verification gate (not recommended)",
     )
     parser.add_argument(
-        "--force", action="store_true", default=False,
+        "--force",
+        action="store_true",
+        default=False,
         help="Bypass status lifecycle gate (emergency use only)",
     )
     parser.add_argument(
-        "--context", default="",
+        "--context",
+        default="",
         help="What the next session needs to know (written to handoff YAML)",
     )
     parser.add_argument(
-        "--cancel-remaining", action="store_true", default=False,
+        "--cancel-remaining",
+        action="store_true",
+        default=False,
         help="Cancel every open subtask with --cancel-reason, then close the task.",
     )
     parser.add_argument(
-        "--cancel-reason", default="",
+        "--cancel-reason",
+        default="",
         help="Reason for bulk-cancelling open subtasks (required with --cancel-remaining).",
     )
-    parser.add_argument("--json", action="store_true", default=False,
-                        help="Emit machine-readable JSON on stdout instead of human text.")
+    parser.add_argument(
+        "--json",
+        action="store_true",
+        default=False,
+        help="Emit machine-readable JSON on stdout instead of human text.",
+    )
 
     opts = parser.parse_args(argv)
 
@@ -367,6 +406,7 @@ def main(argv: list[str] | None = None) -> None:
 
     if _JSON_MODE:
         import io
+
         _orig_stdout = sys.stdout
         _orig_stderr = sys.stderr
         sys.stdout = io.StringIO()
@@ -374,7 +414,10 @@ def main(argv: list[str] | None = None) -> None:
         sys.stderr = _err_buf
         try:
             rc = close_task(
-                project_dir, opts.task_id, opts.actor, opts.summary,
+                project_dir,
+                opts.task_id,
+                opts.actor,
+                opts.summary,
                 skip_verify=opts.skip_verify,
                 context=opts.context,
                 force=opts.force,
@@ -392,10 +435,14 @@ def main(argv: list[str] | None = None) -> None:
         if rc != 0:
             payload["error"] = _err_buf.getvalue().strip() or "close failed"
         from superharness.utils.json_output import emit_json
+
         emit_json(payload, ok=(rc == 0), exit_code=rc)
 
     rc = close_task(
-        project_dir, opts.task_id, opts.actor, opts.summary,
+        project_dir,
+        opts.task_id,
+        opts.actor,
+        opts.summary,
         skip_verify=opts.skip_verify,
         context=opts.context,
         force=opts.force,

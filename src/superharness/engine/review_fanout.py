@@ -10,6 +10,7 @@ Usage:
     verdict.passed  # True/False
     verdict.findings  # list[str]
 """
+
 from __future__ import annotations
 
 import concurrent.futures
@@ -68,11 +69,17 @@ class ReviewFanout:
         """Dispatch a single code-reviewer for task_id (--print-only stub)."""
         try:
             cmd = [
-                sys.executable, "-m", "superharness.commands.delegate",
-                "--project", self.project_dir,
-                "--to", self.target,
-                "--task", task_id,
-                "--role", "code_reviewer",
+                sys.executable,
+                "-m",
+                "superharness.commands.delegate",
+                "--project",
+                self.project_dir,
+                "--to",
+                self.target,
+                "--task",
+                task_id,
+                "--role",
+                "code_reviewer",
                 "--for-review",
                 "--print-only",  # dry-run: no live agent launched
                 "--json",

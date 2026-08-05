@@ -6,7 +6,7 @@ import sqlite3
 import logging
 import shutil
 from datetime import datetime, timezone
-from typing import Callable, Any, Iterator
+from typing import Callable, Iterator
 from contextlib import contextmanager
 
 from superharness.engine.state_errors import ConnectionError, SchemaError
@@ -35,8 +35,20 @@ _UNSAFE_JOURNAL_MODES = {"MEMORY", "OFF"}
 # is included so an untriggered automount point (almost always network-backed) is
 # treated conservatively as network before its real filesystem materializes.
 _NETWORK_FS_TYPES = {
-    "nfs", "nfs3", "nfs4", "cifs", "smbfs", "smb2", "smb3",
-    "fuse.sshfs", "9p", "afs", "glusterfs", "ceph", "lustre", "autofs",
+    "nfs",
+    "nfs3",
+    "nfs4",
+    "cifs",
+    "smbfs",
+    "smb2",
+    "smb3",
+    "fuse.sshfs",
+    "9p",
+    "afs",
+    "glusterfs",
+    "ceph",
+    "lustre",
+    "autofs",
 }
 
 
@@ -88,14 +100,17 @@ def _resolve_journal_mode(db_path: str) -> str:
         if override in _UNSAFE_JOURNAL_MODES:
             logger.warning(
                 "SUPERHARNESS_JOURNAL_MODE=%s disables crash recovery — database "
-                "corruption is likely on unclean exit", override,
+                "corruption is likely on unclean exit",
+                override,
             )
         return override
     return "PERSIST" if _is_network_fs(db_path) else "WAL"
 
+
 def now_iso() -> str:
     """Return current UTC timestamp in ISO8601 format."""
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
 
 def _column_exists(conn: sqlite3.Connection, table: str, column: str) -> bool:
     """Check if a column exists in a table using PRAGMA table_info.
@@ -112,10 +127,14 @@ def _column_exists(conn: sqlite3.Connection, table: str, column: str) -> bool:
             return True
     return False
 
-def _add_column_if_missing(conn: sqlite3.Connection, table: str, column: str, ddl_clause: str):
+
+def _add_column_if_missing(
+    conn: sqlite3.Connection, table: str, column: str, ddl_clause: str
+):
     """Add a column to a table if it doesn't already exist."""
     if not _column_exists(conn, table, column):
         conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {ddl_clause}")
+
 
 def _backup_db(project_dir: str, version: int):
     """Create a backup of the database before a migration.
@@ -134,7 +153,9 @@ def _backup_db(project_dir: str, version: int):
             shutil.copy2(src, dst)
             logger.info(f"Created pre-migration backup: {dst}")
         except Exception as e:
-            raise SchemaError(f"Pre-migration backup failed for v{version} at {dst}: {e}") from e
+            raise SchemaError(
+                f"Pre-migration backup failed for v{version} at {dst}: {e}"
+            ) from e
 
 
 def get_connection(project_dir: str) -> sqlite3.Connection:
@@ -177,7 +198,9 @@ def get_connection(project_dir: str) -> sqlite3.Connection:
             sidecar = db_path + suffix
             try:
                 if os.path.isfile(sidecar):
-                    logger.warning("Removing stale %s before %s open", sidecar, journal_mode)
+                    logger.warning(
+                        "Removing stale %s before %s open", sidecar, journal_mode
+                    )
                     os.unlink(sidecar)
             except OSError:
                 pass  # best-effort — a live writer may hold it; connect anyway
@@ -200,12 +223,15 @@ def get_connection(project_dir: str) -> sqlite3.Connection:
             logger.warning(
                 "SQLite on network filesystem (%s): %s rollback journal selected; "
                 "concurrent multi-host writes are safer than WAL but NOT guaranteed "
-                "corruption-free — prefer a single-writer host", db_path, journal_mode,
+                "corruption-free — prefer a single-writer host",
+                db_path,
+                journal_mode,
             )
 
         return conn
     except sqlite3.Error as e:
         raise ConnectionError(f"Could not open database at {db_path}: {e}")
+
 
 @contextmanager
 def transaction(conn: sqlite3.Connection) -> Iterator[None]:
@@ -213,18 +239,19 @@ def transaction(conn: sqlite3.Connection) -> Iterator[None]:
     if conn.in_transaction:
         yield
         return
-        
+
     try:
         with conn:
             yield
-    except sqlite3.Error as e:
+    except sqlite3.Error:
         # Wrap database errors if needed, but conn context manager handles rollback
         raise
+
 
 @contextmanager
 def managed_connection(project_dir: str) -> Iterator[sqlite3.Connection]:
     """Context manager: open connection, init DB, commit on success, close always.
-    
+
     Usage:
         with managed_connection(project_dir) as conn:
             tasks_dao.upsert(conn, row)
@@ -240,6 +267,7 @@ def managed_connection(project_dir: str) -> Iterator[sqlite3.Connection]:
     finally:
         conn.close()
 
+
 def init_db(conn: sqlite3.Connection, project_dir: str | None = None) -> None:
     """Initialize schema and run migrations."""
     # Ensure migration table exists
@@ -249,11 +277,11 @@ def init_db(conn: sqlite3.Connection, project_dir: str | None = None) -> None:
             applied_at TEXT    NOT NULL
         )
     """)
-    
+
     # Check current version
     cursor = conn.execute("PRAGMA user_version")
     version = cursor.fetchone()[0]
-    
+
     if version < CURRENT_SCHEMA_VERSION:
         _run_migrations(conn, version, project_dir)
 
@@ -350,14 +378,20 @@ def _heal_known_migration_drift(conn: sqlite3.Connection) -> None:
             continue
         logger.warning(
             "Healing migration drift: %s missing column %r despite user_version=%d claiming v%d applied",
-            table, column, user_version, version,
+            table,
+            column,
+            user_version,
+            version,
         )
         _add_column_if_missing(conn, table, column, ddl_clause)
         healed = True
     if healed:
         conn.commit()
 
-def _run_migrations(conn: sqlite3.Connection, current_version: int, project_dir: str | None = None) -> None:
+
+def _run_migrations(
+    conn: sqlite3.Connection, current_version: int, project_dir: str | None = None
+) -> None:
     """Apply pending migrations in order.
 
     One backup per run, taken before the first pending migration: that is the
@@ -372,6 +406,7 @@ def _run_migrations(conn: sqlite3.Connection, current_version: int, project_dir:
         _backup_db_from_connection(conn, current_version)
     for v in range(current_version + 1, CURRENT_SCHEMA_VERSION + 1):
         _run_single_migration(conn, v, project_dir)
+
 
 # Migrations that rebuild a table referenced by other tables' foreign keys
 # (DROP TABLE fails under foreign_keys=ON if other rows reference it, even
@@ -428,7 +463,9 @@ def _backup_db_from_connection(conn: sqlite3.Connection, version: int) -> None:
         logger.warning("Pre-migration backup skipped: %s", e)
 
 
-def _run_single_migration(conn: sqlite3.Connection, v: int, project_dir: str | None = None) -> None:
+def _run_single_migration(
+    conn: sqlite3.Connection, v: int, project_dir: str | None = None
+) -> None:
     """Run a single schema migration with savepoint rollback.
 
     Backup happens once per run in _run_migrations, not per step — see the
@@ -472,7 +509,7 @@ def _run_single_migration(conn: sqlite3.Connection, v: int, project_dir: str | N
                         )
                 conn.execute(
                     "INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)",
-                    (v, now_iso())
+                    (v, now_iso()),
                 )
                 conn.execute(f"PRAGMA user_version = {v}")
                 conn.execute(f"RELEASE SAVEPOINT migrate_v{v}")
@@ -542,7 +579,10 @@ def _rebuild_table_with_new_ddl(
         for stmt in indexes:
             conn.execute(stmt)
         return
-    existing = {r["name"] if hasattr(r, "keys") else r[1] for r in conn.execute(f"PRAGMA table_info({table})").fetchall()}
+    existing = {
+        r["name"] if hasattr(r, "keys") else r[1]
+        for r in conn.execute(f"PRAGMA table_info({table})").fetchall()
+    }
     insert_cols, select_exprs = [], []
     for c in columns:
         if c in existing:
@@ -562,17 +602,21 @@ def _rebuild_table_with_new_ddl(
         # else: omit entirely — let the new table's own DEFAULT/NULL apply.
     insert_col_list = ", ".join(insert_cols)
     select_expr_list = ", ".join(select_exprs)
-    conn.execute(f"INSERT INTO {tmp} ({insert_col_list}) SELECT {select_expr_list} FROM {table}")
+    conn.execute(
+        f"INSERT INTO {tmp} ({insert_col_list}) SELECT {select_expr_list} FROM {table}"
+    )
     conn.execute(f"DROP TABLE {table}")
     conn.execute(f"ALTER TABLE {tmp} RENAME TO {table}")
     for stmt in indexes:
         conn.execute(stmt)
 
+
 # --- Migration Functions ---
+
 
 def _migration_v1(conn: sqlite3.Connection) -> None:
     """Initial schema creation."""
-    
+
     # Tasks
     conn.execute("""
         CREATE TABLE IF NOT EXISTS tasks (
@@ -613,7 +657,9 @@ def _migration_v1(conn: sqlite3.Connection) -> None:
             FOREIGN KEY (prerequisite_task_id) REFERENCES tasks(id) ON DELETE RESTRICT
         )
     """)
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_deps_prereq ON task_dependencies(prerequisite_task_id)")
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_deps_prereq ON task_dependencies(prerequisite_task_id)"
+    )
 
     # Inbox
     conn.execute("""
@@ -639,8 +685,12 @@ def _migration_v1(conn: sqlite3.Connection) -> None:
             FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE
         )
     """)
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_inbox_status_priority ON inbox(status, priority DESC, created_at)")
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_inbox_heartbeat ON inbox(status, last_heartbeat)")
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_inbox_status_priority ON inbox(status, priority DESC, created_at)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_inbox_heartbeat ON inbox(status, last_heartbeat)"
+    )
     # Prevent duplicate dispatch: only one active item per (task_id, target_agent).
     conn.execute("""
         CREATE UNIQUE INDEX IF NOT EXISTS idx_inbox_unique_task_agent
@@ -663,7 +713,9 @@ def _migration_v1(conn: sqlite3.Connection) -> None:
             FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE
         )
     """)
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_handoffs_task ON handoffs(task_id, created_at DESC)")
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_handoffs_task ON handoffs(task_id, created_at DESC)"
+    )
 
     # Failures
     conn.execute("""
@@ -676,8 +728,12 @@ def _migration_v1(conn: sqlite3.Connection) -> None:
             created_at     TEXT NOT NULL
         )
     """)
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_failures_task           ON failures(task_id)")
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_failures_agent_pattern  ON failures(agent, pattern)")
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_failures_task           ON failures(task_id)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_failures_agent_pattern  ON failures(agent, pattern)"
+    )
 
     # Decisions
     conn.execute("""
@@ -691,7 +747,9 @@ def _migration_v1(conn: sqlite3.Connection) -> None:
             created_at    TEXT    NOT NULL
         )
     """)
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_decisions_agent_time ON decisions(agent, created_at)")
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_decisions_agent_time ON decisions(agent, created_at)"
+    )
 
     # Ledger
     conn.execute("""
@@ -705,7 +763,9 @@ def _migration_v1(conn: sqlite3.Connection) -> None:
         )
     """)
     conn.execute("CREATE INDEX IF NOT EXISTS idx_ledger_time ON ledger(created_at)")
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_ledger_task ON ledger(task_id, created_at)")
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_ledger_task ON ledger(task_id, created_at)"
+    )
 
     # Review store
     conn.execute("""
@@ -719,7 +779,9 @@ def _migration_v1(conn: sqlite3.Connection) -> None:
             recorded_at TEXT    NOT NULL DEFAULT (datetime('now'))
         )
     """)
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_review_owner_type ON review_store(owner, task_type)")
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_review_owner_type ON review_store(owner, task_type)"
+    )
 
     # Watcher singleton
     conn.execute("""
@@ -745,7 +807,10 @@ def _migration_v1(conn: sqlite3.Connection) -> None:
             applied_at  TEXT
         )
     """)
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_yaml_sync_pending ON yaml_sync_queue(status, created_at)")
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_yaml_sync_pending ON yaml_sync_queue(status, created_at)"
+    )
+
 
 def _migration_v2(conn: sqlite3.Connection) -> None:
     """Add parent_id to tasks, discussions tables, and yaml_sync_queue dedup index."""
@@ -769,8 +834,12 @@ def _migration_v2(conn: sqlite3.Connection) -> None:
             FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE SET NULL
         )
     """)
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_discussions_task   ON discussions(task_id)")
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_discussions_status ON discussions(status)")
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_discussions_task   ON discussions(task_id)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_discussions_status ON discussions(status)"
+    )
 
     conn.execute("""
         CREATE TABLE IF NOT EXISTS discussion_rounds (
@@ -784,7 +853,9 @@ def _migration_v2(conn: sqlite3.Connection) -> None:
             FOREIGN KEY (discussion_id) REFERENCES discussions(id) ON DELETE CASCADE
         )
     """)
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_disc_rounds_disc ON discussion_rounds(discussion_id, round_number)")
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_disc_rounds_disc ON discussion_rounds(discussion_id, round_number)"
+    )
     # One submission per (discussion, round, agent). Declared here as well as in
     # migration v36 so every path converges: a fresh DB gets it with the table,
     # an existing DB gets it (plus dedup) from v36, and a DB that reached v36
@@ -851,9 +922,12 @@ def _migration_v8(conn: sqlite3.Connection) -> None:
     """Add recovery_count column to inbox so the auto-recover counter
     is no longer stored inside the failed_reason text (which gets wiped
     every time a new failure overwrites it)."""
-    _add_column_if_missing(conn, "inbox", "recovery_count", "INTEGER NOT NULL DEFAULT 0")
+    _add_column_if_missing(
+        conn, "inbox", "recovery_count", "INTEGER NOT NULL DEFAULT 0"
+    )
     # Backfill from any pre-existing 'recovery_N:...' markers in failed_reason.
     import re as _re
+
     rows = conn.execute(
         "SELECT id, failed_reason FROM inbox WHERE failed_reason LIKE 'recovery_%'"
     ).fetchall()
@@ -878,7 +952,9 @@ def _migration_v10(conn: sqlite3.Connection) -> None:
     """Stamped per-task workflow/require_tdd. Column kept for backwards compat;
     autonomy is now profile-only (normalize_autonomy in engine/profile.py)."""
     _add_column_if_missing(conn, "tasks", "workflow", "TEXT")
-    _add_column_if_missing(conn, "tasks", "autonomy", "TEXT")  # deprecated — no longer written
+    _add_column_if_missing(
+        conn, "tasks", "autonomy", "TEXT"
+    )  # deprecated — no longer written
     _add_column_if_missing(conn, "tasks", "require_tdd", "INTEGER")
 
 
@@ -1170,7 +1246,9 @@ def _migration_v27(conn: sqlite3.Connection) -> None:
         "SELECT 1 FROM sqlite_master WHERE type='table' AND name='discussions'"
     ).fetchone()
     if has_discussions:
-        _add_column_if_missing(conn, "discussions", "max_rounds", "INTEGER NOT NULL DEFAULT 3")
+        _add_column_if_missing(
+            conn, "discussions", "max_rounds", "INTEGER NOT NULL DEFAULT 3"
+        )
 
 
 def _migration_v28(conn: sqlite3.Connection) -> None:
@@ -1192,7 +1270,9 @@ def _migration_v28(conn: sqlite3.Connection) -> None:
         )
         """
     )
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_task_usage_task_id ON task_usage(task_id)")
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_task_usage_task_id ON task_usage(task_id)"
+    )
 
 
 def _migration_v29(conn: sqlite3.Connection) -> None:
@@ -1271,7 +1351,8 @@ def _migration_v33(conn: sqlite3.Connection) -> None:
     itself needs foreign_keys toggled off around the whole migration.
     """
     _rebuild_table_with_new_ddl(
-        conn, "tasks",
+        conn,
+        "tasks",
         create_sql_template="""
             CREATE TABLE {tmp} (
                 id                   TEXT    PRIMARY KEY,
@@ -1323,15 +1404,51 @@ def _migration_v33(conn: sqlite3.Connection) -> None:
             )
         """,
         columns=[
-            "id", "title", "owner", "status", "effort", "project_path", "development_method",
-            "acceptance_criteria", "test_types", "out_of_scope", "definition_of_done", "context", "tdd",
-            "version", "created_at", "plan_proposed_at", "plan_approved_at", "in_progress_at",
-            "report_ready_at", "review_requested_at", "done_at", "cancelled_at", "parent_id",
-            "verified", "verified_at", "verified_by", "updated_at", "failed_at", "stopped_at",
-            "failed_reason", "pause_reason", "archived_at", "archived_reason", "model_tier",
-            "deadline_minutes", "worktree_path", "blocked_by_raw", "workflow", "autonomy",
-            "require_tdd", "extras_json", "locked_contract", "contract_locked_at",
-            "estimated_minutes", "issue_url",
+            "id",
+            "title",
+            "owner",
+            "status",
+            "effort",
+            "project_path",
+            "development_method",
+            "acceptance_criteria",
+            "test_types",
+            "out_of_scope",
+            "definition_of_done",
+            "context",
+            "tdd",
+            "version",
+            "created_at",
+            "plan_proposed_at",
+            "plan_approved_at",
+            "in_progress_at",
+            "report_ready_at",
+            "review_requested_at",
+            "done_at",
+            "cancelled_at",
+            "parent_id",
+            "verified",
+            "verified_at",
+            "verified_by",
+            "updated_at",
+            "failed_at",
+            "stopped_at",
+            "failed_reason",
+            "pause_reason",
+            "archived_at",
+            "archived_reason",
+            "model_tier",
+            "deadline_minutes",
+            "worktree_path",
+            "blocked_by_raw",
+            "workflow",
+            "autonomy",
+            "require_tdd",
+            "extras_json",
+            "locked_contract",
+            "contract_locked_at",
+            "estimated_minutes",
+            "issue_url",
         ],
         indexes=[
             "CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status)",
@@ -1348,7 +1465,8 @@ def _migration_v33(conn: sqlite3.Connection) -> None:
     )
 
     _rebuild_table_with_new_ddl(
-        conn, "failures",
+        conn,
+        "failures",
         create_sql_template="""
             CREATE TABLE {tmp} (
                 id             INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1369,7 +1487,8 @@ def _migration_v33(conn: sqlite3.Connection) -> None:
     )
 
     _rebuild_table_with_new_ddl(
-        conn, "decisions",
+        conn,
+        "decisions",
         create_sql_template="""
             CREATE TABLE {tmp} (
                 id            INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1382,7 +1501,15 @@ def _migration_v33(conn: sqlite3.Connection) -> None:
                 FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE SET NULL
             )
         """,
-        columns=["id", "agent", "task_id", "decision", "reason", "alternatives", "created_at"],
+        columns=[
+            "id",
+            "agent",
+            "task_id",
+            "decision",
+            "reason",
+            "alternatives",
+            "created_at",
+        ],
         indexes=[
             "CREATE INDEX IF NOT EXISTS idx_decisions_agent_time ON decisions(agent, created_at)",
         ],
@@ -1390,7 +1517,8 @@ def _migration_v33(conn: sqlite3.Connection) -> None:
     )
 
     _rebuild_table_with_new_ddl(
-        conn, "ledger",
+        conn,
+        "ledger",
         create_sql_template="""
             CREATE TABLE {tmp} (
                 id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1439,7 +1567,9 @@ def _migration_v34(conn: sqlite3.Connection) -> None:
         if cur.rowcount:
             logger.warning(
                 "Repaired %d orphaned %s.%s reference(s) left by the original v33",
-                cur.rowcount, table, column,
+                cur.rowcount,
+                table,
+                column,
             )
 
 
@@ -1481,7 +1611,8 @@ def _migration_v35(conn: sqlite3.Connection) -> None:
     status_list_sql = ", ".join(f"'{s}'" for s in ALL_STATUSES)
 
     _rebuild_table_with_new_ddl(
-        conn, "tasks",
+        conn,
+        "tasks",
         create_sql_template="""
             CREATE TABLE {tmp} (
                 id                   TEXT    PRIMARY KEY,
@@ -1531,17 +1662,54 @@ def _migration_v35(conn: sqlite3.Connection) -> None:
                 issue_url            TEXT,
                 FOREIGN KEY (parent_id) REFERENCES tasks(id) ON DELETE SET NULL
             )
-        """ % status_list_sql,
+        """
+        % status_list_sql,
         columns=[
-            "id", "title", "owner", "status", "effort", "project_path", "development_method",
-            "acceptance_criteria", "test_types", "out_of_scope", "definition_of_done", "context", "tdd",
-            "version", "created_at", "plan_proposed_at", "plan_approved_at", "in_progress_at",
-            "report_ready_at", "review_requested_at", "done_at", "cancelled_at", "parent_id",
-            "verified", "verified_at", "verified_by", "updated_at", "failed_at", "stopped_at",
-            "failed_reason", "pause_reason", "archived_at", "archived_reason", "model_tier",
-            "deadline_minutes", "worktree_path", "blocked_by_raw", "workflow", "autonomy",
-            "require_tdd", "extras_json", "locked_contract", "contract_locked_at",
-            "estimated_minutes", "issue_url",
+            "id",
+            "title",
+            "owner",
+            "status",
+            "effort",
+            "project_path",
+            "development_method",
+            "acceptance_criteria",
+            "test_types",
+            "out_of_scope",
+            "definition_of_done",
+            "context",
+            "tdd",
+            "version",
+            "created_at",
+            "plan_proposed_at",
+            "plan_approved_at",
+            "in_progress_at",
+            "report_ready_at",
+            "review_requested_at",
+            "done_at",
+            "cancelled_at",
+            "parent_id",
+            "verified",
+            "verified_at",
+            "verified_by",
+            "updated_at",
+            "failed_at",
+            "stopped_at",
+            "failed_reason",
+            "pause_reason",
+            "archived_at",
+            "archived_reason",
+            "model_tier",
+            "deadline_minutes",
+            "worktree_path",
+            "blocked_by_raw",
+            "workflow",
+            "autonomy",
+            "require_tdd",
+            "extras_json",
+            "locked_contract",
+            "contract_locked_at",
+            "estimated_minutes",
+            "issue_url",
         ],
         indexes=[
             "CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status)",

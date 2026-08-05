@@ -9,11 +9,12 @@ Covers all 5 acceptance criteria:
 
 These tests mock claude_agent_sdk so they run without the real SDK installed.
 """
+
 from __future__ import annotations
 
 import sys
 import types
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -22,6 +23,7 @@ import pytest
 # SDK stub setup — inject a fake claude_agent_sdk before any import of
 # sdk_runner so the module-level import guard passes.
 # ---------------------------------------------------------------------------
+
 
 def _build_sdk_stub():
     """Build a minimal claude_agent_sdk stub module."""
@@ -80,6 +82,7 @@ def _ensure_sdk_stub():
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 async def _mock_query(result_text="OK", input_tokens=0, output_tokens=0):
     """Async generator mimicking claude_agent_sdk.query()."""
     yield _SDK_STUB.ResultMessage(result_text, input_tokens, output_tokens)
@@ -87,8 +90,10 @@ async def _mock_query(result_text="OK", input_tokens=0, output_tokens=0):
 
 def _make_query(result_text="OK", input_tokens=0, output_tokens=0):
     """Return a callable for patching claude_agent_sdk.query."""
+
     def _q(prompt, options=None):
         return _mock_query(result_text, input_tokens, output_tokens)
+
     return _q
 
 
@@ -96,6 +101,7 @@ def _make_query(result_text="OK", input_tokens=0, output_tokens=0):
 # Acceptance criterion 2 — run() returns dict with cost_usd, input_tokens,
 # output_tokens keys
 # ---------------------------------------------------------------------------
+
 
 class TestRunReturnShape:
     """AC2: run() returns dict with cost_usd, input_tokens, output_tokens."""
@@ -150,6 +156,7 @@ class TestRunReturnShape:
 # Acceptance criterion 3 — cost_usd uses MODEL_PRICING
 # ---------------------------------------------------------------------------
 
+
 class TestCostCalculation:
     """AC3: cost_usd is calculated using MODEL_PRICING."""
 
@@ -157,7 +164,9 @@ class TestCostCalculation:
         """Sonnet pricing: $3/M input, $15/M output."""
         from superharness.engine.sdk_runner import SDKRunner, MODEL_PRICING
 
-        assert "claude-sonnet-4-6" in MODEL_PRICING, "MODEL_PRICING must include claude-sonnet-4-6"
+        assert "claude-sonnet-4-6" in MODEL_PRICING, (
+            "MODEL_PRICING must include claude-sonnet-4-6"
+        )
 
         with patch("superharness.engine.sdk_runner._try_import_sdk", return_value=True):
             _SDK_STUB.query = _make_query("ok", 1_000_000, 1_000_000)
@@ -165,7 +174,10 @@ class TestCostCalculation:
                 runner = SDKRunner(project_dir=tmp_path, model="claude-sonnet-4-6")
                 result = runner.run("pricing test")
 
-        expected = MODEL_PRICING["claude-sonnet-4-6"]["input"] + MODEL_PRICING["claude-sonnet-4-6"]["output"]
+        expected = (
+            MODEL_PRICING["claude-sonnet-4-6"]["input"]
+            + MODEL_PRICING["claude-sonnet-4-6"]["output"]
+        )
         assert abs(result["cost_usd"] - expected) < 1e-9
 
     def test_cost_usd_uses_model_pricing_haiku(self, tmp_path):
@@ -177,16 +189,23 @@ class TestCostCalculation:
         with patch("superharness.engine.sdk_runner._try_import_sdk", return_value=True):
             _SDK_STUB.query = _make_query("ok", 1_000_000, 1_000_000)
             with patch("claude_agent_sdk.query", _SDK_STUB.query):
-                runner = SDKRunner(project_dir=tmp_path, model="claude-haiku-4-5-20251001")
+                runner = SDKRunner(
+                    project_dir=tmp_path, model="claude-haiku-4-5-20251001"
+                )
                 result = runner.run("pricing test")
 
-        expected = MODEL_PRICING["claude-haiku-4-5-20251001"]["input"] + MODEL_PRICING["claude-haiku-4-5-20251001"]["output"]
+        expected = (
+            MODEL_PRICING["claude-haiku-4-5-20251001"]["input"]
+            + MODEL_PRICING["claude-haiku-4-5-20251001"]["output"]
+        )
         assert abs(result["cost_usd"] - expected) < 1e-9
 
     def test_cost_estimator_uses_same_pricing_table(self):
         """cost_estimator.MODEL_PRICING must be the same object as sdk_runner.MODEL_PRICING."""
         from superharness.engine.sdk_runner import MODEL_PRICING as SDK_PRICING
-        from superharness.engine.cost_estimator import PRICING as CE_PRICING  # imported as PRICING alias
+        from superharness.engine.cost_estimator import (
+            PRICING as CE_PRICING,
+        )  # imported as PRICING alias
 
         assert SDK_PRICING is CE_PRICING, (
             "cost_estimator must import MODEL_PRICING from sdk_runner — same table"
@@ -196,6 +215,7 @@ class TestCostCalculation:
 # ---------------------------------------------------------------------------
 # Acceptance criterion 4 — cost accumulates across multiple run() calls
 # ---------------------------------------------------------------------------
+
 
 class TestCostAccumulation:
     """AC4: Total cost accumulates across multiple run() calls."""
@@ -222,7 +242,9 @@ class TestCostAccumulation:
                 r2 = runner.run("second")
                 cost_after_second = runner.total_cost_usd
 
-        assert cost_after_second > cost_after_first, "total_cost_usd must increase after second run"
+        assert cost_after_second > cost_after_first, (
+            "total_cost_usd must increase after second run"
+        )
         assert abs(cost_after_second - (r1["cost_usd"] + r2["cost_usd"])) < 1e-9
 
     def test_total_input_tokens_accumulate(self, tmp_path):
@@ -267,6 +289,7 @@ class TestCostAccumulation:
 # Acceptance criterion 1 — BudgetExceededError when cost > max_budget_usd
 # ---------------------------------------------------------------------------
 
+
 class TestBudgetEnforcement:
     """AC1: BudgetExceededError raised when actual cost exceeds max_budget_usd."""
 
@@ -278,7 +301,7 @@ class TestBudgetEnforcement:
         def mock_query(prompt, options=None):
             call_count[0] += 1
             if call_count[0] == 1:
-                return _mock_query("cheap", 1_000, 500)        # very cheap
+                return _mock_query("cheap", 1_000, 500)  # very cheap
             return _mock_query("expensive", 10_000_000, 5_000_000)  # very expensive
 
         with patch("superharness.engine.sdk_runner._try_import_sdk", return_value=True):
@@ -304,7 +327,7 @@ class TestBudgetEnforcement:
         def mock_query(prompt, options=None):
             runs[0] += 1
             if runs[0] < 3:
-                return _mock_query("ok", 10, 5)   # negligible cost
+                return _mock_query("ok", 10, 5)  # negligible cost
             return _mock_query("big", 1_000_000, 1_000_000)  # $18
 
         with patch("superharness.engine.sdk_runner._try_import_sdk", return_value=True):
@@ -356,6 +379,7 @@ class TestBudgetEnforcement:
 # ---------------------------------------------------------------------------
 # Acceptance criterion 5 — reset_session() resets counters to zero
 # ---------------------------------------------------------------------------
+
 
 class TestResetSession:
     """AC5: reset_session() resets token and cost counters to zero."""

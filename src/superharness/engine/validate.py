@@ -1,7 +1,7 @@
 """Python port of engine/validate.rb — contract protocol hygiene checker."""
+
 from __future__ import annotations
 
-import glob
 import logging
 import os
 import re
@@ -10,10 +10,13 @@ from datetime import datetime, timezone
 
 _log = logging.getLogger(__name__)
 
-from superharness.engine.errors import OperationError, SuperharnessError, handle_cli_error
-from superharness.engine.yaml_helpers import safe_load
-from superharness.engine.taxonomy import VALID_EFFORTS as _VALID_EFFORTS
-from superharness.engine.subtask import is_subtask_resolved
+from superharness.engine.errors import (  # noqa: E402
+    OperationError,
+    SuperharnessError,
+    handle_cli_error,
+)
+from superharness.engine.taxonomy import VALID_EFFORTS as _VALID_EFFORTS  # noqa: E402
+from superharness.engine.subtask import is_subtask_resolved  # noqa: E402
 
 HELP_TEXT = """\
 Usage:
@@ -67,9 +70,9 @@ def _repair_append_ledger(ledger_file: str, message: str) -> None:
         f.write(line)
 
 
-
 def run_validate(project: str, strict: bool = False, repair: bool = False) -> int:
     from superharness.utils.paths import is_project_initialized
+
     harness_dir = os.path.join(project, ".superharness")
     handoff_dir = os.path.join(harness_dir, "handoffs")
     ledger_file = os.path.join(harness_dir, "ledger.md")
@@ -98,7 +101,9 @@ def run_validate(project: str, strict: bool = False, repair: bool = False) -> in
     else:
         with open(gitignore_path) as _gf:
             _gitignore_text = _gf.read()
-        _missing = [p for p in sorted(_REQUIRED_GITIGNORE_PATTERNS) if p not in _gitignore_text]
+        _missing = [
+            p for p in sorted(_REQUIRED_GITIGNORE_PATTERNS) if p not in _gitignore_text
+        ]
         if _missing:
             print(
                 f"Warning: .superharness/.gitignore is missing required patterns: "
@@ -108,6 +113,7 @@ def run_validate(project: str, strict: bool = False, repair: bool = False) -> in
     try:
         from superharness.engine.db import get_connection, init_db
         from superharness.engine import tasks_dao
+
         conn = get_connection(project)
         try:
             init_db(conn)
@@ -123,8 +129,9 @@ def run_validate(project: str, strict: bool = False, repair: bool = False) -> in
     # Build handoff map from SQLite (source of truth)
     handoff_map: dict[str, list[str]] = {}
     try:
-        from superharness.engine import state_reader as _sr_v, handoffs_dao as _hd
+        from superharness.engine import handoffs_dao as _hd
         from superharness.engine.db import get_connection as _gc, init_db as _idb
+
         _conn = _gc(project)
         try:
             _idb(_conn)
@@ -140,6 +147,7 @@ def run_validate(project: str, strict: bool = False, repair: bool = False) -> in
     try:
         from superharness.engine import ledger_dao as _ld
         from superharness.engine.db import get_connection as _gc2, init_db as _idb2
+
         _conn2 = _gc2(project)
         try:
             _idb2(_conn2)
@@ -163,14 +171,19 @@ def run_validate(project: str, strict: bool = False, repair: bool = False) -> in
         if not handoff_map.get(id_):
             if repair:
                 path = _repair_create_handoff(id_, handoff_dir)
-                _repair_append_ledger(ledger_file, f"created skeleton handoff for {id_}: {os.path.basename(path)}")
+                _repair_append_ledger(
+                    ledger_file,
+                    f"created skeleton handoff for {id_}: {os.path.basename(path)}",
+                )
                 print(f"[repair] Created handoff for done task: {id_}")
             else:
                 print(f"Missing handoff for done task: {id_}")
                 issues += 1
         if id_ not in ledger_task_ids:
             if repair:
-                _repair_append_ledger(ledger_file, f"backfilled ledger entry for done task: {id_}")
+                _repair_append_ledger(
+                    ledger_file, f"backfilled ledger entry for done task: {id_}"
+                )
                 ledger_task_ids.add(id_)
                 print(f"[repair] Appended ledger entry for: {id_}")
             else:
@@ -178,7 +191,9 @@ def run_validate(project: str, strict: bool = False, repair: bool = False) -> in
                 issues += 1
         test_types = task.test_types
         if test_types and isinstance(test_types, list):
-            print(f"Warning: task '{id_}' requires test types [{', '.join(str(t) for t in test_types)}] — verify evidence before close")
+            print(
+                f"Warning: task '{id_}' requires test types [{', '.join(str(t) for t in test_types)}] — verify evidence before close"
+            )
         if not task.verified:
             print(f"Warning: task '{id_}' closed without verification record")
             issues += 1
@@ -197,8 +212,9 @@ def run_validate(project: str, strict: bool = False, repair: bool = False) -> in
             continue
         try:
             import json as _json
+
             extras = _json.loads(task.extras_json)
-            for sub in (extras.get("subtasks") or []):
+            for sub in extras.get("subtasks") or []:
                 if not isinstance(sub, dict):
                     continue
                 sub_id = str(sub.get("id", "")).strip()
@@ -212,7 +228,7 @@ def run_validate(project: str, strict: bool = False, repair: bool = False) -> in
         print(
             f"Warning: done task '{parent_id}' has {len(open_subs)} open subtask(s): "
             f"{', '.join(open_subs)}. "
-            f"Run: shux subtask-cancel --task {parent_id} --sub <id> --reason \"...\" "
+            f'Run: shux subtask-cancel --task {parent_id} --sub <id> --reason "..." '
             f"to retire them."
         )
         issues += 1
@@ -224,15 +240,20 @@ def run_validate(project: str, strict: bool = False, repair: bool = False) -> in
         if task.verified and status not in ("done", ""):
             if repair:
                 from superharness.engine import state_writer
+
                 try:
                     state_writer.set_task_status(project, id_, "done")
                 except Exception as e:
                     _log.warning("validate.py unexpected error: %s", e, exc_info=True)
                     pass
-                _repair_append_ledger(ledger_file, f"fixed stuck status for {id_}: {status} → done")
+                _repair_append_ledger(
+                    ledger_file, f"fixed stuck status for {id_}: {status} → done"
+                )
                 print(f"[repair] Fixed stuck status for: {id_} ({status} → done)")
             else:
-                print(f"Warning: task '{id_}' has verified=true but status={status} (stuck)")
+                print(
+                    f"Warning: task '{id_}' has verified=true but status={status} (stuck)"
+                )
                 issues += 1
 
     # Effort value validation
@@ -240,7 +261,9 @@ def run_validate(project: str, strict: bool = False, repair: bool = False) -> in
         id_ = task.id.strip()
         effort = task.effort
         if effort is not None and str(effort) not in _VALID_EFFORTS:
-            print(f"Warning: task '{id_}' has invalid effort='{effort}' (expected: {'/'.join(_VALID_EFFORTS)})")
+            print(
+                f"Warning: task '{id_}' has invalid effort='{effort}' (expected: {'/'.join(_VALID_EFFORTS)})"
+            )
             issues += 1
 
     # Features.json validation
@@ -248,6 +271,7 @@ def run_validate(project: str, strict: bool = False, repair: bool = False) -> in
     if os.path.isfile(features_file):
         try:
             import json
+
             with open(features_file) as f:
                 features_doc = json.load(f)
             features = features_doc.get("features", [])
@@ -263,32 +287,45 @@ def run_validate(project: str, strict: bool = False, repair: bool = False) -> in
                         issues += 1
                     seen_ids.add(fid)
                     if not isinstance(feat.get("passes"), bool):
-                        print(f"features.json: feature '{fid}' missing boolean 'passes' field")
+                        print(
+                            f"features.json: feature '{fid}' missing boolean 'passes' field"
+                        )
                         issues += 1
         except (json.JSONDecodeError, OSError) as e:
             print(f"features.json: invalid JSON: {e}")
             issues += 1
 
-
     # Vault backlog index check (optional — skipped if vault not configured)
     vault_base = os.environ.get("SUPERHARNESS_VAULT_BASE", "")
     if vault_base:
-        backlog_index = os.path.join(vault_base, "notes", "0_meta", "backlog", "_backlog_index.md")
+        backlog_index = os.path.join(
+            vault_base, "notes", "0_meta", "backlog", "_backlog_index.md"
+        )
         if os.path.isfile(backlog_index):
             with open(backlog_index) as f:
                 backlog_text = f.read()
-            unchecked = [line.strip() for line in backlog_text.splitlines() if line.strip().startswith("- [ ]")]
+            unchecked = [
+                line.strip()
+                for line in backlog_text.splitlines()
+                if line.strip().startswith("- [ ]")
+            ]
             print(f"Vault backlog: {len(unchecked)} open item(s) in _backlog_index.md")
         else:
-            print("Warning: vault backlog index not found (notes/0_meta/backlog/_backlog_index.md)")
+            print(
+                "Warning: vault backlog index not found (notes/0_meta/backlog/_backlog_index.md)"
+            )
 
     # Worktree GC — always run during repair to prune stale git worktree refs
     if repair:
         try:
             from superharness.commands.worktree_gc import run_worktree_gc
+
             gc = run_worktree_gc(project)
             if gc["removed"] > 0:
-                _repair_append_ledger(ledger_file, f"worktree-gc removed {gc['removed']} orphaned worktree(s)")
+                _repair_append_ledger(
+                    ledger_file,
+                    f"worktree-gc removed {gc['removed']} orphaned worktree(s)",
+                )
         except Exception as e:
             print(f"Warning: worktree-gc failed: {e}", file=sys.stderr)
 

@@ -6,29 +6,37 @@ callers — a fully dormant learning signal (docs/brain-scan-2026-07-12.md,
 _auto_recover_exhausted_failures_sqlite's fallback selection: recorded
 outcomes now change which agent gets retried next.
 """
+
 from __future__ import annotations
 
 import sqlite3
-
-import pytest
 
 
 def _make_conn():
     conn = sqlite3.connect(":memory:")
     conn.row_factory = sqlite3.Row
     from superharness.engine.db import init_db
+
     init_db(conn)
     return conn
 
 
-def _seed_review_rows(conn, owner: str, count: int, fail_rate: float, duration_s: float = 10.0):
+def _seed_review_rows(
+    conn, owner: str, count: int, fail_rate: float, duration_s: float = 10.0
+):
     from superharness.engine import review_dao
+
     now = "2026-07-12T00:00:00Z"
     n_fail = round(count * fail_rate)
     for i in range(count):
         review_dao.record(
-            conn, owner=owner, task_type="fix", duration_s=duration_s,
-            score=1.0, failed=(i < n_fail), now=now,
+            conn,
+            owner=owner,
+            task_type="fix",
+            duration_s=duration_s,
+            score=1.0,
+            failed=(i < n_fail),
+            now=now,
         )
     conn.commit()
 
@@ -76,7 +84,7 @@ def test_ranking_error_falls_back_to_input_order():
 def test_recover_path_uses_ranked_order(tmp_path, monkeypatch):
     from superharness.commands import inbox_watch
     from superharness.engine.db import get_connection, init_db
-    from superharness.engine import inbox_dao, review_dao, tasks_dao
+    from superharness.engine import inbox_dao, tasks_dao
 
     project_dir = tmp_path
     (project_dir / ".superharness").mkdir()
@@ -84,19 +92,40 @@ def test_recover_path_uses_ranked_order(tmp_path, monkeypatch):
     conn = get_connection(str(project_dir))
     init_db(conn)
 
-    tasks_dao.upsert(conn, tasks_dao.TaskRow(
-        id="fix.thing", title="fix thing", owner="claude-code", status="in_progress",
-        effort="medium", project_path=str(project_dir), development_method="tdd",
-        acceptance_criteria=["works"], test_types=["unit"], out_of_scope=[],
-        definition_of_done=[], context="ctx", tdd=None, version=1,
-        created_at="2026-07-12T00:00:00Z", blocked_by=[], parent_id=None,
-    ))
+    tasks_dao.upsert(
+        conn,
+        tasks_dao.TaskRow(
+            id="fix.thing",
+            title="fix thing",
+            owner="claude-code",
+            status="in_progress",
+            effort="medium",
+            project_path=str(project_dir),
+            development_method="tdd",
+            acceptance_criteria=["works"],
+            test_types=["unit"],
+            out_of_scope=[],
+            definition_of_done=[],
+            context="ctx",
+            tdd=None,
+            version=1,
+            created_at="2026-07-12T00:00:00Z",
+            blocked_by=[],
+            parent_id=None,
+        ),
+    )
     conn.commit()
 
     now = "2026-07-12T00:00:00Z"
     inbox_dao.enqueue(
-        conn, id="item-1", task_id="fix.thing", target_agent="claude-code",
-        priority=2, max_retries=3, project_path=str(project_dir), now=now,
+        conn,
+        id="item-1",
+        task_id="fix.thing",
+        target_agent="claude-code",
+        priority=2,
+        max_retries=3,
+        project_path=str(project_dir),
+        now=now,
     )
     conn.execute(
         "UPDATE inbox SET status='failed', failed_reason=?, retry_count=?, max_retries=? WHERE id=?",
@@ -118,7 +147,9 @@ def test_recover_path_uses_ranked_order(tmp_path, monkeypatch):
     inbox_watch._auto_recover_exhausted_failures_sqlite(str(project_dir))
 
     conn2 = get_connection(str(project_dir))
-    row = conn2.execute("SELECT target_agent, status FROM inbox WHERE task_id='fix.thing' ORDER BY created_at DESC").fetchone()
+    row = conn2.execute(
+        "SELECT target_agent, status FROM inbox WHERE task_id='fix.thing' ORDER BY created_at DESC"
+    ).fetchone()
     conn2.close()
     assert row is not None
     assert row["target_agent"] == "gemini-cli", (

@@ -1,6 +1,7 @@
 """Python port of engine/discussion.rb — multi-round discussion engine.
 v2: SQLite-only (post-YAML removal). All state lives in discussions + discussion_rounds tables.
 """
+
 from __future__ import annotations
 
 import json
@@ -14,12 +15,18 @@ from datetime import datetime, timezone
 
 from superharness.engine.db import get_connection, init_db
 from superharness.engine import discussions_dao, inbox_dao
-from superharness.engine.errors import OperationError, SuperharnessError, UsageError, handle_cli_error
+from superharness.engine.errors import (
+    OperationError,
+    SuperharnessError,
+    UsageError,
+    handle_cli_error,
+)
 from superharness.engine.state_errors import StateError
 from superharness.engine.process import pid_alive, signal_process_group
 from superharness.utils.paths import StateDatabaseConflictError
 
 import logging
+
 logger = logging.getLogger(__name__)
 
 # How long `discussion close` waits for a SIGTERM'd agent process to exit
@@ -31,6 +38,7 @@ _CLOSE_KILL_GRACE_SECONDS = 3.0
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _get_project_dir(discussion_dir: str) -> str:
     """Extract project root from a discussion directory path.
@@ -67,6 +75,7 @@ def _now_utc() -> str:
 # Commands
 # ---------------------------------------------------------------------------
 
+
 def cmd_start(
     discussions_dir: str,
     topic: str,
@@ -83,8 +92,12 @@ def cmd_start(
     try:
         discussions_dao.create(
             conn,
-            id=disc_id, topic=topic, owners=participants,
-            task_id=task_id, max_rounds=max_rounds, now=now,
+            id=disc_id,
+            topic=topic,
+            owners=participants,
+            task_id=task_id,
+            max_rounds=max_rounds,
+            now=now,
         )
         conn.commit()
     finally:
@@ -128,7 +141,9 @@ def cmd_submit_round(
         if not disc:
             raise OperationError(f"Discussion not found: {disc_id}", exit_code=1)
         if disc.status != "active":
-            raise OperationError(f"Discussion is not active (status={disc.status})", exit_code=1)
+            raise OperationError(
+                f"Discussion is not active (status={disc.status})", exit_code=1
+            )
         if agent not in disc.owners:
             raise OperationError(f"Agent '{agent}' is not a participant", exit_code=1)
 
@@ -141,7 +156,12 @@ def cmd_submit_round(
         verdict_lower = str(verdict).strip().lower()
         if verdict_lower not in valid_verdicts:
             import re
-            matches = [v for v in sorted(valid_verdicts) if re.search(r'\b' + re.escape(v) + r'\b', verdict_lower)]
+
+            matches = [
+                v
+                for v in sorted(valid_verdicts)
+                if re.search(r"\b" + re.escape(v) + r"\b", verdict_lower)
+            ]
             if len(matches) >= 3:
                 # All three main options present → copied the prompt verbatim.
                 raise UsageError(
@@ -160,7 +180,9 @@ def cmd_submit_round(
         existing = discussions_dao.get_rounds(conn, disc_id)
         for r in existing:
             if r.round_number == round_ and r.agent == agent:
-                raise OperationError(f"Round {round_} already submitted by {agent}", exit_code=1)
+                raise OperationError(
+                    f"Round {round_} already submitted by {agent}", exit_code=1
+                )
 
         discussions_dao.add_round(
             conn,
@@ -201,7 +223,9 @@ def cmd_submit_round(
                 acknowledged_inbox_ids.append(item.id)
 
         # Auto-transition to consensus if all participants submitted
-        _check_all_submitted_and_set_consensus(conn, disc, round_, project_dir=project_dir)
+        _check_all_submitted_and_set_consensus(
+            conn, disc, round_, project_dir=project_dir
+        )
 
         conn.commit()
     finally:
@@ -243,7 +267,9 @@ def compute_consensus(verdicts: dict[str, str], participants: list[str]) -> bool
     return all(v in _CONSENSUS_VERDICTS for v in submitted.values())
 
 
-def _check_all_submitted_and_set_consensus(conn, disc, round_: int, project_dir: str = "/") -> None:
+def _check_all_submitted_and_set_consensus(
+    conn, disc, round_: int, project_dir: str = "/"
+) -> None:
     """If all participants submitted this round AND all verdicts agree,
     auto-transition the discussion to consensus. If any participant
     disagrees we leave status=active so the dispatcher can advance to
@@ -255,13 +281,18 @@ def _check_all_submitted_and_set_consensus(conn, disc, round_: int, project_dir:
     # inbox and must not block auto-consensus.
     try:
         from superharness.engine.adapter_registry import list_adapters
+
         ai_agents = set(list_adapters())
     except Exception as e:
         logger.warning("discussion.py unexpected error: %s", e, exc_info=True)
         ai_agents = set()
-    agent_participants = [o for o in disc.owners if o in ai_agents] if ai_agents else list(disc.owners)
+    agent_participants = (
+        [o for o in disc.owners if o in ai_agents] if ai_agents else list(disc.owners)
+    )
 
-    verdicts_by_agent = {r.agent: (r.verdict or "").lower() for r in rounds if r.round_number == round_}
+    verdicts_by_agent = {
+        r.agent: (r.verdict or "").lower() for r in rounds if r.round_number == round_
+    }
     if not compute_consensus(verdicts_by_agent, agent_participants):
         return
 
@@ -271,7 +302,10 @@ def _check_all_submitted_and_set_consensus(conn, disc, round_: int, project_dir:
     # re-fire task creation against an already consensus'd discussion.
     cur = conn.execute(
         "UPDATE discussions SET status='consensus', consensus=? WHERE id=? AND status='active'",
-        (f"consensus — all {len(submitted_agents)} participants submitted round {round_}", disc.id),
+        (
+            f"consensus — all {len(submitted_agents)} participants submitted round {round_}",
+            disc.id,
+        ),
     )
     if cur.rowcount == 0:
         return
@@ -281,7 +315,9 @@ def _check_all_submitted_and_set_consensus(conn, disc, round_: int, project_dir:
     )
 
     # Auto-create contract task from consensus points
-    _create_consensus_task(conn, disc, round_, submitted_agents, project_dir=project_dir)
+    _create_consensus_task(
+        conn, disc, round_, submitted_agents, project_dir=project_dir
+    )
 
 
 def _create_consensus_task(
@@ -336,15 +372,26 @@ def _create_consensus_task(
             action_criteria = [f"From {r.agent} (verdict: {v})"]
             if r.content:
                 action_criteria.append(r.content[:200])
-            tasks_dao.upsert(conn, TaskRow(
-                id=action_id, title=f"[{v}] {topic[:60]}", owner=r.agent,
-                status="plan_proposed", effort="medium", project_path=project_dir,
-                development_method="tdd",
-                acceptance_criteria=action_criteria,
-                test_types=[], out_of_scope=[], definition_of_done=[],
-                context=f"Auto-extracted from discussion {disc_id} round {round_} ({r.agent})",
-                tdd=None, version=1, created_at=now,
-            ))
+            tasks_dao.upsert(
+                conn,
+                TaskRow(
+                    id=action_id,
+                    title=f"[{v}] {topic[:60]}",
+                    owner=r.agent,
+                    status="plan_proposed",
+                    effort="medium",
+                    project_path=project_dir,
+                    development_method="tdd",
+                    acceptance_criteria=action_criteria,
+                    test_types=[],
+                    out_of_scope=[],
+                    definition_of_done=[],
+                    context=f"Auto-extracted from discussion {disc_id} round {round_} ({r.agent})",
+                    tdd=None,
+                    version=1,
+                    created_at=now,
+                ),
+            )
             created += 1
 
         # Also create a summary task that collects all points
@@ -352,20 +399,32 @@ def _create_consensus_task(
         for p in all_points:
             criteria.append(f"  * {p['id']} [{p['verdict']}]")
         owner = disc.owners[0] if disc.owners else "claude-code"
-        tasks_dao.upsert(conn, TaskRow(
-            id=task_id, title=f"Implement: {topic}", owner=owner,
-            status="todo", effort="medium", project_path=project_dir,
-            development_method="tdd",
-            acceptance_criteria=list(criteria),
-            test_types=[], out_of_scope=[], definition_of_done=[],
-            context=f"Auto-created from discussion {disc_id} (consensus) — {created} actions extracted",
-            tdd=None, version=1, created_at=now,
-        ))
+        tasks_dao.upsert(
+            conn,
+            TaskRow(
+                id=task_id,
+                title=f"Implement: {topic}",
+                owner=owner,
+                status="todo",
+                effort="medium",
+                project_path=project_dir,
+                development_method="tdd",
+                acceptance_criteria=list(criteria),
+                test_types=[],
+                out_of_scope=[],
+                definition_of_done=[],
+                context=f"Auto-created from discussion {disc_id} (consensus) — {created} actions extracted",
+                tdd=None,
+                version=1,
+                created_at=now,
+            ),
+        )
         print(f"[discussion] auto-task: {task_id} (plan_approved)", file=sys.stderr)
 
         # Auto-dispatch through orchestrator — use fallback to avoid blocking on Claude CLI.
         try:
             from superharness.engine.orchestrator import Orchestrator
+
             orch = Orchestrator(project_dir=project_dir)
             task_data = {
                 "id": task_id,
@@ -376,7 +435,10 @@ def _create_consensus_task(
             # Use fallback routing (no network call) — the task will be properly
             # routed when it's dispatched through the normal delegate pipeline.
             routing = orch._fallback_routing(task_data)
-            print(f"[discussion] orchestrator: {task_id} → {routing.owner}/{routing.tier}", file=sys.stderr)
+            print(
+                f"[discussion] orchestrator: {task_id} → {routing.owner}/{routing.tier}",
+                file=sys.stderr,
+            )
         except Exception as route_err:
             print(f"[discussion] orchestrator skipped: {route_err}", file=sys.stderr)
     except Exception as e:
@@ -396,7 +458,9 @@ def cmd_check_round(discussion_dir: str, round_: int) -> int:
         done = []
         pending = []
         for agent in disc.owners:
-            if discussions_dao.is_submitted(conn, disc_id, round_, agent, discussion_dir):
+            if discussions_dao.is_submitted(
+                conn, disc_id, round_, agent, discussion_dir
+            ):
                 done.append(agent)
             else:
                 pending.append(agent)
@@ -441,7 +505,9 @@ def cmd_check_consensus(discussion_dir: str) -> int:
         # cmd_submit_round(). If a round-N-agent.yaml exists, treat it as submitted.
         for agent in disc.owners:
             if agent not in verdicts:
-                yaml_path = os.path.join(discussion_dir, f"round-{current_round}-{agent}.yaml")
+                yaml_path = os.path.join(
+                    discussion_dir, f"round-{current_round}-{agent}.yaml"
+                )
                 if os.path.isfile(yaml_path):
                     verdicts[agent] = "file_on_disk"
 
@@ -482,7 +548,8 @@ def _reconcile_yaml_submissions(
     """
     now = _now_utc()
     return [
-        agent for agent in disc.owners
+        agent
+        for agent in disc.owners
         if discussions_dao.register_yaml_submission(
             conn, disc.id, round_, agent, discussion_dir, now
         )
@@ -500,15 +567,27 @@ def cmd_advance(discussion_dir: str) -> int:
         if not disc:
             raise OperationError(f"Discussion not found: {disc_id}", exit_code=1)
         if disc.status != "active":
-            raise OperationError(f"Discussion is not active (status={disc.status})", exit_code=1)
+            raise OperationError(
+                f"Discussion is not active (status={disc.status})", exit_code=1
+            )
 
         rounds = discussions_dao.get_rounds(conn, disc_id)
         # Advance markers store next_round as a positive round_number (Bug O fix).
         # Use them as the authoritative current_round so cmd_advance agrees with
         # cmd_status when an advance has already happened (e.g. round 1→2 marker
         # exists but round-2 submissions are YAML-only and not yet in SQLite).
-        advance_markers = {r.round_number for r in rounds if r.agent == "_advance" and r.round_number > 0}
-        submission_round_nums = sorted({r.round_number for r in rounds if r.agent != "_advance" and r.round_number > 0})
+        advance_markers = {
+            r.round_number
+            for r in rounds
+            if r.agent == "_advance" and r.round_number > 0
+        }
+        submission_round_nums = sorted(
+            {
+                r.round_number
+                for r in rounds
+                if r.agent != "_advance" and r.round_number > 0
+            }
+        )
         if advance_markers:
             current_round = max(advance_markers)
         elif submission_round_nums:
@@ -526,7 +605,11 @@ def cmd_advance(discussion_dir: str) -> int:
         rounds = discussions_dao.get_rounds(conn, disc_id)
 
         # Check if all participants submitted current round
-        submitted = {r.agent for r in rounds if r.round_number == current_round and r.agent != "_advance"}
+        submitted = {
+            r.agent
+            for r in rounds
+            if r.round_number == current_round and r.agent != "_advance"
+        }
         all_done = all(a in submitted for a in disc.owners)
 
         if not all_done:
@@ -536,7 +619,9 @@ def cmd_advance(discussion_dir: str) -> int:
             if current_round in advance_markers:
                 result = {"action": "advanced", "next_round": current_round}
             else:
-                raise OperationError(f"Round {current_round} is not complete yet", exit_code=1)
+                raise OperationError(
+                    f"Round {current_round} is not complete yet", exit_code=1
+                )
         else:
             # Gather verdicts
             verdicts: dict[str, str] = {}
@@ -550,15 +635,27 @@ def cmd_advance(discussion_dir: str) -> int:
             if consensus:
                 conn.execute(
                     "UPDATE discussions SET status='consensus', closed_at=?, consensus=? WHERE id=?",
-                    (now, f"consensus — all participants agreed round {current_round}", disc_id),
+                    (
+                        now,
+                        f"consensus — all participants agreed round {current_round}",
+                        disc_id,
+                    ),
                 )
-                result = {"action": "closed", "reason": "consensus", "round": current_round}
+                result = {
+                    "action": "closed",
+                    "reason": "consensus",
+                    "round": current_round,
+                }
             elif current_round >= max_rounds:
                 conn.execute(
                     "UPDATE discussions SET status='no_consensus', closed_at=? WHERE id=?",
                     (now, disc_id),
                 )
-                result = {"action": "closed", "reason": "max_rounds_reached", "round": current_round}
+                result = {
+                    "action": "closed",
+                    "reason": "max_rounds_reached",
+                    "round": current_round,
+                }
             else:
                 next_round = current_round + 1
                 # Idempotent: only insert the advance marker if not already present
@@ -591,7 +688,7 @@ def _max_round_on_disk(discussion_dir: str) -> int:
     # contract. SQLite remains the source of truth.
     highest = 0
     try:
-        for name in os.listdir(discussion_dir):  # noqa: state-read — agent submission artifacts, registered into SQLite below
+        for name in os.listdir(discussion_dir):  # shipguard:ignore state-read: agent submission artifacts are registered into SQLite below
             m = re.match(r"^round-(\d+)-.+\.yaml$", name)
             if m:
                 highest = max(highest, int(m.group(1)))
@@ -600,7 +697,9 @@ def _max_round_on_disk(discussion_dir: str) -> int:
     return highest
 
 
-def _reconcile_orphaned_submissions(conn, disc, discussion_dir: str, through_round: int) -> None:
+def _reconcile_orphaned_submissions(
+    conn, disc, discussion_dir: str, through_round: int
+) -> None:
     """Register on-disk submissions that SQLite never recorded.
 
     `cmd_close` cancels a discussion's inbox rows but does not signal the agent
@@ -636,34 +735,54 @@ def cmd_status(discussion_dir: str) -> int:
         # Surface agent output written to disk but never registered — otherwise
         # a round with completed submissions renders as "(no submissions yet)".
         _known = max(
-            (r.round_number for r in discussions_dao.get_rounds(conn, disc_id)
-             if r.round_number > 0),
+            (
+                r.round_number
+                for r in discussions_dao.get_rounds(conn, disc_id)
+                if r.round_number > 0
+            ),
             default=1,
         )
         _reconcile_orphaned_submissions(
-            conn, disc, discussion_dir,
+            conn,
+            disc,
+            discussion_dir,
             max(_known, _max_round_on_disk(discussion_dir)),
         )
 
         rounds = discussions_dao.get_rounds(conn, disc_id)
-        max_round = max((r.round_number for r in rounds if r.round_number > 0 and r.agent != "_advance"), default=1)
+        max_round = max(
+            (
+                r.round_number
+                for r in rounds
+                if r.round_number > 0 and r.agent != "_advance"
+            ),
+            default=1,
+        )
 
         # Advance markers store next_round as a positive round_number (Bug O fix).
         # Negative sentinel (-2) markers from older code are ignored here.
-        positive_advance_markers = [r.round_number for r in rounds if r.agent == "_advance" and r.round_number > 0]
-        current_round = max(positive_advance_markers) if positive_advance_markers else max_round
+        positive_advance_markers = [
+            r.round_number
+            for r in rounds
+            if r.agent == "_advance" and r.round_number > 0
+        ]
+        current_round = (
+            max(positive_advance_markers) if positive_advance_markers else max_round
+        )
 
         rounds_info = []
         for rn in range(1, current_round + 1):
             submissions = []
             for r in rounds:
                 if r.round_number == rn and r.agent != "_advance":
-                    submissions.append({
-                        "agent": r.agent,
-                        "verdict": r.verdict,
-                        "position": r.content,
-                        "submitted_at": r.created_at,
-                    })
+                    submissions.append(
+                        {
+                            "agent": r.agent,
+                            "verdict": r.verdict,
+                            "position": r.content,
+                            "submitted_at": r.created_at,
+                        }
+                    )
             rounds_info.append({"round": rn, "submissions": submissions})
 
         output = {
@@ -686,8 +805,11 @@ def cmd_status(discussion_dir: str) -> int:
 def cmd_list(discussions_dir: str) -> int:
     # Normalize Windows backslashes first; otherwise the suffix strip below
     # misses and is_project_initialized() fails, so `discuss list` returns [].
-    project_dir = discussions_dir.replace("\\", "/").replace("/.superharness/discussions", "")
+    project_dir = discussions_dir.replace("\\", "/").replace(
+        "/.superharness/discussions", ""
+    )
     from superharness.utils.paths import is_project_initialized
+
     if not is_project_initialized(project_dir):
         print("[]")
         return 0
@@ -699,19 +821,29 @@ def cmd_list(discussions_dir: str) -> int:
         for row in rows:
             # Infer current_round from discussion_rounds
             rounds = discussions_dao.get_rounds(conn, row.id)
-            adv = [r.round_number for r in rounds if r.agent == "_advance" and r.round_number > 0]
-            sub = [r.round_number for r in rounds if r.agent != "_advance" and r.round_number > 0]
+            adv = [
+                r.round_number
+                for r in rounds
+                if r.agent == "_advance" and r.round_number > 0
+            ]
+            sub = [
+                r.round_number
+                for r in rounds
+                if r.agent != "_advance" and r.round_number > 0
+            ]
             current_round = max(adv) if adv else (max(sub) if sub else 1)
 
-            discussions.append({
-                "id": row.id,
-                "topic": row.topic,
-                "status": row.status,
-                "current_round": current_round,
-                "max_rounds": row.max_rounds,
-                "participants": row.owners,
-                "dir": os.path.join(discussions_dir, row.id),
-            })
+            discussions.append(
+                {
+                    "id": row.id,
+                    "topic": row.topic,
+                    "status": row.status,
+                    "current_round": current_round,
+                    "max_rounds": row.max_rounds,
+                    "participants": row.owners,
+                    "dir": os.path.join(discussions_dir, row.id),
+                }
+            )
 
         print(json.dumps(discussions, separators=(", ", ": ")))
     finally:
@@ -743,7 +875,9 @@ def _terminate_process_tree(pid: int, force: bool = False) -> None:
         try:
             subprocess.run(
                 ["taskkill", "/T", "/F", "/PID", str(pid)],
-                capture_output=True, check=False, timeout=5,
+                capture_output=True,
+                check=False,
+                timeout=5,
             )
         except (OSError, subprocess.SubprocessError):
             pass
@@ -815,7 +949,12 @@ def cmd_close(discussion_dir: str, outcome: str, reason: str = "") -> int:
         if not disc:
             raise OperationError(f"Discussion not found: {disc_id}", exit_code=1)
 
-        discussions_dao.close(conn, disc_id, consensus=None if outcome != "consensus" else "consensus", now=now)
+        discussions_dao.close(
+            conn,
+            disc_id,
+            consensus=None if outcome != "consensus" else "consensus",
+            now=now,
+        )
         # Override status if outcome is not a standard close (e.g., cancelled, failed)
         if outcome not in ("consensus",):
             conn.execute(
@@ -855,25 +994,33 @@ def cmd_close(discussion_dir: str, outcome: str, reason: str = "") -> int:
         terminated_count = _terminate_launched_agents(conn, disc_id)
 
         known_round = max(
-            (r.round_number for r in discussions_dao.get_rounds(conn, disc_id) if r.round_number > 0),
+            (
+                r.round_number
+                for r in discussions_dao.get_rounds(conn, disc_id)
+                if r.round_number > 0
+            ),
             default=1,
         )
         _reconcile_orphaned_submissions(
-            conn, disc, discussion_dir,
+            conn,
+            disc,
+            discussion_dir,
             max(known_round, _max_round_on_disk(discussion_dir)),
         )
     finally:
         conn.close()
 
-    print(json.dumps(
-        {
-            "closed": True,
-            "outcome": outcome,
-            "cancelled_inbox_items": cancelled_count,
-            "terminated_processes": terminated_count,
-        },
-        separators=(", ", ": "),
-    ))
+    print(
+        json.dumps(
+            {
+                "closed": True,
+                "outcome": outcome,
+                "cancelled_inbox_items": cancelled_count,
+                "terminated_processes": terminated_count,
+            },
+            separators=(", ", ": "),
+        )
+    )
     return 0
 
 
@@ -901,19 +1048,27 @@ def cmd_round_context(discussion_dir: str, round_: int, agent: str) -> int:
         }
 
         # Collect prior rounds
-        prior_round_nums = sorted({r.round_number for r in rounds if r.round_number > 0 and r.round_number < round_})
+        prior_round_nums = sorted(
+            {
+                r.round_number
+                for r in rounds
+                if r.round_number > 0 and r.round_number < round_
+            }
+        )
         for rn in prior_round_nums:
             positions = []
             for r in rounds:
                 if r.round_number == rn:
-                    positions.append({
-                        "discussion_id": r.discussion_id,
-                        "round": r.round_number,
-                        "agent": r.agent,
-                        "verdict": r.verdict,
-                        "position": r.content,
-                        "submitted_at": r.created_at,
-                    })
+                    positions.append(
+                        {
+                            "discussion_id": r.discussion_id,
+                            "round": r.round_number,
+                            "agent": r.agent,
+                            "verdict": r.verdict,
+                            "position": r.content,
+                            "submitted_at": r.created_at,
+                        }
+                    )
             if positions:
                 context["prior_rounds"].append({"round": rn, "positions": positions})
 
@@ -927,8 +1082,10 @@ def cmd_round_context(discussion_dir: str, round_: int, agent: str) -> int:
 # ID generation (kept for backward compat with cmd_start)
 # ---------------------------------------------------------------------------
 
+
 def _generate_id() -> str:
     import random
+
     ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     return f"discuss-{ts}-{os.getpid()}-{random.randint(0, 999999999)}"
 
@@ -936,6 +1093,7 @@ def _generate_id() -> str:
 # ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
+
 
 def main(argv: list[str] | None = None) -> None:
     import argparse
@@ -955,8 +1113,15 @@ def main(argv: list[str] | None = None) -> None:
     rest = argv[1:]
 
     valid = {
-        "start", "submit_round", "check_round", "check_consensus",
-        "advance", "status", "list", "close", "round_context",
+        "start",
+        "submit_round",
+        "check_round",
+        "check_consensus",
+        "advance",
+        "status",
+        "list",
+        "close",
+        "round_context",
     }
     if cmd not in valid:
         raise UsageError(_usage_msg, exit_code=1)
@@ -965,7 +1130,9 @@ def main(argv: list[str] | None = None) -> None:
         parser = argparse.ArgumentParser(add_help=False)
         parser.add_argument("--discussions-dir", dest="discussions_dir")
         parser.add_argument("--topic")
-        parser.add_argument("--participant", dest="participants", action="append", default=[])
+        parser.add_argument(
+            "--participant", dest="participants", action="append", default=[]
+        )
         parser.add_argument("--max-rounds", dest="max_rounds", type=int, default=3)
         parser.add_argument("--task")
         parser.add_argument("--project")
@@ -980,8 +1147,13 @@ def main(argv: list[str] | None = None) -> None:
         if not opts.project:
             raise UsageError("--project is required", exit_code=1)
         rc = cmd_start(
-            opts.discussions_dir, opts.topic, opts.participants,
-            opts.max_rounds, opts.task, opts.project, opts.created_by,
+            opts.discussions_dir,
+            opts.topic,
+            opts.participants,
+            opts.max_rounds,
+            opts.task,
+            opts.project,
+            opts.created_by,
         )
         if rc:
             raise OperationError("", exit_code=rc)
@@ -999,8 +1171,11 @@ def main(argv: list[str] | None = None) -> None:
                 flag = attr.replace("_", "-")
                 raise UsageError(f"--{flag} is required", exit_code=1)
         rc = cmd_submit_round(
-            opts.discussion_dir, opts.round_, opts.agent,
-            opts.verdict, opts.position,
+            opts.discussion_dir,
+            opts.round_,
+            opts.agent,
+            opts.verdict,
+            opts.position,
         )
         if rc:
             raise OperationError("", exit_code=rc)

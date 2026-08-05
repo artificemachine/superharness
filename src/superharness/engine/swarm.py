@@ -4,15 +4,14 @@ Builds on parallel_dispatch for concurrent execution. Adds a review phase
 where a higher-tier model compares solutions and selects or synthesizes
 the best one.
 """
+
 from __future__ import annotations
 
 import os
 import subprocess
 import threading
-import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
 
 from superharness.engine.adapter_registry import flagship
 from superharness.engine.parallel_dispatch import (
@@ -33,6 +32,7 @@ from superharness.engine.worktree_ops import (
 @dataclass
 class SwarmVerdict:
     """Result of swarm voting."""
+
     winner_index: int | None = None
     winner_branch: str = ""
     reasoning: str = ""
@@ -49,7 +49,7 @@ def _build_review_prompt(diffs: list[dict], task_prompt: str) -> str:
         "You are reviewing multiple solutions to the same task.",
         "Compare them and pick the best one (or synthesize if appropriate).",
         "",
-        f"## Original Task",
+        "## Original Task",
         task_prompt[:2000],
         "",
         "## Solutions",
@@ -57,28 +57,32 @@ def _build_review_prompt(diffs: list[dict], task_prompt: str) -> str:
     ]
 
     for d in diffs:
-        parts.append(f"### Slot {d['index']} (branch: {d['branch']}, cost: ${d['cost_usd']:.4f})")
-        parts.append(f"```diff")
+        parts.append(
+            f"### Slot {d['index']} (branch: {d['branch']}, cost: ${d['cost_usd']:.4f})"
+        )
+        parts.append("```diff")
         parts.append(d["stat"])
-        parts.append(f"```")
+        parts.append("```")
         parts.append("")
         if d["diff"]:
             parts.append("Full diff (truncated):")
-            parts.append(f"```diff")
+            parts.append("```diff")
             parts.append(d["diff"][:3000])
-            parts.append(f"```")
+            parts.append("```")
         parts.append("")
 
-    parts.extend([
-        "## Your Task",
-        "1. Evaluate each solution for correctness, completeness, and code quality.",
-        "2. Pick the best slot index (0-based).",
-        "3. Explain your reasoning briefly.",
-        "",
-        "Respond in this exact format:",
-        "WINNER: <slot index>",
-        "REASONING: <1-3 sentences>",
-    ])
+    parts.extend(
+        [
+            "## Your Task",
+            "1. Evaluate each solution for correctness, completeness, and code quality.",
+            "2. Pick the best slot index (0-based).",
+            "3. Explain your reasoning briefly.",
+            "",
+            "Respond in this exact format:",
+            "WINNER: <slot index>",
+            "REASONING: <1-3 sentences>",
+        ]
+    )
 
     return "\n".join(parts)
 
@@ -144,8 +148,11 @@ def swarm_dispatch(
             continue
 
         _copy_superharness_state(project_dir, wt_path)
-        slots.append(WorktreeSlot(index=i, branch=branch, worktree_path=wt_path,
-                                  project_dir=project_dir))
+        slots.append(
+            WorktreeSlot(
+                index=i, branch=branch, worktree_path=wt_path, project_dir=project_dir
+            )
+        )
 
     if not slots:
         return SwarmVerdict(reasoning="failed to create worktrees")
@@ -173,7 +180,9 @@ def swarm_dispatch(
 
     fanout = FanoutResult(slots=slots)
     fanout.total_cost_usd = sum(s.cost_usd for s in slots)
-    fanout.total_duration_seconds = max(s.duration_seconds for s in slots) if slots else 0
+    fanout.total_duration_seconds = (
+        max(s.duration_seconds for s in slots) if slots else 0
+    )
 
     # Phase 2: Collect diffs from completed slots
     completed = [s for s in slots if s.status == "done"]
@@ -199,11 +208,15 @@ def swarm_dispatch(
             # Commit changes in worktree first
             subprocess.run(
                 ["git", "add", "-A"],
-                capture_output=True, check=False, cwd=winner.worktree_path,
+                capture_output=True,
+                check=False,
+                cwd=winner.worktree_path,
             )
             subprocess.run(
                 ["git", "commit", "-m", f"swarm: slot {winner.index} solution"],
-                capture_output=True, check=False, cwd=winner.worktree_path,
+                capture_output=True,
+                check=False,
+                cwd=winner.worktree_path,
             )
             ok, msg = _try_merge(project_dir, winner.branch)
             verdict.merged = ok
@@ -221,6 +234,7 @@ def swarm_dispatch(
 
     try:
         from superharness.engine.sdk_runner import SDKRunner
+
         reviewer = SDKRunner(
             project_dir=Path(project_dir),
             model=reviewer_model,
@@ -238,7 +252,9 @@ def swarm_dispatch(
     if winner_index not in valid_indices:
         # Default to cheapest completed slot
         winner_index = min(completed, key=lambda s: s.cost_usd).index
-        reasoning += f" (reviewer pick invalid, defaulting to cheapest slot {winner_index})"
+        reasoning += (
+            f" (reviewer pick invalid, defaulting to cheapest slot {winner_index})"
+        )
 
     winner_slot = next(s for s in slots if s.index == winner_index)
 
@@ -255,11 +271,15 @@ def swarm_dispatch(
     if auto_merge and winner_slot.worktree_path:
         subprocess.run(
             ["git", "add", "-A"],
-            capture_output=True, check=False, cwd=winner_slot.worktree_path,
+            capture_output=True,
+            check=False,
+            cwd=winner_slot.worktree_path,
         )
         subprocess.run(
             ["git", "commit", "-m", f"swarm: slot {winner_index} solution (winner)"],
-            capture_output=True, check=False, cwd=winner_slot.worktree_path,
+            capture_output=True,
+            check=False,
+            cwd=winner_slot.worktree_path,
         )
         ok, msg = _try_merge(project_dir, winner_slot.branch)
         verdict.merged = ok

@@ -6,6 +6,7 @@ Acceptance criteria:
   - malformed command sends help reply
   - parse_command handles approve/reject/close/reset
 """
+
 from __future__ import annotations
 
 from unittest.mock import patch
@@ -13,7 +14,6 @@ from unittest.mock import patch
 import pytest
 
 from superharness.modules.gateway.telegram_gateway import (
-    HELP_TEXT,
     KNOWN_COMMANDS,
     GatewayListener,
     ParsedCommand,
@@ -27,6 +27,7 @@ from superharness.engine import operator_commands_dao
 # ---------------------------------------------------------------------------
 # parse_command tests
 # ---------------------------------------------------------------------------
+
 
 class TestParseCommand:
     def test_approve(self):
@@ -78,6 +79,7 @@ class TestParseCommand:
 # validate_sender tests
 # ---------------------------------------------------------------------------
 
+
 class TestValidateSender:
     def test_known_sender_allowed(self):
         assert validate_sender("12345", ["12345", "99999"])
@@ -95,6 +97,7 @@ class TestValidateSender:
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def project_dir(tmp_path):
@@ -120,7 +123,9 @@ def _make_update(
     }
 
 
-def _make_listener(project_dir: str, allowed: list[str] | None = None) -> GatewayListener:
+def _make_listener(
+    project_dir: str, allowed: list[str] | None = None
+) -> GatewayListener:
     return GatewayListener(
         token="test-token",
         allowed_senders=allowed if allowed is not None else ["42"],
@@ -132,6 +137,7 @@ def _make_listener(project_dir: str, allowed: list[str] | None = None) -> Gatewa
 # ---------------------------------------------------------------------------
 # unknown sender rejected, no row written
 # ---------------------------------------------------------------------------
+
 
 class TestUnknownSenderRejected:
     def test_unknown_sender_returns_unknown_sender(self, project_dir):
@@ -159,12 +165,15 @@ class TestUnknownSenderRejected:
 # telegram message_id deduplicates redelivery
 # ---------------------------------------------------------------------------
 
+
 class TestMessageIdDeduplication:
     def test_second_delivery_returns_duplicate(self, project_dir):
         listener = _make_listener(project_dir, allowed=["42"])
         update = _make_update(message_id=2001, sender_id=42, text="/close t-task1")
 
-        with patch.object(listener, "_execute_command", return_value=({"message": "ok"}, "executed")):
+        with patch.object(
+            listener, "_execute_command", return_value=({"message": "ok"}, "executed")
+        ):
             first = listener.handle_update(update)
             second = listener.handle_update(update)
 
@@ -175,7 +184,9 @@ class TestMessageIdDeduplication:
         listener = _make_listener(project_dir, allowed=["42"])
         update = _make_update(message_id=2002, sender_id=42, text="/close t-task2")
 
-        with patch.object(listener, "_execute_command", return_value=({"message": "ok"}, "executed")):
+        with patch.object(
+            listener, "_execute_command", return_value=({"message": "ok"}, "executed")
+        ):
             listener.handle_update(update)
             listener.handle_update(update)
 
@@ -192,6 +203,7 @@ class TestMessageIdDeduplication:
 # malformed command sends help reply
 # ---------------------------------------------------------------------------
 
+
 class TestMalformedCommandHelp:
     def test_unknown_command_returns_help(self, project_dir):
         listener = _make_listener(project_dir, allowed=["42"])
@@ -199,7 +211,9 @@ class TestMalformedCommandHelp:
         update = _make_update(message_id=3001, sender_id=42, text="/bogus something")
 
         replies = []
-        with patch.object(listener, "_send_reply", side_effect=lambda cid, txt: replies.append(txt)):
+        with patch.object(
+            listener, "_send_reply", side_effect=lambda cid, txt: replies.append(txt)
+        ):
             result = listener.handle_update(update)
 
         assert result == "help"
@@ -211,7 +225,9 @@ class TestMalformedCommandHelp:
         update = _make_update(message_id=3002, sender_id=42, text="just some text")
 
         replies = []
-        with patch.object(listener, "_send_reply", side_effect=lambda cid, txt: replies.append(txt)):
+        with patch.object(
+            listener, "_send_reply", side_effect=lambda cid, txt: replies.append(txt)
+        ):
             result = listener.handle_update(update)
 
         assert result == "help"
@@ -221,7 +237,9 @@ class TestMalformedCommandHelp:
         update = _make_update(message_id=3003, sender_id=42, text="/approve")
 
         replies = []
-        with patch.object(listener, "_send_reply", side_effect=lambda cid, txt: replies.append(txt)):
+        with patch.object(
+            listener, "_send_reply", side_effect=lambda cid, txt: replies.append(txt)
+        ):
             result = listener.handle_update(update)
 
         assert result == "help"
@@ -231,12 +249,15 @@ class TestMalformedCommandHelp:
 # accepted command is recorded in DB
 # ---------------------------------------------------------------------------
 
+
 class TestCommandRecorded:
     def test_valid_command_writes_row(self, project_dir):
         listener = _make_listener(project_dir, allowed=["42"])
         update = _make_update(message_id=4001, sender_id=42, text="/reset t-foo")
 
-        with patch.object(listener, "_execute_command", return_value=({"message": "done"}, "executed")):
+        with patch.object(
+            listener, "_execute_command", return_value=({"message": "done"}, "executed")
+        ):
             result = listener.handle_update(update)
 
         assert result == "ok:reset"

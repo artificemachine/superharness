@@ -2,9 +2,9 @@
 failed_reason overwrites. Without this, repeated failures wiped the
 counter and the watcher re-routed forever, growing max_retries
 unbounded (we observed max_retries=65 in production)."""
+
 from __future__ import annotations
 
-import pytest
 
 from superharness.engine.db import get_connection, init_db
 from superharness.engine import inbox_dao
@@ -66,8 +66,8 @@ def test_recovery_count_survives_failed_reason_overwrite(tmp_path):
 def test_migration_backfills_recovery_count_from_legacy_reason(tmp_path):
     """If the database had legacy 'recovery_N:agentA_to_agentB' markers
     in failed_reason at migration time, the counter is preserved."""
-    import os
     from superharness.engine.db import get_connection, init_db
+
     project = tmp_path / "proj"
     (project / ".superharness").mkdir(parents=True)
 
@@ -75,6 +75,7 @@ def test_migration_backfills_recovery_count_from_legacy_reason(tmp_path):
     # a row with a legacy recovery_4 marker in failed_reason.
     db_path = str(project / ".superharness" / "state.sqlite3")
     import sqlite3
+
     raw = sqlite3.connect(db_path)
     raw.row_factory = sqlite3.Row
     raw.executescript(

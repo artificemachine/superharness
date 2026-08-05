@@ -4,11 +4,12 @@ import sys
 import time
 import requests
 import pytest
-import signal
 from pathlib import Path
 
 
-def _read_auth_token(project_dir: Path, proc: subprocess.Popen, timeout_s: float = 10) -> str:
+def _read_auth_token(
+    project_dir: Path, proc: subprocess.Popen, timeout_s: float = 10
+) -> str:
     """Read the dashboard's per-project auth token, waiting for it to appear.
 
     Added alongside the read-route auth gate in dashboard-ui.py (PR #58,
@@ -26,8 +27,10 @@ def _read_auth_token(project_dir: Path, proc: subprocess.Popen, timeout_s: float
     start = time.time()
     while time.time() - start < timeout_s:
         if proc.poll() is not None:
-            pytest.fail(f"Dashboard exited prematurely with code {proc.returncode} "
-                        f"while waiting for the auth token")
+            pytest.fail(
+                f"Dashboard exited prematurely with code {proc.returncode} "
+                f"while waiting for the auth token"
+            )
         try:
             token = token_file.read_text().strip()
             if len(token) >= 16:
@@ -38,25 +41,37 @@ def _read_auth_token(project_dir: Path, proc: subprocess.Popen, timeout_s: float
     pytest.fail(f"auth token file never appeared: {token_file}")
 
 
-def test_dashboard_timeout_exit():
+def _make_test_project(tmp_path: Path) -> Path:
+    """Create an isolated project so live dashboards cannot affect this test."""
+    project_dir = tmp_path / "dashboard-timeout"
+    (project_dir / ".superharness").mkdir(parents=True)
+    return project_dir
+
+
+def test_dashboard_timeout_exit(tmp_path: Path):
     """Verify that dashboard-ui exits after the idle timeout is exceeded."""
-    project_dir = Path(__file__).parent.parent.resolve()
-    script_path = project_dir / "src" / "superharness" / "scripts" / "dashboard-ui.py"
-    
+    repo_root = Path(__file__).parent.parent.resolve()
+    project_dir = _make_test_project(tmp_path)
+    script_path = repo_root / "src" / "superharness" / "scripts" / "dashboard-ui.py"
+
     port = 9972
-    
+
     # Start with a 5-second timeout to give more room for startup
     cmd = [
-        sys.executable, str(script_path),
-        "--project", str(project_dir),
-        "--port", str(port),
-        "--timeout", "5",
-        "--no-open"
+        sys.executable,
+        str(script_path),
+        "--project",
+        str(project_dir),
+        "--port",
+        str(port),
+        "--timeout",
+        "5",
+        "--no-open",
     ]
-    
+
     env = os.environ.copy()
-    env["PYTHONPATH"] = str(project_dir / "src")
-    
+    env["PYTHONPATH"] = str(repo_root / "src")
+
     proc = subprocess.Popen(cmd, env=env)
 
     try:
@@ -73,42 +88,50 @@ def test_dashboard_timeout_exit():
                 if resp.status_code == 200:
                     connected = True
                     break
-            except:
+            except requests.RequestException:
                 time.sleep(1)
 
         assert connected, "Dashboard failed to respond to /api/status"
-        
+
         # Wait for timeout (5s) + buffer (10s)
         time.sleep(15)
-        
+
         # Check if the process has exited
         exit_code = proc.poll()
-        assert exit_code is not None, "Dashboard process should have exited after timeout"
-        
+        assert exit_code is not None, (
+            "Dashboard process should have exited after timeout"
+        )
+
     finally:
         if proc.poll() is None:
             proc.terminate()
             proc.wait()
 
-def test_dashboard_keep_alive():
+
+def test_dashboard_keep_alive(tmp_path: Path):
     """Verify that /api/ping resets the idle timer."""
-    project_dir = Path(__file__).parent.parent.resolve()
-    script_path = project_dir / "src" / "superharness" / "scripts" / "dashboard-ui.py"
-    
+    repo_root = Path(__file__).parent.parent.resolve()
+    project_dir = _make_test_project(tmp_path)
+    script_path = repo_root / "src" / "superharness" / "scripts" / "dashboard-ui.py"
+
     port = 9973
-    
+
     # Start with a 5-second timeout
     cmd = [
-        sys.executable, str(script_path),
-        "--project", str(project_dir),
-        "--port", str(port),
-        "--timeout", "5",
-        "--no-open"
+        sys.executable,
+        str(script_path),
+        "--project",
+        str(project_dir),
+        "--port",
+        str(port),
+        "--timeout",
+        "5",
+        "--no-open",
     ]
-    
+
     env = os.environ.copy()
-    env["PYTHONPATH"] = str(project_dir / "src")
-    
+    env["PYTHONPATH"] = str(repo_root / "src")
+
     proc = subprocess.Popen(cmd, env=env)
 
     try:
@@ -121,10 +144,13 @@ def test_dashboard_keep_alive():
         connected = False
         while time.time() - start_wait < 10:
             try:
-                if requests.get(url_ping, headers=headers, timeout=2).status_code == 200:
+                if (
+                    requests.get(url_ping, headers=headers, timeout=2).status_code
+                    == 200
+                ):
                     connected = True
                     break
-            except:
+            except requests.RequestException:
                 time.sleep(1)
 
         assert connected, "Dashboard failed to start"
@@ -134,14 +160,16 @@ def test_dashboard_keep_alive():
             resp = requests.get(url_ping, headers=headers, timeout=2)
             assert resp.status_code == 200
             time.sleep(2)
-            
+
         # The process should still be alive because we kept pinging it
         assert proc.poll() is None, "Dashboard should be alive after periodic pings"
-        
+
         # Now stop pinging and wait for it to die (timeout 5s + buffer 10s)
         time.sleep(15)
-        assert proc.poll() is not None, "Dashboard should have exited after pings stopped"
-        
+        assert proc.poll() is not None, (
+            "Dashboard should have exited after pings stopped"
+        )
+
     finally:
         if proc.poll() is None:
             proc.terminate()

@@ -35,7 +35,9 @@ class TestProjectDirExtraction:
         assert _eq_path(_get_project_dir(d), r"C:\Users\runner\proj")
 
     def test_trailing_separator_posix(self):
-        assert _eq_path(_get_project_dir("/tmp/proj/.superharness/discussions/disc/"), "/tmp/proj")
+        assert _eq_path(
+            _get_project_dir("/tmp/proj/.superharness/discussions/disc/"), "/tmp/proj"
+        )
 
     def test_returns_non_full_path_when_marker_missing(self):
         """If the path doesn't contain the marker, rsplit returns the full string.
@@ -46,10 +48,16 @@ class TestProjectDirExtraction:
 
 class TestDiscIdExtraction:
     def test_posix_path(self):
-        assert _get_disc_id("/tmp/proj/.superharness/discussions/disc-abc") == "disc-abc"
+        assert (
+            _get_disc_id("/tmp/proj/.superharness/discussions/disc-abc") == "disc-abc"
+        )
 
     def test_windows_backslash_path(self):
-        assert _get_disc_id(r"C:\Users\runner\proj\.superharness\discussions\disc-abc") == "disc-abc"
+        windows_project = r"C:" + r"\Users\runner\proj"
+        assert (
+            _get_disc_id(windows_project + r"\.superharness\discussions\disc-abc")
+            == "disc-abc"
+        )
 
     def test_trailing_backslash(self):
         # On Windows os.path.basename strips trailing backslash; on POSIX it doesn't.
@@ -58,4 +66,6 @@ class TestDiscIdExtraction:
         assert result == "disc-abc"
 
     def test_trailing_forward_slash(self):
-        assert _get_disc_id("/tmp/proj/.superharness/discussions/disc-abc/") == "disc-abc"
+        assert (
+            _get_disc_id("/tmp/proj/.superharness/discussions/disc-abc/") == "disc-abc"
+        )

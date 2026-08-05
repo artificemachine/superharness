@@ -22,10 +22,8 @@ Covers every action button visible in the dashboard UI:
     unsupported action → 400
 """
 
-import sqlite3
 import time
 from pathlib import Path
-from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -35,6 +33,7 @@ from superharness.engine import inbox_dao
 
 # ── helper: build an in-memory SQLite inbox ──────────────────────────────────
 
+
 def _make_db(tmp_path: Path, items: list[dict]) -> Path:
     """Initialise the full schema via init_db then insert test items.
 
@@ -42,8 +41,7 @@ def _make_db(tmp_path: Path, items: list[dict]) -> Path:
     then immediately updated to the desired status so tests can start from
     any status without bypassing business logic.
     """
-    from superharness.engine.db import get_connection, init_db
-    from superharness.engine import inbox_dao
+    from superharness.engine.db import get_connection
 
     harness = tmp_path / ".superharness"
     harness.mkdir(exist_ok=True)
@@ -78,12 +76,13 @@ def _make_db(tmp_path: Path, items: list[dict]) -> Path:
 def _make_inbox_yaml(tmp_path: Path, items: list[dict]) -> Path:
     """Write a minimal inbox.yaml for handlers that fall back to YAML."""
     import yaml
+
     harness = tmp_path / ".superharness"
     harness.mkdir(exist_ok=True)
     inbox_file = harness / "inbox.yaml"
     inbox_file.write_text(
-        "# Delegation inbox\n" +
-        yaml.dump(items, default_flow_style=False, allow_unicode=True)
+        "# Delegation inbox\n"
+        + yaml.dump(items, default_flow_style=False, allow_unicode=True)
     )
     return inbox_file
 
@@ -98,22 +97,28 @@ def _db_items(tmp_path: Path) -> list[dict]:
 
 # ── recover_failed ────────────────────────────────────────────────────────────
 
+
 class TestRecoverFailed:
     """recover_failed button must flip all failed items → pending."""
 
     def test_flips_failed_to_pending_in_sqlite(self, tmp_path):
-        _make_db(tmp_path, [
-            {"id": "f1", "status": "failed"},
-            {"id": "f2", "status": "failed"},
-            {"id": "r1", "status": "running"},
-        ])
+        _make_db(
+            tmp_path,
+            [
+                {"id": "f1", "status": "failed"},
+                {"id": "f2", "status": "failed"},
+                {"id": "r1", "status": "running"},
+            ],
+        )
 
         conn = get_connection(str(tmp_path))
         now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
         recovered = 0
         failed_ids = [r["id"] for r in _db_items(tmp_path) if r["status"] == "failed"]
         for fid in failed_ids:
-            if inbox_dao.update_status(conn, fid, from_status="failed", to_status="pending", now=now):
+            if inbox_dao.update_status(
+                conn, fid, from_status="failed", to_status="pending", now=now
+            ):
                 recovered += 1
         conn.commit()
         conn.close()
@@ -131,8 +136,11 @@ class TestRecoverFailed:
         now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
         failed_ids = [r["id"] for r in _db_items(tmp_path) if r["status"] == "failed"]
         recovered = sum(
-            1 for fid in failed_ids
-            if inbox_dao.update_status(conn, fid, from_status="failed", to_status="pending", now=now)
+            1
+            for fid in failed_ids
+            if inbox_dao.update_status(
+                conn, fid, from_status="failed", to_status="pending", now=now
+            )
         )
         conn.commit()
         conn.close()
@@ -140,15 +148,20 @@ class TestRecoverFailed:
         assert recovered == 0
 
     def test_does_not_touch_paused_items(self, tmp_path):
-        _make_db(tmp_path, [
-            {"id": "p1", "status": "paused"},
-            {"id": "f1", "status": "failed"},
-        ])
+        _make_db(
+            tmp_path,
+            [
+                {"id": "p1", "status": "paused"},
+                {"id": "f1", "status": "failed"},
+            ],
+        )
 
         conn = get_connection(str(tmp_path))
         now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
         for fid in ["f1"]:
-            inbox_dao.update_status(conn, fid, from_status="failed", to_status="pending", now=now)
+            inbox_dao.update_status(
+                conn, fid, from_status="failed", to_status="pending", now=now
+            )
         conn.commit()
         conn.close()
 
@@ -158,14 +171,18 @@ class TestRecoverFailed:
 
 # ── remove_item ───────────────────────────────────────────────────────────────
 
+
 class TestRemoveItem:
     """remove_item must delete from SQLite regardless of YAML presence."""
 
     def test_removes_from_sqlite(self, tmp_path):
-        _make_db(tmp_path, [
-            {"id": "x1", "status": "done"},
-            {"id": "x2", "status": "paused"},
-        ])
+        _make_db(
+            tmp_path,
+            [
+                {"id": "x1", "status": "done"},
+                {"id": "x2", "status": "paused"},
+            ],
+        )
 
         conn = get_connection(str(tmp_path))
         conn.execute("DELETE FROM inbox WHERE id = ?", ("x1",))
@@ -188,11 +205,14 @@ class TestRemoveItem:
         assert "y1" in remaining
 
     def test_remove_leaves_other_items_intact(self, tmp_path):
-        _make_db(tmp_path, [
-            {"id": "a", "status": "done"},
-            {"id": "b", "status": "failed"},
-            {"id": "c", "status": "pending"},
-        ])
+        _make_db(
+            tmp_path,
+            [
+                {"id": "a", "status": "done"},
+                {"id": "b", "status": "failed"},
+                {"id": "c", "status": "pending"},
+            ],
+        )
 
         conn = get_connection(str(tmp_path))
         conn.execute("DELETE FROM inbox WHERE id = ?", ("b",))
@@ -205,6 +225,7 @@ class TestRemoveItem:
 
 # ── resume_item (paused → pending) ────────────────────────────────────────────
 
+
 class TestResumeItem:
     """resume_item must only transition from paused; other statuses are rejected."""
 
@@ -213,7 +234,9 @@ class TestResumeItem:
 
         conn = get_connection(str(tmp_path))
         now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-        ok = inbox_dao.update_status(conn, "r1", from_status="paused", to_status="pending", now=now)
+        ok = inbox_dao.update_status(
+            conn, "r1", from_status="paused", to_status="pending", now=now
+        )
         conn.commit()
         conn.close()
 
@@ -226,7 +249,9 @@ class TestResumeItem:
 
         conn = get_connection(str(tmp_path))
         now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-        ok = inbox_dao.update_status(conn, "r1", from_status="paused", to_status="pending", now=now)
+        ok = inbox_dao.update_status(
+            conn, "r1", from_status="paused", to_status="pending", now=now
+        )
         conn.commit()
         conn.close()
 
@@ -237,6 +262,7 @@ class TestResumeItem:
 
 # ── retry_item (stale/failed/stopped → pending) ───────────────────────────────
 
+
 class TestRetryItem:
     """retry_item transitions stale/failed/stopped to pending; rejects other statuses."""
 
@@ -246,7 +272,9 @@ class TestRetryItem:
 
         conn = get_connection(str(tmp_path))
         now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-        ok = inbox_dao.update_status(conn, "t1", from_status=from_status, to_status="pending", now=now)
+        ok = inbox_dao.update_status(
+            conn, "t1", from_status=from_status, to_status="pending", now=now
+        )
         conn.commit()
         conn.close()
 
@@ -254,7 +282,9 @@ class TestRetryItem:
         statuses = {r["id"]: r["status"] for r in _db_items(tmp_path)}
         assert statuses["t1"] == "pending"
 
-    @pytest.mark.parametrize("bad_status", ["pending", "launched", "running", "paused", "done"])
+    @pytest.mark.parametrize(
+        "bad_status", ["pending", "launched", "running", "paused", "done"]
+    )
     def test_non_retryable_status_not_reached_by_dao(self, tmp_path, bad_status):
         """The handler guards non-retryable statuses before reaching the DAO.
 
@@ -268,16 +298,21 @@ class TestRetryItem:
         now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
         # Simulate the DAO call the handler would make IF it wrongly reached it:
         # from_status="failed" (always wrong for non-retryable items)
-        ok = inbox_dao.update_status(conn, "t1", from_status="failed", to_status="pending", now=now)
+        ok = inbox_dao.update_status(
+            conn, "t1", from_status="failed", to_status="pending", now=now
+        )
         conn.commit()
         conn.close()
 
-        assert not ok, "DAO from_status guard must reject when item status != from_status"
+        assert not ok, (
+            "DAO from_status guard must reject when item status != from_status"
+        )
         statuses = {r["id"]: r["status"] for r in _db_items(tmp_path)}
         assert statuses["t1"] == bad_status
 
 
 # ── stop_item ─────────────────────────────────────────────────────────────────
+
 
 class TestStopItem:
     """stop_item transitions running/launched → stopped."""
@@ -288,7 +323,9 @@ class TestStopItem:
 
         conn = get_connection(str(tmp_path))
         now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-        ok = inbox_dao.update_status(conn, "s1", from_status=from_status, to_status="stopped", now=now)
+        ok = inbox_dao.update_status(
+            conn, "s1", from_status=from_status, to_status="stopped", now=now
+        )
         conn.commit()
         conn.close()
 
@@ -299,25 +336,30 @@ class TestStopItem:
 
 # ── clear_resolved_inbox ──────────────────────────────────────────────────────
 
+
 class TestClearResolvedInbox:
     """clear_resolved_inbox removes done/failed items for finished contract tasks."""
 
     def test_removes_done_items_for_finished_tasks(self, tmp_path):
-        _make_db(tmp_path, [
-            {"id": "d1", "task_id": "task-finished", "status": "done"},
-            {"id": "d2", "task_id": "task-active",   "status": "done"},
-            {"id": "p1", "task_id": "task-active",   "status": "pending"},
-        ])
+        _make_db(
+            tmp_path,
+            [
+                {"id": "d1", "task_id": "task-finished", "status": "done"},
+                {"id": "d2", "task_id": "task-active", "status": "done"},
+                {"id": "p1", "task_id": "task-active", "status": "pending"},
+            ],
+        )
         active_task_ids = {"task-active"}
         _KEEP_STATUSES = {"pending", "launched", "running"}
 
-        items = _db_items(tmp_path)
+        _db_items(tmp_path)
         # Simulate the handler logic
         to_remove = [
-            i for i in [
+            i
+            for i in [
                 {"id": "d1", "task_id": "task-finished", "status": "done"},
-                {"id": "d2", "task_id": "task-active",   "status": "done"},
-                {"id": "p1", "task_id": "task-active",   "status": "pending"},
+                {"id": "d2", "task_id": "task-active", "status": "done"},
+                {"id": "p1", "task_id": "task-active", "status": "pending"},
             ]
             if i.get("task_id") not in active_task_ids
             and i.get("status") not in _KEEP_STATUSES
@@ -336,26 +378,33 @@ class TestClearResolvedInbox:
         assert "p1" in remaining, "pending item must be kept regardless"
 
     def test_keeps_active_status_items(self, tmp_path):
-        _make_db(tmp_path, [
-            {"id": "k1", "task_id": "task-x", "status": "running"},
-            {"id": "k2", "task_id": "task-x", "status": "launched"},
-        ])
+        _make_db(
+            tmp_path,
+            [
+                {"id": "k1", "task_id": "task-x", "status": "running"},
+                {"id": "k2", "task_id": "task-x", "status": "launched"},
+            ],
+        )
         # No active task IDs — even so, running/launched must never be removed
         active_task_ids: set = set()
         _KEEP_STATUSES = {"pending", "launched", "running"}
 
         to_remove = [
-            i for i in [
+            i
+            for i in [
                 {"id": "k1", "task_id": "task-x", "status": "running"},
                 {"id": "k2", "task_id": "task-x", "status": "launched"},
             ]
             if i.get("task_id") not in active_task_ids
             and i.get("status") not in _KEEP_STATUSES
         ]
-        assert to_remove == [], "running/launched items must never be removed by clear_resolved"
+        assert to_remove == [], (
+            "running/launched items must never be removed by clear_resolved"
+        )
 
 
 # ── action routing guard ──────────────────────────────────────────────────────
+
 
 class TestActionRouting:
     """The action dispatcher must reject unknown actions with a 400 error."""
@@ -363,13 +412,28 @@ class TestActionRouting:
     def test_unsupported_action_returns_400(self, tmp_path):
         """Simulate the handler returning 400 for unrecognised actions."""
         known_actions = {
-            "recover_retry", "recover_failed", "normalize_stale", "clear_resolved_inbox",
+            "recover_retry",
+            "recover_failed",
+            "normalize_stale",
+            "clear_resolved_inbox",
         }
         known_prefixes = (
-            "remove_item:", "resume_item:", "resume_task:", "retry_item:", "retry_task:",
-            "stop_item:", "remove_task:", "approve_plan:", "cancel_review:",
-            "approve_without_review:", "approve_report:", "approve_task:",
-            "confirm_plan:", "disable_task:", "enable_task:", "cancel_discussion:",
+            "remove_item:",
+            "resume_item:",
+            "resume_task:",
+            "retry_item:",
+            "retry_task:",
+            "stop_item:",
+            "remove_task:",
+            "approve_plan:",
+            "cancel_review:",
+            "approve_without_review:",
+            "approve_report:",
+            "approve_task:",
+            "confirm_plan:",
+            "disable_task:",
+            "enable_task:",
+            "cancel_discussion:",
         )
 
         def dispatch(action: str) -> int:
@@ -387,7 +451,9 @@ class TestActionRouting:
         assert dispatch("cancel_discussion:abc") == 200
         assert dispatch("totally_unknown_action") == 400
         assert dispatch("") == 400
-        assert dispatch("remove_item:") == 200  # empty id still routes; handler validates
+        assert (
+            dispatch("remove_item:") == 200
+        )  # empty id still routes; handler validates
 
     def test_retry_item_rejects_non_retryable_status(self):
         """Handler must return 400 when retry_item is called on a non-retryable status."""
@@ -408,6 +474,7 @@ class TestActionRouting:
 
     def test_retry_item_missing_id_returns_404(self):
         """Handler must return 404 when item id is not found in inbox."""
+
         def handle_retry_item(item_id: str, inbox: list[dict]) -> int:
             target = next((i for i in inbox if i["id"] == item_id), None)
             if not target:
@@ -422,9 +489,14 @@ class TestActionRouting:
 
     def test_resume_item_missing_id_returns_404(self):
         """Handler must return 404 when resume_task can't find a paused item."""
+
         def handle_resume_task(task_id: str, inbox: list[dict]) -> int:
             target = next(
-                (i for i in inbox if i.get("task_id") == task_id and i.get("status") == "paused"),
+                (
+                    i
+                    for i in inbox
+                    if i.get("task_id") == task_id and i.get("status") == "paused"
+                ),
                 None,
             )
             if not target:

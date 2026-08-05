@@ -1,9 +1,9 @@
 """Tests for module runner (TDD — RED → GREEN → REFACTOR)."""
+
 from __future__ import annotations
 import pytest
 
 from unittest.mock import Mock, patch
-
 
 
 class TestModuleRunner:
@@ -31,7 +31,9 @@ detect: {}
 
         # Mock the action registry
         mock_action = Mock(return_value={"success": True})
-        with patch("superharness.modules.runner._ACTION_REGISTRY", {"test_action": mock_action}):
+        with patch(
+            "superharness.modules.runner._ACTION_REGISTRY", {"test_action": mock_action}
+        ):
             results = run_hooks("on_close", {"task_id": "t1"}, project)
 
         assert len(results) == 1
@@ -60,7 +62,9 @@ detect: {}
         )
 
         mock_action = Mock()
-        with patch("superharness.modules.runner._ACTION_REGISTRY", {"test_action": mock_action}):
+        with patch(
+            "superharness.modules.runner._ACTION_REGISTRY", {"test_action": mock_action}
+        ):
             results = run_hooks("on_close", {}, project)
 
         assert len(results) == 0
@@ -87,7 +91,10 @@ detect: {}
         )
 
         mock_action = Mock(return_value={"verified": True})
-        with patch("superharness.modules.runner._ACTION_REGISTRY", {"verify_action": mock_action}):
+        with patch(
+            "superharness.modules.runner._ACTION_REGISTRY",
+            {"verify_action": mock_action},
+        ):
             results = run_hooks("on_verify", {"task_id": "t2"}, project)
 
         assert len(results) == 1
@@ -115,14 +122,19 @@ detect: {}
         )
 
         mock_action = Mock(return_value={"refreshed": True})
-        with patch("superharness.modules.runner._ACTION_REGISTRY", {"continue_action": mock_action}):
+        with patch(
+            "superharness.modules.runner._ACTION_REGISTRY",
+            {"continue_action": mock_action},
+        ):
             results = run_hooks("on_continue", {"task_id": "t3"}, project)
 
         assert len(results) == 1
         assert results[0]["module"] == "continue"
         mock_action.assert_called_once()
 
-    @pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
+    @pytest.mark.skip(
+        reason="legacy YAML fixture — pending SQLite migration (see PR #208)"
+    )
     def test_module_failure_does_not_block_close(self, tmp_path, caplog):
         """If module action fails → warning logged, close still succeeds."""
         from superharness.modules.runner import run_hooks
@@ -147,7 +159,10 @@ detect: {}
         def failing_action(context, settings):
             raise RuntimeError("Action failed")
 
-        with patch("superharness.modules.runner._ACTION_REGISTRY", {"fail_action": failing_action}):
+        with patch(
+            "superharness.modules.runner._ACTION_REGISTRY",
+            {"fail_action": failing_action},
+        ):
             results = run_hooks("on_close", {}, project)
 
         # Should return a result indicating failure, not crash
@@ -191,10 +206,13 @@ detect: {}
         mock_action1 = Mock(return_value={"module": "1"})
         mock_action2 = Mock(return_value={"module": "2"})
 
-        with patch("superharness.modules.runner._ACTION_REGISTRY", {
-            "action1": mock_action1,
-            "action2": mock_action2,
-        }):
+        with patch(
+            "superharness.modules.runner._ACTION_REGISTRY",
+            {
+                "action1": mock_action1,
+                "action2": mock_action2,
+            },
+        ):
             results = run_hooks("on_close", {}, project)
 
         assert len(results) == 2
@@ -225,7 +243,9 @@ detect: {{}}
         self._write_conditional_module(project, "target == 'openclaw'")
 
         mock_action = Mock(return_value={"sent": True})
-        with patch("superharness.modules.runner._ACTION_REGISTRY", {"cond_action": mock_action}):
+        with patch(
+            "superharness.modules.runner._ACTION_REGISTRY", {"cond_action": mock_action}
+        ):
             results = run_hooks("on_delegate", {"target": "openclaw"}, project)
 
         assert len(results) == 1
@@ -240,7 +260,9 @@ detect: {{}}
         self._write_conditional_module(project, "target == 'openclaw'")
 
         mock_action = Mock(return_value={"sent": True})
-        with patch("superharness.modules.runner._ACTION_REGISTRY", {"cond_action": mock_action}):
+        with patch(
+            "superharness.modules.runner._ACTION_REGISTRY", {"cond_action": mock_action}
+        ):
             results = run_hooks("on_delegate", {"target": "claude-code"}, project)
 
         assert results == []
@@ -255,7 +277,9 @@ detect: {{}}
         self._write_conditional_module(project, "target != 'openclaw'")
 
         mock_action = Mock(return_value={"ok": True})
-        with patch("superharness.modules.runner._ACTION_REGISTRY", {"cond_action": mock_action}):
+        with patch(
+            "superharness.modules.runner._ACTION_REGISTRY", {"cond_action": mock_action}
+        ):
             fired = run_hooks("on_delegate", {"target": "claude-code"}, project)
             skipped = run_hooks("on_delegate", {"target": "openclaw"}, project)
 
@@ -271,7 +295,9 @@ detect: {{}}
         self._write_conditional_module(project, "this is not a condition")
 
         mock_action = Mock(return_value={"ok": True})
-        with patch("superharness.modules.runner._ACTION_REGISTRY", {"cond_action": mock_action}):
+        with patch(
+            "superharness.modules.runner._ACTION_REGISTRY", {"cond_action": mock_action}
+        ):
             results = run_hooks("on_delegate", {"target": "openclaw"}, project)
 
         assert results == []
@@ -299,7 +325,9 @@ detect: {}
         )
 
         mock_action = Mock(return_value={"success": False, "blocked": True})
-        with patch("superharness.modules.runner._ACTION_REGISTRY", {"sec_action": mock_action}):
+        with patch(
+            "superharness.modules.runner._ACTION_REGISTRY", {"sec_action": mock_action}
+        ):
             results = run_hooks("on_verify", {"task_id": "t1"}, project)
 
         assert len(results) == 1
@@ -327,7 +355,10 @@ detect: {}
         )
 
         mock_action = Mock(return_value={"success": False, "blocked": True})
-        with patch("superharness.modules.runner._ACTION_REGISTRY", {"nogate_action": mock_action}):
+        with patch(
+            "superharness.modules.runner._ACTION_REGISTRY",
+            {"nogate_action": mock_action},
+        ):
             results = run_hooks("on_verify", {"task_id": "t1"}, project)
 
         assert len(results) == 1
@@ -370,7 +401,10 @@ detect: {}
             "actor": "claude-code",
         }
 
-        with patch("superharness.modules.runner._ACTION_REGISTRY", {"ctx_action": capture_action}):
+        with patch(
+            "superharness.modules.runner._ACTION_REGISTRY",
+            {"ctx_action": capture_action},
+        ):
             run_hooks("on_close", context, project)
 
         # Verify context was passed through

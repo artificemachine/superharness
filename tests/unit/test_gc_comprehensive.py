@@ -6,23 +6,23 @@ Covers:
 - Gap 4: orphaned discussion inbox cleanup
 - Gap 7: stuck waiting_input timeout
 """
+
 from __future__ import annotations
 
 import sqlite3
-import time
 from pathlib import Path
 from datetime import datetime, timezone, timedelta
-
-import pytest
 
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _setup_db(tmp_path: Path) -> sqlite3.Connection:
     """Create a SQLite DB at the legacy path (matching get_connection resolution)."""
     from superharness.engine.db import init_db
+
     harness = tmp_path / ".superharness"
     harness.mkdir(exist_ok=True)
     db_path = harness / "state.sqlite3"
@@ -32,26 +32,51 @@ def _setup_db(tmp_path: Path) -> sqlite3.Connection:
     return conn
 
 
-def _seed_task(conn, task_id: str, status: str = "in_progress", created_at: str = "2026-01-01T00:00:00Z"):
+def _seed_task(
+    conn,
+    task_id: str,
+    status: str = "in_progress",
+    created_at: str = "2026-01-01T00:00:00Z",
+):
     conn.execute(
         "INSERT OR IGNORE INTO tasks (id, title, status, created_at) VALUES (?, ?, ?, ?)",
         (task_id, task_id, status, created_at),
     )
 
 
-def _seed_inbox(conn, item_id: str, task_id: str, agent: str, status: str,
-                retry_count: int = 0, max_retries: int = 3, created_at: str = "2026-01-01T00:00:00Z",
-                failed_reason: str | None = None, pid: int | None = None):
+def _seed_inbox(
+    conn,
+    item_id: str,
+    task_id: str,
+    agent: str,
+    status: str,
+    retry_count: int = 0,
+    max_retries: int = 3,
+    created_at: str = "2026-01-01T00:00:00Z",
+    failed_reason: str | None = None,
+    pid: int | None = None,
+):
     conn.execute(
         "INSERT OR IGNORE INTO inbox (id, task_id, target_agent, status, retry_count, max_retries, "
         "failed_reason, created_at, pid) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        (item_id, task_id, agent, status, retry_count, max_retries, failed_reason, created_at, pid),
+        (
+            item_id,
+            task_id,
+            agent,
+            status,
+            retry_count,
+            max_retries,
+            failed_reason,
+            created_at,
+            pid,
+        ),
     )
 
 
 # ---------------------------------------------------------------------------
 # Gap 2: duplicate inbox cleanup
 # ---------------------------------------------------------------------------
+
 
 class TestGCDuplicateInbox:
     def test_merges_duplicate_pending(self, tmp_path):
@@ -61,10 +86,25 @@ class TestGCDuplicateInbox:
         at insert time. _seed_inbox uses INSERT OR IGNORE so the second insert
         is silently discarded."""
         from superharness.commands.inbox_watch import _gc_duplicate_inbox
+
         conn = _setup_db(tmp_path)
         _seed_task(conn, "task-1")
-        _seed_inbox(conn, "dup-1", "task-1", "claude-code", "pending", created_at="2026-01-01T00:00:00Z")
-        _seed_inbox(conn, "dup-2", "task-1", "claude-code", "pending", created_at="2026-01-01T00:01:00Z")
+        _seed_inbox(
+            conn,
+            "dup-1",
+            "task-1",
+            "claude-code",
+            "pending",
+            created_at="2026-01-01T00:00:00Z",
+        )
+        _seed_inbox(
+            conn,
+            "dup-2",
+            "task-1",
+            "claude-code",
+            "pending",
+            created_at="2026-01-01T00:01:00Z",
+        )
         conn.commit()
 
         result = _gc_duplicate_inbox(str(tmp_path))
@@ -79,6 +119,7 @@ class TestGCDuplicateInbox:
     def test_no_duplicates_no_change(self, tmp_path):
         """Single pending item → no cleanup."""
         from superharness.commands.inbox_watch import _gc_duplicate_inbox
+
         conn = _setup_db(tmp_path)
         _seed_task(conn, "task-1")
         _seed_inbox(conn, "only-1", "task-1", "claude-code", "pending")
@@ -93,13 +134,17 @@ class TestGCDuplicateInbox:
 # Gap 3: zombie detection for running/pending
 # ---------------------------------------------------------------------------
 
+
 class TestGCZombieRunning:
     def test_dead_pid_marks_failed(self, tmp_path):
         """Running item with dead PID → marked failed."""
         from superharness.commands.inbox_watch import _gc_zombie_running
+
         conn = _setup_db(tmp_path)
         _seed_task(conn, "task-1")
-        _seed_inbox(conn, "zom-1", "task-1", "claude-code", "running", pid=99999)  # dead PID
+        _seed_inbox(
+            conn, "zom-1", "task-1", "claude-code", "running", pid=99999
+        )  # dead PID
         conn.commit()
 
         result = _gc_zombie_running(str(tmp_path))
@@ -111,6 +156,7 @@ class TestGCZombieRunning:
     def test_no_running_items_no_change(self, tmp_path):
         """No running items → no cleanup."""
         from superharness.commands.inbox_watch import _gc_zombie_running
+
         conn = _setup_db(tmp_path)
         _seed_task(conn, "task-1")
         _seed_inbox(conn, "pen-1", "task-1", "claude-code", "pending")
@@ -129,14 +175,20 @@ class TestGCZombiePending:
 
         conn = _setup_db(tmp_path)
         _seed_task(conn, "task-1")
-        old_time = (datetime.now(timezone.utc) - timedelta(minutes=20)).strftime("%Y-%m-%dT%H:%M:%SZ")
-        _seed_inbox(conn, "old-pen", "task-1", "claude-code", "pending", created_at=old_time)
+        old_time = (datetime.now(timezone.utc) - timedelta(minutes=20)).strftime(
+            "%Y-%m-%dT%H:%M:%SZ"
+        )
+        _seed_inbox(
+            conn, "old-pen", "task-1", "claude-code", "pending", created_at=old_time
+        )
         conn.commit()
 
         result = _gc_zombie_pending(str(tmp_path))
         assert result == 1
 
-        row = conn.execute("SELECT status, failed_reason FROM inbox WHERE id='old-pen'").fetchone()
+        row = conn.execute(
+            "SELECT status, failed_reason FROM inbox WHERE id='old-pen'"
+        ).fetchone()
         assert row["status"] == "done"
         assert "timeout" in (row["failed_reason"] or "")
         conn.close()
@@ -148,8 +200,12 @@ class TestGCZombiePending:
 
         conn = _setup_db(tmp_path)
         _seed_task(conn, "task-1")
-        recent = (datetime.now(timezone.utc) - timedelta(minutes=5)).strftime("%Y-%m-%dT%H:%M:%SZ")
-        _seed_inbox(conn, "new-pen", "task-1", "claude-code", "pending", created_at=recent)
+        recent = (datetime.now(timezone.utc) - timedelta(minutes=5)).strftime(
+            "%Y-%m-%dT%H:%M:%SZ"
+        )
+        _seed_inbox(
+            conn, "new-pen", "task-1", "claude-code", "pending", created_at=recent
+        )
         conn.commit()
 
         result = _gc_zombie_pending(str(tmp_path))
@@ -160,6 +216,7 @@ class TestGCZombiePending:
 # ---------------------------------------------------------------------------
 # Gap 4: orphaned discussion inbox cleanup
 # ---------------------------------------------------------------------------
+
 
 class TestGCOrphanedDiscussionInbox:
     def test_closed_discussion_items_canceled(self, tmp_path):
@@ -180,7 +237,9 @@ class TestGCOrphanedDiscussionInbox:
         assert result == 2
 
         for iid in ("disc-item-1", "disc-item-2"):
-            row = conn.execute("SELECT status, failed_reason FROM inbox WHERE id=?", (iid,)).fetchone()
+            row = conn.execute(
+                "SELECT status, failed_reason FROM inbox WHERE id=?", (iid,)
+            ).fetchone()
             assert row["status"] == "done"
             assert "discussion closed" in (row["failed_reason"] or "")
         conn.close()
@@ -195,7 +254,9 @@ class TestGCOrphanedDiscussionInbox:
             "VALUES ('disc-active', 'test', '[\"claude-code\"]', 'active', '2026-01-01T00:00:00Z')"
         )
         _seed_task(conn, "disc-active/round-1")
-        _seed_inbox(conn, "active-item", "disc-active/round-1", "claude-code", "pending")
+        _seed_inbox(
+            conn, "active-item", "disc-active/round-1", "claude-code", "pending"
+        )
         conn.commit()
 
         result = _gc_orphaned_discussion_inbox(str(tmp_path))
@@ -207,6 +268,7 @@ class TestGCOrphanedDiscussionInbox:
 # Gap 7: stuck waiting_input timeout
 # ---------------------------------------------------------------------------
 
+
 class TestGCStuckWaitingInput:
     def test_old_waiting_input_archived(self, tmp_path):
         """Task in waiting_input > 30 min → archived."""
@@ -214,15 +276,21 @@ class TestGCStuckWaitingInput:
         from superharness.commands.inbox_watch import _gc_stuck_waiting_input
 
         conn = _setup_db(tmp_path)
-        old_time = (datetime.now(timezone.utc) - timedelta(minutes=45)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        old_time = (datetime.now(timezone.utc) - timedelta(minutes=45)).strftime(
+            "%Y-%m-%dT%H:%M:%SZ"
+        )
         _seed_task(conn, "stuck-task", status="waiting_input", created_at=old_time)
-        conn.execute("UPDATE tasks SET in_progress_at=? WHERE id=?", (old_time, "stuck-task"))
+        conn.execute(
+            "UPDATE tasks SET in_progress_at=? WHERE id=?", (old_time, "stuck-task")
+        )
         conn.commit()
 
         result = _gc_stuck_waiting_input(str(tmp_path))
         assert result == 1
 
-        row = conn.execute("SELECT status, archived_reason FROM tasks WHERE id='stuck-task'").fetchone()
+        row = conn.execute(
+            "SELECT status, archived_reason FROM tasks WHERE id='stuck-task'"
+        ).fetchone()
         assert row["status"] == "archived"
         assert "timeout" in (row["archived_reason"] or "")
         conn.close()
@@ -233,9 +301,13 @@ class TestGCStuckWaitingInput:
         from superharness.commands.inbox_watch import _gc_stuck_waiting_input
 
         conn = _setup_db(tmp_path)
-        recent = (datetime.now(timezone.utc) - timedelta(minutes=10)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        recent = (datetime.now(timezone.utc) - timedelta(minutes=10)).strftime(
+            "%Y-%m-%dT%H:%M:%SZ"
+        )
         _seed_task(conn, "recent-task", status="waiting_input", created_at=recent)
-        conn.execute("UPDATE tasks SET in_progress_at=? WHERE id=?", (recent, "recent-task"))
+        conn.execute(
+            "UPDATE tasks SET in_progress_at=? WHERE id=?", (recent, "recent-task")
+        )
         conn.commit()
 
         result = _gc_stuck_waiting_input(str(tmp_path))
@@ -248,8 +320,12 @@ class TestGCStuckWaitingInput:
         from superharness.commands.inbox_watch import _gc_stuck_waiting_input
 
         conn = _setup_db(tmp_path)
-        old_time = (datetime.now(timezone.utc) - timedelta(minutes=45)).strftime("%Y-%m-%dT%H:%M:%SZ")
-        _seed_task(conn, "no-progress-task", status="waiting_input", created_at=old_time)
+        old_time = (datetime.now(timezone.utc) - timedelta(minutes=45)).strftime(
+            "%Y-%m-%dT%H:%M:%SZ"
+        )
+        _seed_task(
+            conn, "no-progress-task", status="waiting_input", created_at=old_time
+        )
         # No in_progress_at set — should fall back to created_at
         conn.commit()
 
@@ -260,6 +336,7 @@ class TestGCStuckWaitingInput:
 
 # ── Gap: no-engagement timeout ────────────────────────────────────────────────
 
+
 class TestGCNoEngagement:
     """Discussions with zero rounds should auto-close after timeout."""
 
@@ -269,7 +346,9 @@ class TestGCNoEngagement:
         from superharness.commands.inbox_watch import _gc_discussion_deadlock
 
         conn = _setup_db(tmp_path)
-        old_time = (datetime.now(timezone.utc) - timedelta(minutes=60)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        old_time = (datetime.now(timezone.utc) - timedelta(minutes=60)).strftime(
+            "%Y-%m-%dT%H:%M:%SZ"
+        )
         conn.execute(
             "INSERT INTO discussions (id, topic, owners, status, created_at) "
             "VALUES ('disc-stale', 'stale', '[\"claude-code\"]', 'active', ?)",
@@ -280,7 +359,9 @@ class TestGCNoEngagement:
         result = _gc_discussion_deadlock(str(tmp_path))
         assert result == 1  # one discussion closed
 
-        row = conn.execute("SELECT status FROM discussions WHERE id='disc-stale'").fetchone()
+        row = conn.execute(
+            "SELECT status FROM discussions WHERE id='disc-stale'"
+        ).fetchone()
         assert row["status"] == "failed_participant"
         conn.close()
 
@@ -307,6 +388,7 @@ class TestGCNoEngagement:
 # Fix #3: discussion deadlock fast-close requires `required` submissions
 # (BUGREPORT-discussion-consensus-single-participant)
 # ---------------------------------------------------------------------------
+
 
 class TestGCDiscussionDeadlockRequiredSubmissions:
     """_gc_discussion_deadlock must require `required` (not 1) submissions
@@ -428,9 +510,7 @@ class TestGCDiscussionDeadlockRequiredSubmissions:
         conn.close()
 
         result = _gc_discussion_deadlock(str(tmp_path))
-        assert result == 0, (
-            f"1/2 submissions < required=2 must NOT fast-close"
-        )
+        assert result == 0, "1/2 submissions < required=2 must NOT fast-close"
 
         conn = _setup_db(tmp_path)
         row = conn.execute(

@@ -6,6 +6,7 @@ next_pending.
 
 Output format is byte-for-byte identical to the Ruby version for parity.
 """
+
 from __future__ import annotations
 
 import json
@@ -16,7 +17,12 @@ from datetime import datetime
 
 import yaml
 
-from superharness.engine.errors import OperationError, SuperharnessError, UsageError, handle_cli_error
+from superharness.engine.errors import (
+    OperationError,
+    SuperharnessError,
+    UsageError,
+    handle_cli_error,
+)
 from superharness.engine.process import pid_alive
 from superharness.engine.yaml_helpers import safe_load_normalized
 from superharness.engine import state_reader
@@ -60,7 +66,7 @@ def _deps_satisfied(contract_file: str, task_id: str) -> bool:
             dep_ids = [str(d).strip() for d in blocked_by if str(d).strip()]
         else:
             return True
-        
+
         # Check each dependency
         for dep_id in dep_ids:
             dep_task = state_reader.get_task(project_dir, dep_id)
@@ -82,6 +88,7 @@ def _task_is_dispatch_ready(project_dir: str, task_id: str) -> bool:
     """Check if a contract task is in a dispatch-ready status."""
     try:
         from superharness.engine import state_reader
+
         task = state_reader.get_task(project_dir, task_id)
         if task is None:
             return False
@@ -92,9 +99,13 @@ def _task_is_dispatch_ready(project_dir: str, task_id: str) -> bool:
         return False
 
 
-def normalize(file: str, drop_statuses: list[str] | None = None,
-              drop_prefixes: list[str] | None = None,
-              archive_file: str | None = None, now: str | None = None) -> int:
+def normalize(
+    file: str,
+    drop_statuses: list[str] | None = None,
+    drop_prefixes: list[str] | None = None,
+    archive_file: str | None = None,
+    now: str | None = None,
+) -> int:
     """Normalize inbox by dropping/archiving rows. (Re-implemented)."""
     items = safe_load_normalized(file, list)
     if not isinstance(items, list):
@@ -160,6 +171,7 @@ HEADER = "# Delegation inbox\n"
 # that touches the inbox.
 try:
     import fcntl as _fcntl
+
     _HAS_FCNTL = True
 except ImportError:
     _fcntl = None
@@ -191,14 +203,26 @@ def _inbox_lock(path: str):
                 _msvcrt.locking(lock_file.fileno(), _msvcrt.LK_UNLCK, 1)
 
 
-def enqueue(file: str, id: str, to: str, task: str, project: str, priority: int,
-            created_at: str, retry_count: int = 0, max_retries: int = 3,
-            plan_only: bool = False, model_override: str = "", effort_override: str = "",
-            type: str = "task") -> int:
+def enqueue(
+    file: str,
+    id: str,
+    to: str,
+    task: str,
+    project: str,
+    priority: int,
+    created_at: str,
+    retry_count: int = 0,
+    max_retries: int = 3,
+    plan_only: bool = False,
+    model_override: str = "",
+    effort_override: str = "",
+    type: str = "task",
+) -> int:
     """Enqueue to SQLite inbox. Compatibility shim for discuss.py."""
     import os as _os
     from superharness.engine.db import get_connection, init_db
     from superharness.engine import inbox_dao as _dao
+
     project_dir = _os.path.dirname(_os.path.dirname(file))
     conn = get_connection(project_dir)
     try:
@@ -209,13 +233,22 @@ def enqueue(file: str, id: str, to: str, task: str, project: str, priority: int,
         # constraint failed.
         try:
             from superharness.commands.inbox_watch import _ensure_task_in_sqlite
+
             _ensure_task_in_sqlite(conn, task, project_dir, created_at)
         except Exception as e:
             _log.warning("inbox.py: FK guard skipped for task %s: %s", task, e)
-        _dao.enqueue(conn, id=id, task_id=task, target_agent=to,
-                     priority=priority, max_retries=max_retries,
-                     project_path=project, plan_only=plan_only, type=type,
-                     now=created_at)
+        _dao.enqueue(
+            conn,
+            id=id,
+            task_id=task,
+            target_agent=to,
+            priority=priority,
+            max_retries=max_retries,
+            project_path=project,
+            plan_only=plan_only,
+            type=type,
+            now=created_at,
+        )
         conn.commit()
         return 0
     finally:
@@ -224,9 +257,15 @@ def enqueue(file: str, id: str, to: str, task: str, project: str, priority: int,
 
 def main(argv: list[str] | None = None) -> None:
     import argparse as _ap
+
     _p = _ap.ArgumentParser(description="Inbox management CLI.")
-    _p.add_argument("command", help="Command: enqueue|launch|set_status|set_field|remove|normalize|recover_launched|list_launched|deadline_fail|sync_task_status")
-    _p.add_argument("--file", required=True, help="Path to inbox.yaml (used to find project dir)")
+    _p.add_argument(
+        "command",
+        help="Command: enqueue|launch|set_status|set_field|remove|normalize|recover_launched|list_launched|deadline_fail|sync_task_status",
+    )
+    _p.add_argument(
+        "--file", required=True, help="Path to inbox.yaml (used to find project dir)"
+    )
     _p.add_argument("--id", help="Item ID")
     _p.add_argument("--to", help="Target agent or new status")
     _p.add_argument("--task", help="Task ID")
@@ -245,7 +284,11 @@ def main(argv: list[str] | None = None) -> None:
     _p.add_argument("--action", help="Action for recover_launched: retry|stale")
     _p.add_argument("--reason", help="Failure reason")
     _p.add_argument("--drop-status", help="Status to drop in normalize")
-    _p.add_argument("--type", default="task", help="Inbox row type for enqueue (e.g. task|discussion)")
+    _p.add_argument(
+        "--type",
+        default="task",
+        help="Inbox row type for enqueue (e.g. task|discussion)",
+    )
 
     _args = _p.parse_args(argv)
     _project_dir = os.path.dirname(os.path.dirname(os.path.abspath(_args.file)))
@@ -253,18 +296,29 @@ def main(argv: list[str] | None = None) -> None:
     # Auto-ingest YAML fixtures if needed (common in tests)
     try:
         from superharness.engine.state_reader import _ensure_ingested
+
         _ensure_ingested(_project_dir)
     except Exception as e:
         _log.warning("inbox.py unexpected error: %s", e, exc_info=True)
         pass
     if _args.command == "enqueue":
         _id = _args.id or f"item-{datetime.now().timestamp()}"
-        _created = _args.created_at or _args.now or datetime.now().strftime("%Y-%m-%dT%H:%M:%SZ")
+        _created = (
+            _args.created_at
+            or _args.now
+            or datetime.now().strftime("%Y-%m-%dT%H:%M:%SZ")
+        )
         _rc = enqueue(
-            file=_args.file, id=_id, to=_args.to, task=_args.task,
-            project=_args.project or _project_dir, priority=_args.priority,
-            created_at=_created, retry_count=_args.retry_count,
-            max_retries=_args.max_retries, plan_only=_args.plan_only,
+            file=_args.file,
+            id=_id,
+            to=_args.to,
+            task=_args.task,
+            project=_args.project or _project_dir,
+            priority=_args.priority,
+            created_at=_created,
+            retry_count=_args.retry_count,
+            max_retries=_args.max_retries,
+            plan_only=_args.plan_only,
             type=_args.type,
         )
         if _rc:
@@ -278,16 +332,20 @@ def main(argv: list[str] | None = None) -> None:
         try:
             from superharness.engine.db import get_connection, init_db
             from superharness.engine import inbox_dao
+
             conn = get_connection(_project_dir)
             try:
                 init_db(conn)
                 # Ruby parity: next_pending marks it launched
                 pid = os.getpid()
                 now = _args.now or datetime.now().strftime("%Y-%m-%dT%H:%M:%SZ")
-                item = inbox_dao.claim_next(conn, target_agent=_target, pid=pid, now=now)
+                item = inbox_dao.claim_next(
+                    conn, target_agent=_target, pid=pid, now=now
+                )
                 if item:
                     conn.commit()
                     from dataclasses import asdict
+
                     print(json.dumps(asdict(item)))
                     return
                 return
@@ -304,10 +362,13 @@ def main(argv: list[str] | None = None) -> None:
         try:
             from superharness.engine.db import get_connection, init_db
             from superharness.engine import inbox_dao
+
             conn = get_connection(_project_dir)
             try:
                 init_db(conn)
-                updated = inbox_dao.update_status(conn, _id, from_status="pending", to_status="launched", now=_now)
+                updated = inbox_dao.update_status(
+                    conn, _id, from_status="pending", to_status="launched", now=_now
+                )
                 if updated:
                     conn.commit()
                     print(f"Launched {_id} at {_now}")
@@ -326,12 +387,19 @@ def main(argv: list[str] | None = None) -> None:
         try:
             from superharness.engine.db import get_connection, init_db
             from superharness.engine import inbox_dao
+
             conn = get_connection(_project_dir)
             try:
                 init_db(conn)
                 # Note: inbox_dao.update_status doesn't support extra fields like stamp-key yet,
                 # but we can implement it or just ignore it for now if tests don't strictly require it.
-                updated = inbox_dao.update_status(conn, _args.id, from_status=_args.from_status, to_status=_args.to, now=_now)
+                updated = inbox_dao.update_status(
+                    conn,
+                    _args.id,
+                    from_status=_args.from_status,
+                    to_status=_args.to,
+                    now=_now,
+                )
                 if updated:
                     conn.commit()
                     return
@@ -354,10 +422,13 @@ def main(argv: list[str] | None = None) -> None:
         try:
             from superharness.engine.db import get_connection, init_db
             from superharness.engine import inbox_dao
+
             conn = get_connection(_project_dir)
             try:
                 init_db(conn)
-                updated = inbox_dao.sync_task_status(conn, task_id=_args.task, to_status=_args.to, now=_now)
+                updated = inbox_dao.sync_task_status(
+                    conn, task_id=_args.task, to_status=_args.to, now=_now
+                )
                 conn.commit()
                 print(f"result=ok synced={updated}")
                 return
@@ -372,6 +443,7 @@ def main(argv: list[str] | None = None) -> None:
         try:
             from superharness.engine.db import get_connection, init_db
             from superharness.engine import inbox_dao
+
             conn = get_connection(_project_dir)
             try:
                 init_db(conn)
@@ -393,6 +465,7 @@ def main(argv: list[str] | None = None) -> None:
         try:
             from superharness.engine.db import get_connection, init_db
             from superharness.engine import inbox_dao
+
             conn = get_connection(_project_dir)
             try:
                 init_db(conn)
@@ -419,10 +492,18 @@ def main(argv: list[str] | None = None) -> None:
         try:
             from superharness.engine.db import get_connection, init_db
             from superharness.engine import inbox_dao
+
             conn = get_connection(_project_dir)
             try:
                 init_db(conn)
-                updated = inbox_dao.update_status(conn, _id, from_status="launched", to_status="failed", now=_now, reason=_args.reason)
+                updated = inbox_dao.update_status(
+                    conn,
+                    _id,
+                    from_status="launched",
+                    to_status="failed",
+                    now=_now,
+                    reason=_args.reason,
+                )
                 if updated:
                     conn.commit()
                     return
@@ -443,20 +524,23 @@ def main(argv: list[str] | None = None) -> None:
         try:
             from superharness.engine.db import get_connection, init_db
             from superharness.engine import inbox_dao
+
             conn = get_connection(_project_dir)
             try:
                 init_db(conn)
                 rows = inbox_dao.get_all(conn, status="launched")
                 out = []
                 for r in rows:
-                    out.append({
-                        "id": r.id,
-                        "task": r.task_id,
-                        "to": r.target_agent,
-                        "project": r.project_path or _project_dir,
-                        "priority": r.priority,
-                        "launched_at": r.launched_at,
-                    })
+                    out.append(
+                        {
+                            "id": r.id,
+                            "task": r.task_id,
+                            "to": r.target_agent,
+                            "project": r.project_path or _project_dir,
+                            "priority": r.priority,
+                            "launched_at": r.launched_at,
+                        }
+                    )
                 print(json.dumps(out))
                 return
             finally:
@@ -467,7 +551,9 @@ def main(argv: list[str] | None = None) -> None:
             raise OperationError(f"list_launched error: {_e}", exit_code=1) from _e
 
     # ... Other commands omitted for brevity, adding the most critical ones first
-    raise UsageError(f"Command {_args.command} not fully implemented in CLI yet", exit_code=1)
+    raise UsageError(
+        f"Command {_args.command} not fully implemented in CLI yet", exit_code=1
+    )
 
 
 if __name__ == "__main__":

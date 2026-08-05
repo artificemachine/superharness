@@ -2,6 +2,7 @@
 
 Smoke + CLI: the dry-run path prints candidate lessons and writes nothing.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -27,8 +28,11 @@ def test_dryrun_prints_candidates_no_write(clean_harness, monkeypatch, capsys):
     seed_sqlite_handoff(clean_harness, "t1", content="use ruff for linting", now=now)
 
     monkeypatch.setattr(
-        distill_cmd, "default_llm_fn",
-        lambda s, u: '{"lessons": [{"text": "use ruff for linting", "type": "feedback", "confidence": 0.9}]}',
+        distill_cmd,
+        "default_llm_fn",
+        lambda s, u: (
+            '{"lessons": [{"text": "use ruff for linting", "type": "feedback", "confidence": 0.9}]}'
+        ),
     )
 
     pitfalls = Path(agent_memory.project_memory_dir(str(clean_harness))) / "pitfalls.md"
@@ -51,8 +55,11 @@ def test_dryrun_is_default(clean_harness, monkeypatch):
     now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     seed_sqlite_handoff(clean_harness, "t1", content="something", now=now)
     monkeypatch.setattr(
-        distill_cmd, "default_llm_fn",
-        lambda s, u: '{"lessons": [{"text": "x", "type": "project", "confidence": 0.8}]}',
+        distill_cmd,
+        "default_llm_fn",
+        lambda s, u: (
+            '{"lessons": [{"text": "x", "type": "project", "confidence": 0.8}]}'
+        ),
     )
     distill_cmd.main(["--project", str(clean_harness)])
     pitfalls = Path(agent_memory.project_memory_dir(str(clean_harness))) / "pitfalls.md"

@@ -13,7 +13,9 @@ pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="requires bash")
 
 
 def _run_engine(repo_root: Path, args: list[str]):
-    return run_cmd([sys.executable, "-m", "superharness.engine.discussion"] + args, cwd=repo_root)
+    return run_cmd(
+        [sys.executable, "-m", "superharness.engine.discussion"] + args, cwd=repo_root
+    )
 
 
 def _run_discuss_py(cwd, args: list[str] | None = None):
@@ -21,19 +23,27 @@ def _run_discuss_py(cwd, args: list[str] | None = None):
     env = os.environ.copy()
     env["PYTHONPATH"] = str(REPO_ROOT / "src")
     cmd = [sys.executable, "-m", "superharness.commands.discuss"] + (args or [])
-    return subprocess.run(cmd, cwd=str(cwd), text=True, capture_output=True, env=env, check=False)
+    return subprocess.run(
+        cmd, cwd=str(cwd), text=True, capture_output=True, env=env, check=False
+    )
 
 
 def _run_dispatch_py(cwd, args: list[str] | None = None):
     """Run discussion_dispatch Python module."""
     env = os.environ.copy()
     env["PYTHONPATH"] = str(REPO_ROOT / "src")
-    cmd = [sys.executable, "-m", "superharness.commands.discussion_dispatch"] + (args or [])
-    return subprocess.run(cmd, cwd=str(cwd), text=True, capture_output=True, env=env, check=False)
+    cmd = [sys.executable, "-m", "superharness.commands.discussion_dispatch"] + (
+        args or []
+    )
+    return subprocess.run(
+        cmd, cwd=str(cwd), text=True, capture_output=True, env=env, check=False
+    )
 
 
 def _extract_discussion_id(stdout: str) -> str:
-    m = re.search(r"Discussion started:\s*(discuss-[A-Za-z0-9T:-]+-[0-9]+-[0-9]+)", stdout)
+    m = re.search(
+        r"Discussion started:\s*(discuss-[A-Za-z0-9T:-]+-[0-9]+-[0-9]+)", stdout
+    )
     assert m, stdout
     return m.group(1)
 
@@ -66,9 +76,12 @@ def test_discussion_cli_lifecycle_to_consensus(repo_root, tmp_path) -> None:
         repo_root,
         args=[
             "start",
-            "--project", str(project),
-            "--topic", "Integration lifecycle check",
-            "--max-rounds", "2",
+            "--project",
+            str(project),
+            "--topic",
+            "Integration lifecycle check",
+            "--max-rounds",
+            "2",
         ],
     )
     assert started.returncode == 0, started.stderr
@@ -80,11 +93,16 @@ def test_discussion_cli_lifecycle_to_consensus(repo_root, tmp_path) -> None:
         repo_root,
         [
             "submit_round",
-            "--discussion-dir", str(discussion_dir),
-            "--round", "1",
-            "--agent", "claude-code",
-            "--verdict", "agree",
-            "--position", "Approved.",
+            "--discussion-dir",
+            str(discussion_dir),
+            "--round",
+            "1",
+            "--agent",
+            "claude-code",
+            "--verdict",
+            "agree",
+            "--position",
+            "Approved.",
         ],
     )
     assert sub1.returncode == 0, sub1.stderr
@@ -93,18 +111,26 @@ def test_discussion_cli_lifecycle_to_consensus(repo_root, tmp_path) -> None:
         repo_root,
         [
             "submit_round",
-            "--discussion-dir", str(discussion_dir),
-            "--round", "1",
-            "--agent", "codex-cli",
-            "--verdict", "agree",
-            "--position", "Approved as well.",
+            "--discussion-dir",
+            str(discussion_dir),
+            "--round",
+            "1",
+            "--agent",
+            "codex-cli",
+            "--verdict",
+            "agree",
+            "--position",
+            "Approved as well.",
         ],
     )
     assert sub2.returncode == 0, sub2.stderr
 
     dispatch = _run_dispatch_py(repo_root, args=["--project", str(project)])
     assert dispatch.returncode == 0, dispatch.stderr
-    assert f"Discussion {discussion_id}: closed (reason=consensus, round=1)" in dispatch.stdout
+    assert (
+        f"Discussion {discussion_id}: closed (reason=consensus, round=1)"
+        in dispatch.stdout
+    )
 
     rounds = _run_discuss_py(
         repo_root,

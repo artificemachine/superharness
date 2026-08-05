@@ -1,4 +1,5 @@
 """notify command — send alerts for watcher issues and retry-threshold breaches."""
+
 from __future__ import annotations
 
 import json
@@ -11,9 +12,9 @@ import sys
 import time
 from datetime import datetime, timezone
 
-from superharness.engine.yaml_helpers import safe_load
 
 import logging
+
 logger = logging.getLogger(__name__)
 
 
@@ -22,14 +23,27 @@ def _watcher_ok_darwin(project_dir: str) -> tuple[bool, str]:
     label = f"com.superharness.inbox.{slug}"
     uid = os.getuid() if hasattr(os, "getuid") else 0
     r = subprocess.run(
-        ["launchctl", "print", f"gui/{uid}/{label}"],
-        capture_output=True, text=True
+        ["launchctl", "print", f"gui/{uid}/{label}"], capture_output=True, text=True
     )
     if r.returncode != 0:
         return False, "not loaded"
     out = r.stdout
-    state = next((line.split("=", 1)[1].strip() for line in out.splitlines() if "state =" in line), "")
-    last_exit = next((line.split("=", 1)[1].strip() for line in out.splitlines() if "last exit code =" in line), "")
+    state = next(
+        (
+            line.split("=", 1)[1].strip()
+            for line in out.splitlines()
+            if "state =" in line
+        ),
+        "",
+    )
+    last_exit = next(
+        (
+            line.split("=", 1)[1].strip()
+            for line in out.splitlines()
+            if "last exit code =" in line
+        ),
+        "",
+    )
     ok = state in ("running", "active") or (
         state == "not running" and last_exit in ("0", "(never exited)")
     )
@@ -38,12 +52,21 @@ def _watcher_ok_darwin(project_dir: str) -> tuple[bool, str]:
 
 def _retry_high_ids(inbox_file: str, threshold: int) -> list[str]:
     """Return inbox item IDs whose retry_count >= threshold. Reads from SQLite."""
-    active_statuses = {"pending", "launched", "running", "stale", "failed", "paused", "stopped"}
+    active_statuses = {
+        "pending",
+        "launched",
+        "running",
+        "stale",
+        "failed",
+        "paused",
+        "stopped",
+    }
     ids: list[str] = []
     # Derive project_dir from inbox_file path (.superharness/inbox.yaml → project root)
     project_dir = os.path.dirname(os.path.dirname(inbox_file))
     try:
         from superharness.engine.state_reader import get_inbox_items
+
         items = get_inbox_items(project_dir)
     except Exception as e:
         logger.warning("notify.py unexpected error: %s", e, exc_info=True)
@@ -83,7 +106,9 @@ def _read_state(state_file: str) -> tuple[int, int, str]:
     return streak, last_sent, fingerprint
 
 
-def _write_state(state_file: str, streak: int, last_sent: int, fingerprint: str) -> None:
+def _write_state(
+    state_file: str, streak: int, last_sent: int, fingerprint: str
+) -> None:
     os.makedirs(os.path.dirname(state_file), exist_ok=True)
     with open(state_file, "w") as f:
         f.write(f"WATCHER_DOWN_STREAK={streak}\n")
@@ -96,10 +121,17 @@ def main(argv: list[str] | None = None) -> None:
 
     p = argparse.ArgumentParser(prog="notify")
     p.add_argument("-p", "--project", default=os.getcwd())
-    p.add_argument("-m", "--message", default="", dest="message",
-                   help="Send a custom message instead of automated alerts")
+    p.add_argument(
+        "-m",
+        "--message",
+        default="",
+        dest="message",
+        help="Send a custom message instead of automated alerts",
+    )
     p.add_argument("--retry-threshold", type=int, default=3, dest="retry_threshold")
-    p.add_argument("--watcher-down-streak", type=int, default=3, dest="watcher_down_streak")
+    p.add_argument(
+        "--watcher-down-streak", type=int, default=3, dest="watcher_down_streak"
+    )
     p.add_argument("--cooldown-minutes", type=int, default=30, dest="cooldown_minutes")
     p.add_argument("--webhook-url", default="", dest="webhook_url")
     p.add_argument("--state-file", default="", dest="state_file")
@@ -116,11 +148,12 @@ def main(argv: list[str] | None = None) -> None:
             sys.exit(0)
         try:
             from superharness.engine.relay_client import dispatch_notification
+
             sent, backend = dispatch_notification(message)
             if sent:
                 print(f"notify: sent via {backend}")
             else:
-                print(f"notify: failed to send via any backend")
+                print("notify: failed to send via any backend")
                 sys.exit(1)
         except Exception as e:
             logger.warning("notify.py unexpected error: %s", e, exc_info=True)
@@ -158,7 +191,9 @@ def main(argv: list[str] | None = None) -> None:
     if not watcher_ok and watcher_streak >= opts.watcher_down_streak:
         alerts.append(f"watcher_down:{watcher_streak} ({watcher_detail})")
     if retry_ids:
-        alerts.append(f"retry_threshold:{len(retry_ids)} item(s) >= {opts.retry_threshold} [{','.join(retry_ids[:10]) or 'none'}]")
+        alerts.append(
+            f"retry_threshold:{len(retry_ids)} item(s) >= {opts.retry_threshold} [{','.join(retry_ids[:10]) or 'none'}]"
+        )
 
     now_epoch = int(time.time())
     cooldown_seconds = opts.cooldown_minutes * 60
@@ -175,7 +210,9 @@ def main(argv: list[str] | None = None) -> None:
     _write_state(state_file, watcher_streak, prev_last_sent, prev_fingerprint)
 
     if not alerts:
-        print(f"notify: no alerts (watcher_ok={int(watcher_ok)} retry_high={len(retry_ids)})")
+        print(
+            f"notify: no alerts (watcher_ok={int(watcher_ok)} retry_high={len(retry_ids)})"
+        )
         sys.exit(0)
 
     message = f"superharness alert for {project_dir}: {'; '.join(alerts)}"
@@ -193,6 +230,7 @@ def main(argv: list[str] | None = None) -> None:
         # Configured backend (relay preferred → direct Telegram bot fallback)
         try:
             from superharness.engine.relay_client import dispatch_notification
+
             sent, backend = dispatch_notification(message)
             if sent:
                 print(f"notify: sent via {backend}")
@@ -202,23 +240,41 @@ def main(argv: list[str] | None = None) -> None:
         # Webhook fallback
         if opts.webhook_url and shutil.which("curl"):
             now_ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-            payload = json.dumps({
-                "project": project_dir,
-                "timestamp": now_ts,
-                "alerts": ["; ".join(alerts)],
-            })
+            payload = json.dumps(
+                {
+                    "project": project_dir,
+                    "timestamp": now_ts,
+                    "alerts": ["; ".join(alerts)],
+                }
+            )
             subprocess.run(
-                ["curl", "-fsS", "-X", "POST", "-H", "Content-Type: application/json", "-d", payload, opts.webhook_url],
-                capture_output=True
+                [
+                    "curl",
+                    "-fsS",
+                    "-X",
+                    "POST",
+                    "-H",
+                    "Content-Type: application/json",
+                    "-d",
+                    payload,
+                    opts.webhook_url,
+                ],
+                capture_output=True,
             )
         # Desktop notification
         if sys_platform == "Darwin" and shutil.which("osascript"):
             subprocess.run(
-                ["osascript", "-e", f'display notification "{message}" with title "superharness"'],
-                capture_output=True
+                [
+                    "osascript",
+                    "-e",
+                    f'display notification "{message}" with title "superharness"',
+                ],
+                capture_output=True,
             )
         elif sys_platform == "Linux" and shutil.which("notify-send"):
-            subprocess.run(["notify-send", "superharness", message], capture_output=True)
+            subprocess.run(
+                ["notify-send", "superharness", message], capture_output=True
+            )
 
     # Update state post-send
     _write_state(state_file, watcher_streak, now_epoch, fingerprint)

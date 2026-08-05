@@ -8,6 +8,7 @@ instruction — the plan's numbers had already moved by the time iterations
 needs to raise one, that is a deliberate, reviewable decision, not a silent
 drift.
 """
+
 from __future__ import annotations
 
 import ast
@@ -71,7 +72,11 @@ _EXC_INFO_ENFORCED_FILES = (
 # deliberate, reviewed growth, not drift — see CONTRIBUTING.md's
 # "Exception-handling policy". 4788 is the exact measured total with both
 # changes applied (`wc -l`), not padded.
-_MAX_FILE_LINE_CEILING = 4788
+# 2026-08-05: re-baselined to 5616 after the project-wide Ruff formatter
+# normalization. The formatter expands nested calls across physical lines but
+# does not add behavior; retaining the ratchet at the fresh measured maximum
+# keeps future physical-line growth reviewable.
+_MAX_FILE_LINE_CEILING = 5616
 
 
 def _count_matches(pattern: str, paths: list[Path]) -> int:
@@ -151,8 +156,12 @@ def _generated_python_source_writes(path: Path) -> list[int]:
     tree = ast.parse(path.read_text(), filename=str(path))
     offenders = []
     for node in ast.walk(tree):
-        if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
-                and node.func.attr == "write_text" and node.args):
+        if not (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr == "write_text"
+            and node.args
+        ):
             continue
         text = _string_literal_value(node.args[0])
         if text is None:
@@ -183,8 +192,11 @@ def _bare_exception_handlers(tree: ast.AST) -> list[ast.ExceptHandler]:
     _BROAD_EXCEPT_CEILING regex itself counts as `except Exception`."""
     handlers = []
     for node in ast.walk(tree):
-        if isinstance(node, ast.ExceptHandler) and isinstance(node.type, ast.Name) \
-                and node.type.id == "Exception":
+        if (
+            isinstance(node, ast.ExceptHandler)
+            and isinstance(node.type, ast.Name)
+            and node.type.id == "Exception"
+        ):
             handlers.append(node)
     return handlers
 
@@ -214,7 +226,8 @@ def test_supervisory_excepts_log_with_exc_info():
         path = SRC_ROOT / rel
         tree = ast.parse(path.read_text(), filename=str(path))
         missing = [
-            h.lineno for h in _bare_exception_handlers(tree)
+            h.lineno
+            for h in _bare_exception_handlers(tree)
             if not _handler_has_exc_info(h)
         ]
         if missing:
@@ -247,7 +260,9 @@ def _cov_fail_under_occurrences() -> dict[str, int]:
     local/IDE coverage runs) — both must agree, or CI and a local `pytest
     --cov` run silently enforce different floors."""
     occurrences: dict[str, int] = {}
-    candidates = list((REPO_ROOT / ".github").rglob("*.yml")) + list((REPO_ROOT / ".github").rglob("*.yaml"))
+    candidates = list((REPO_ROOT / ".github").rglob("*.yml")) + list(
+        (REPO_ROOT / ".github").rglob("*.yaml")
+    )
     pyproject = REPO_ROOT / "pyproject.toml"
     if pyproject.is_file():
         candidates.append(pyproject)
@@ -269,7 +284,9 @@ def test_coverage_gate_is_consistent_across_workflows():
     lines is updated and the other is not — the exact gap iteration 9 of
     PLAN-coding-practices.md exists to close."""
     occurrences = _cov_fail_under_occurrences()
-    assert occurrences, "expected at least one cov-fail-under/fail_under occurrence; found none"
+    assert occurrences, (
+        "expected at least one cov-fail-under/fail_under occurrence; found none"
+    )
     values = set(occurrences.values())
     assert len(values) == 1, (
         f"cov-fail-under/fail_under values disagree across the repo: {occurrences}. "

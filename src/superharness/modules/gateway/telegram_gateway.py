@@ -12,6 +12,7 @@ Security model:
     detected via operator_commands_dao and silently skipped.
   - Malformed or unknown commands receive a help reply.
 """
+
 from __future__ import annotations
 
 import logging
@@ -117,8 +118,12 @@ class GatewayListener:
                     self._handle_update(update)
                     offset = update_id + 1
             except Exception as e:
-                logger.warning("telegram_gateway.py unexpected error: %s", e, exc_info=True)
-                logger.exception("Error in gateway poll loop; sleeping %ss", sleep_on_error_s)
+                logger.warning(
+                    "telegram_gateway.py unexpected error: %s", e, exc_info=True
+                )
+                logger.exception(
+                    "Error in gateway poll loop; sleeping %ss", sleep_on_error_s
+                )
                 time.sleep(sleep_on_error_s)
 
     def handle_update(self, update: dict[str, Any]) -> str:
@@ -151,7 +156,8 @@ class GatewayListener:
         if not validate_sender(sender_id, self._allowed_senders):
             logger.warning(
                 "Gateway: unknown sender %s (message_id=%s) rejected",
-                sender_id, message_id,
+                sender_id,
+                message_id,
             )
             return "unknown_sender"
 
@@ -159,6 +165,7 @@ class GatewayListener:
         try:
             from superharness.engine.db import get_connection, init_db
             from superharness.engine import operator_commands_dao
+
             conn = get_connection(self._project_dir)
             try:
                 init_db(conn)
@@ -168,7 +175,9 @@ class GatewayListener:
                     return "duplicate"
                 conn.close()
             except Exception as e:
-                logger.warning("telegram_gateway.py unexpected error: %s", e, exc_info=True)
+                logger.warning(
+                    "telegram_gateway.py unexpected error: %s", e, exc_info=True
+                )
                 conn.close()
                 raise
         except Exception as e:
@@ -204,7 +213,9 @@ class GatewayListener:
                 row_id = row.id
                 conn.close()
             except Exception as e:
-                logger.warning("telegram_gateway.py unexpected error: %s", e, exc_info=True)
+                logger.warning(
+                    "telegram_gateway.py unexpected error: %s", e, exc_info=True
+                )
                 conn.close()
                 raise
         except Exception as e:
@@ -226,11 +237,15 @@ class GatewayListener:
                 conn.commit()
                 conn.close()
             except Exception as e:
-                logger.warning("telegram_gateway.py unexpected error: %s", e, exc_info=True)
+                logger.warning(
+                    "telegram_gateway.py unexpected error: %s", e, exc_info=True
+                )
                 conn.close()
         except Exception as e:
             logger.warning("telegram_gateway.py unexpected error: %s", e, exc_info=True)
-            logger.exception("Gateway: failed to update command status for message_id=%s", message_id)
+            logger.exception(
+                "Gateway: failed to update command status for message_id=%s", message_id
+            )
 
         # 7. Reply
         reply = result.get("message", f"Command {parsed.command} executed.")
@@ -243,13 +258,13 @@ class GatewayListener:
         """Dispatch the parsed command to the superharness state engine."""
         _COMMAND_STATUS: dict[str, tuple[str, str | None]] = {
             "approve": ("plan_approved", "plan_approved_at"),
-            "reject":  ("stopped",       "stopped_at"),
-            "close":   ("done",          "done_at"),
+            "reject": ("stopped", "stopped_at"),
+            "close": ("done", "done_at"),
             # "todo", not "pending": "pending" is the initial status of a
             # decomposed subtask (commands/delegate.py), not an entry point in
             # the task lifecycle — no lifecycle rule advances a task sitting at
             # it, so /reset used to strand the task invisibly.
-            "reset":   ("todo",          None),
+            "reset": ("todo", None),
         }
         target_status, ts_field = _COMMAND_STATUS.get(parsed.command, (None, None))
         if target_status is None:
@@ -258,6 +273,7 @@ class GatewayListener:
         try:
             from superharness.engine.db import get_connection, init_db
             from superharness.engine import tasks_dao
+
             conn = get_connection(self._project_dir)
             try:
                 init_db(conn)
@@ -273,9 +289,13 @@ class GatewayListener:
                 tasks_dao.update(conn, parsed.task_id, task.version, changes)
                 conn.commit()
                 conn.close()
-                return {"message": f"Task {parsed.task_id} {parsed.command}d."}, "executed"
+                return {
+                    "message": f"Task {parsed.task_id} {parsed.command}d."
+                }, "executed"
             except Exception as e:
-                logger.warning("telegram_gateway.py unexpected error: %s", e, exc_info=True)
+                logger.warning(
+                    "telegram_gateway.py unexpected error: %s", e, exc_info=True
+                )
                 conn.close()
                 raise
         except Exception as exc:

@@ -1,4 +1,5 @@
 """Worktree garbage collector — clean orphaned dispatch worktrees."""
+
 from __future__ import annotations
 
 import os
@@ -17,7 +18,9 @@ def _git_common_dir(path: str) -> str | None:
     *path* is not a live git worktree."""
     r = subprocess.run(
         ["git", "-C", path, "rev-parse", "--git-common-dir"],
-        capture_output=True, text=True, check=False,
+        capture_output=True,
+        text=True,
+        check=False,
     )
     if r.returncode != 0 or not r.stdout.strip():
         return None
@@ -42,7 +45,9 @@ def run_worktree_gc(project_dir: str | Path, dry_run: bool = False) -> dict:
     active_worktrees: set[str] = set()
     r = subprocess.run(
         ["git", "-C", str(project_dir), "worktree", "list", "--porcelain"],
-        capture_output=True, text=True, check=False,
+        capture_output=True,
+        text=True,
+        check=False,
     )
     if r.returncode == 0:
         for line in r.stdout.splitlines():
@@ -79,7 +84,9 @@ def run_worktree_gc(project_dir: str | Path, dry_run: bool = False) -> dict:
 
         if dry_run:
             removed += 1
-            items.append({"path": entry, "action": "would_remove", "reason": "orphaned"})
+            items.append(
+                {"path": entry, "action": "would_remove", "reason": "orphaned"}
+            )
             print(f"[dry-run] would remove: {entry}")
         else:
             # Remove symlink first if present
@@ -88,8 +95,18 @@ def run_worktree_gc(project_dir: str | Path, dry_run: bool = False) -> dict:
                 os.unlink(harness_link)
             # Try git worktree remove first
             rr = subprocess.run(
-                ["git", "-C", str(project_dir), "worktree", "remove", "--force", wt_path],
-                capture_output=True, text=True, check=False,
+                [
+                    "git",
+                    "-C",
+                    str(project_dir),
+                    "worktree",
+                    "remove",
+                    "--force",
+                    wt_path,
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
             )
             if rr.returncode != 0:
                 # Fallback: rm -rf
@@ -102,7 +119,8 @@ def run_worktree_gc(project_dir: str | Path, dry_run: bool = False) -> dict:
     if not dry_run and removed > 0:
         subprocess.run(
             ["git", "-C", str(project_dir), "worktree", "prune"],
-            capture_output=True, check=False,
+            capture_output=True,
+            check=False,
         )
 
     print(f"\nWorktree GC: {removed} removed, {kept} kept")

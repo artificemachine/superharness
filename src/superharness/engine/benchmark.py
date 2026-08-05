@@ -8,6 +8,7 @@ Integration points:
 - parallel_dispatch.py: record per-slot results via record_slot_result()
 - `shux benchmark` command: display the leaderboard (see commands/benchmark.py)
 """
+
 from __future__ import annotations
 
 import json
@@ -15,9 +16,9 @@ import os
 import time
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Any
 
 import logging
+
 logger = logging.getLogger(__name__)
 
 
@@ -25,22 +26,24 @@ logger = logging.getLogger(__name__)
 # Data model
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class BenchmarkRecord:
     task_id: str
     agent: str
-    outcome: str          # done | failed | timeout | paused
+    outcome: str  # done | failed | timeout | paused
     duration_seconds: float
     cost_usd: float
     model: str = ""
     slot_index: int = -1  # -1 = single dispatch; >= 0 = parallel slot
-    fanout_n: int = 1     # number of parallel slots in the dispatch
-    timestamp: str = ""   # ISO UTC
+    fanout_n: int = 1  # number of parallel slots in the dispatch
+    timestamp: str = ""  # ISO UTC
 
 
 # ---------------------------------------------------------------------------
 # Storage
 # ---------------------------------------------------------------------------
+
 
 def _benchmark_path(project_dir: str) -> Path:
     return Path(project_dir) / ".superharness" / "benchmark.jsonl"
@@ -82,6 +85,8 @@ def record_dispatch(
     except Exception as e:
         logger.warning("benchmark.py unexpected error: %s", e, exc_info=True)
         pass
+
+
 def load_records(project_dir: str) -> list[dict]:
     """Load all benchmark records from benchmark.jsonl."""
     path = _benchmark_path(project_dir)
@@ -105,6 +110,7 @@ def load_records(project_dir: str) -> list[dict]:
 # ---------------------------------------------------------------------------
 # Aggregation
 # ---------------------------------------------------------------------------
+
 
 @dataclass
 class TaskStats:
@@ -135,11 +141,15 @@ def aggregate(records: list[dict]) -> list[TaskStats]:
         # Sort by timestamp ascending to get chronological order
         recs_sorted = sorted(recs, key=lambda x: x.get("timestamp", ""))
         successes = sum(1 for r in recs_sorted if r.get("outcome") == "done")
-        failures = sum(1 for r in recs_sorted if r.get("outcome") in ("failed", "timeout"))
+        failures = sum(
+            1 for r in recs_sorted if r.get("outcome") in ("failed", "timeout")
+        )
         total_duration = sum(r.get("duration_seconds", 0.0) for r in recs_sorted)
         total_cost = sum(r.get("cost_usd", 0.0) for r in recs_sorted)
         n = len(recs_sorted)
-        agents = list(dict.fromkeys(r.get("agent", "") for r in recs_sorted))  # ordered unique
+        agents = list(
+            dict.fromkeys(r.get("agent", "") for r in recs_sorted)
+        )  # ordered unique
 
         ts = TaskStats(
             task_id=task_id,
@@ -170,6 +180,7 @@ def leaderboard(project_dir: str, top_n: int = 20) -> list[TaskStats]:
 # ---------------------------------------------------------------------------
 # Formatting
 # ---------------------------------------------------------------------------
+
 
 def format_leaderboard(stats: list[TaskStats], show_agents: bool = False) -> str:
     """Return a human-readable leaderboard table."""

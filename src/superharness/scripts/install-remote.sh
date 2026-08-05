@@ -2,13 +2,13 @@
 # install-remote.sh — Clone superharness and install the CLI wrapper
 #
 # Usage (one-liner):
-#   curl -fsSL https://raw.githubusercontent.com/celstnblacc/superharness/main/scripts/install-remote.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/artificemachine/superharness/main/src/superharness/scripts/install-remote.sh | bash
 #
 # Usage (with options):
 #   bash install-remote.sh [--dir DIR] [--target-dir DIR]
 set -euo pipefail
 
-REPO_URL="https://github.com/celstnblacc/superharness.git"
+REPO_URL="https://github.com/artificemachine/superharness.git"
 DEFAULT_CLONE_DIR="$HOME/.local/share/superharness"
 TARGET_DIR="$HOME/.local/bin"
 CLONE_DIR=""

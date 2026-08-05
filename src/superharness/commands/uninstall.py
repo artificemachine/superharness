@@ -1,4 +1,5 @@
 """uninstall command — remove system-level superharness artifacts."""
+
 from __future__ import annotations
 
 import glob
@@ -51,13 +52,14 @@ def main(argv: list[str] | None = None) -> None:
     # 1. Remove launchd plists (macOS only)
     launch_agents = os.path.join(os.path.expanduser("~"), "Library", "LaunchAgents")
     if os.path.isdir(launch_agents):
-        for plist in sorted(glob.glob(os.path.join(launch_agents, "com.superharness.inbox.*.plist"))):
+        for plist in sorted(
+            glob.glob(os.path.join(launch_agents, "com.superharness.inbox.*.plist"))
+        ):
             label = os.path.splitext(os.path.basename(plist))[0]
             if not opts.dry_run:
                 uid = os.getuid() if hasattr(os, "getuid") else 0
                 subprocess.run(
-                    ["launchctl", "bootout", f"gui/{uid}/{label}"],
-                    capture_output=True
+                    ["launchctl", "bootout", f"gui/{uid}/{label}"], capture_output=True
                 )
             else:
                 print(f"[dry-run] Would unload launchd service: {label}")
@@ -77,6 +79,7 @@ def main(argv: list[str] | None = None) -> None:
     # Use platform_runtime.tmp_dir() so this works on Windows (AppData\Local\Temp)
     # as well as Unix (/tmp or $TMPDIR).
     from superharness.engine.platform_runtime import tmp_dir
+
     lock_pattern = os.path.join(tmp_dir(), "superharness-inbox-watch-*.lock")
     for lockdir in sorted(glob.glob(lock_pattern)):
         if os.path.isdir(lockdir):

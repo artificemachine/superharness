@@ -1,12 +1,11 @@
 """Tests for dispatch worktree isolation — agent runs in clean worktree when main is dirty."""
+
 from __future__ import annotations
 
 import os
 import subprocess
 from pathlib import Path
-from tests.helpers import seed_sqlite_from_yaml, get_task_from_sqlite
-
-import pytest
+from tests.helpers import seed_sqlite_from_yaml
 
 
 def _init_git_project(tmp_path: Path) -> Path:
@@ -14,19 +13,57 @@ def _init_git_project(tmp_path: Path) -> Path:
     project = tmp_path / "proj"
     project.mkdir()
     env = {**os.environ, "ALLOW_MAIN_COMMIT": "1", "GIT_CONFIG_NOSYSTEM": "1"}
-    subprocess.run(["git", "init", str(project)], capture_output=True, check=True, env=env)
-    subprocess.run(["git", "-C", str(project), "config", "user.email", "test@test.com"], capture_output=True, check=True, env=env)
-    subprocess.run(["git", "-C", str(project), "config", "user.name", "test"], capture_output=True, check=True, env=env)
-    subprocess.run(["git", "-C", str(project), "config", "core.hooksPath", "/dev/null"], capture_output=True, check=True, env=env)
+    subprocess.run(
+        ["git", "init", str(project)], capture_output=True, check=True, env=env
+    )
+    subprocess.run(
+        ["git", "-C", str(project), "config", "user.email", "test@test.com"],
+        capture_output=True,
+        check=True,
+        env=env,
+    )
+    subprocess.run(
+        ["git", "-C", str(project), "config", "user.name", "test"],
+        capture_output=True,
+        check=True,
+        env=env,
+    )
+    subprocess.run(
+        ["git", "-C", str(project), "config", "core.hooksPath", "/dev/null"],
+        capture_output=True,
+        check=True,
+        env=env,
+    )
     (project / "file.txt").write_text("initial")
-    subprocess.run(["git", "-C", str(project), "add", "file.txt"], capture_output=True, check=True, env=env)
-    subprocess.run(["git", "-C", str(project), "commit", "-m", "init"], capture_output=True, text=True, check=True, env=env)
+    subprocess.run(
+        ["git", "-C", str(project), "add", "file.txt"],
+        capture_output=True,
+        check=True,
+        env=env,
+    )
+    subprocess.run(
+        ["git", "-C", str(project), "commit", "-m", "init"],
+        capture_output=True,
+        text=True,
+        check=True,
+        env=env,
+    )
     harness = project / ".superharness"
     harness.mkdir()
     (harness / "contract.yaml").write_text("id: test\ntasks: []\n")
     (project / ".gitignore").write_text(".superharness/\n")
-    subprocess.run(["git", "-C", str(project), "add", ".gitignore"], capture_output=True, check=True, env=env)
-    subprocess.run(["git", "-C", str(project), "commit", "-m", "add gitignore"], capture_output=True, check=True, env=env)
+    subprocess.run(
+        ["git", "-C", str(project), "add", ".gitignore"],
+        capture_output=True,
+        check=True,
+        env=env,
+    )
+    subprocess.run(
+        ["git", "-C", str(project), "commit", "-m", "add gitignore"],
+        capture_output=True,
+        check=True,
+        env=env,
+    )
     seed_sqlite_from_yaml(project)
     return project
 
@@ -39,7 +76,8 @@ def _dirty_worktree(project: Path) -> None:
 def _is_dirty(project: Path) -> bool:
     r = subprocess.run(
         ["git", "-C", str(project), "status", "--porcelain"],
-        capture_output=True, text=True,
+        capture_output=True,
+        text=True,
     )
     return bool(r.stdout.strip())
 
@@ -91,7 +129,10 @@ def test_worktree_add_returns_none_for_non_git(tmp_path):
 
 def test_worktree_remove_cleans_up(tmp_path):
     """_git_worktree_remove deletes the worktree directory."""
-    from superharness.commands.inbox_dispatch import _git_worktree_add, _git_worktree_remove
+    from superharness.commands.inbox_dispatch import (
+        _git_worktree_add,
+        _git_worktree_remove,
+    )
 
     project = _init_git_project(tmp_path)
     wt = _git_worktree_add(str(project), "test-task")
@@ -105,7 +146,10 @@ def test_worktree_remove_cleans_up(tmp_path):
 
 def test_worktree_remove_preserves_original_superharness(tmp_path):
     """_git_worktree_remove does not delete the original .superharness/ dir."""
-    from superharness.commands.inbox_dispatch import _git_worktree_add, _git_worktree_remove
+    from superharness.commands.inbox_dispatch import (
+        _git_worktree_add,
+        _git_worktree_remove,
+    )
 
     project = _init_git_project(tmp_path)
     wt = _git_worktree_add(str(project), "test-task")
@@ -118,7 +162,10 @@ def test_worktree_remove_preserves_original_superharness(tmp_path):
 
 def test_worktree_main_stays_dirty(tmp_path):
     """Main worktree stays dirty throughout worktree lifecycle."""
-    from superharness.commands.inbox_dispatch import _git_worktree_add, _git_worktree_remove
+    from superharness.commands.inbox_dispatch import (
+        _git_worktree_add,
+        _git_worktree_remove,
+    )
 
     project = _init_git_project(tmp_path)
     _dirty_worktree(project)

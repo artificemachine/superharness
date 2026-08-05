@@ -3,6 +3,7 @@
 Generated from the transition graph in engine/next_action.py.
 Every legal transition must succeed. Every illegal transition must fail.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -16,40 +17,50 @@ from superharness.engine.next_action import (
 # ── Legal transitions (from the graph in next_action.py) ─────────────────────
 
 LEGAL_TRANSITIONS = {
-    "pending":              ["plan_proposed", "waiting_input"],
-    "todo":                 ["plan_proposed", "waiting_input"],
-    "plan_proposed":        ["plan_approved", "todo"],
-    "plan_approved":        ["in_progress", "plan_proposed"],
-    "in_progress":          ["report_ready", "pending_user_approval", "stopped", "failed", "waiting_input"],
+    "pending": ["plan_proposed", "waiting_input"],
+    "todo": ["plan_proposed", "waiting_input"],
+    "plan_proposed": ["plan_approved", "todo"],
+    "plan_approved": ["in_progress", "plan_proposed"],
+    "in_progress": [
+        "report_ready",
+        "pending_user_approval",
+        "stopped",
+        "failed",
+        "waiting_input",
+    ],
     "pending_user_approval": ["in_progress", "stopped"],
-    "report_ready":         ["review_passed", "review_failed", "review_requested"],
-    "review_requested":     ["review_passed", "review_failed"],
-    "review_passed":        ["done", "review_failed"],
-    "review_failed":        ["plan_proposed", "todo"],
-    "done":                 [],
-    "failed":               ["plan_proposed", "todo", "stopped"],
-    "stopped":              ["in_progress", "plan_proposed", "todo"],
-    "blocked":              ["todo", "plan_proposed"],
-    "waiting_input":        ["in_progress", "pending_user_approval", "todo", "plan_proposed"],
-    "paused":               ["in_progress", "stopped"],
-    "archived":             [],
-    "pr_open":              ["review_passed", "review_failed"],
+    "report_ready": ["review_passed", "review_failed", "review_requested"],
+    "review_requested": ["review_passed", "review_failed"],
+    "review_passed": ["done", "review_failed"],
+    "review_failed": ["plan_proposed", "todo"],
+    "done": [],
+    "failed": ["plan_proposed", "todo", "stopped"],
+    "stopped": ["in_progress", "plan_proposed", "todo"],
+    "blocked": ["todo", "plan_proposed"],
+    "waiting_input": ["in_progress", "pending_user_approval", "todo", "plan_proposed"],
+    "paused": ["in_progress", "stopped"],
+    "archived": [],
+    "pr_open": ["review_passed", "review_failed"],
 }
 
 
 def _all_statuses() -> set[str]:
     """All 16 task statuses."""
-    return {s for s in ALL_STATUSES if s != "launched" and s != "running"}  # exclude inbox-only
+    return {
+        s for s in ALL_STATUSES if s != "launched" and s != "running"
+    }  # exclude inbox-only
 
 
 # ── Tests ─────────────────────────────────────────────────────────────────────
 
+
 class TestLegalTransitions:
     """Every legal transition must succeed without raising."""
 
-    @pytest.mark.parametrize("from_status,to_status", [
-        (f, t) for f, targets in LEGAL_TRANSITIONS.items() for t in targets
-    ])
+    @pytest.mark.parametrize(
+        "from_status,to_status",
+        [(f, t) for f, targets in LEGAL_TRANSITIONS.items() for t in targets],
+    )
     def test_legal_transition(self, from_status, to_status):
         validate_status_transition(from_status, to_status)
 
@@ -57,12 +68,15 @@ class TestLegalTransitions:
 class TestIllegalTransitions:
     """Every illegal transition must raise ValueError."""
 
-    @pytest.mark.parametrize("from_status,to_status", [
-        (f, t)
-        for f in LEGAL_TRANSITIONS
-        for t in _all_statuses()
-        if t not in LEGAL_TRANSITIONS[f] and t != f
-    ])
+    @pytest.mark.parametrize(
+        "from_status,to_status",
+        [
+            (f, t)
+            for f in LEGAL_TRANSITIONS
+            for t in _all_statuses()
+            if t not in LEGAL_TRANSITIONS[f] and t != f
+        ],
+    )
     def test_illegal_transition(self, from_status, to_status):
         with pytest.raises(ValueError, match="transition"):
             validate_status_transition(from_status, to_status)
@@ -102,4 +116,6 @@ class TestCounts:
         all_statuses_set = _all_statuses()
         for from_s, targets in LEGAL_TRANSITIONS.items():
             for t in targets:
-                assert t in all_statuses_set, f"Illegal target: {from_s} → {t} (not a valid status)"
+                assert t in all_statuses_set, (
+                    f"Illegal target: {from_s} → {t} (not a valid status)"
+                )

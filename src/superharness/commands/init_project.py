@@ -1,4 +1,5 @@
 """init command — initialize superharness in a project directory."""
+
 from __future__ import annotations
 
 import atexit
@@ -15,8 +16,16 @@ from pathlib import Path
 _ROOT = Path(__file__).resolve().parent.parent.parent.parent  # repo root
 
 
-def _render_template(src: Path, dst: Path, project_name: str, tech_stack: str,
-                     status: str, project_dir: str, date_s: str, identity_block: str = "") -> None:
+def _render_template(
+    src: Path,
+    dst: Path,
+    project_name: str,
+    tech_stack: str,
+    status: str,
+    project_dir: str,
+    date_s: str,
+    identity_block: str = "",
+) -> None:
     text = src.read_text(encoding="utf-8")
     for k, v in {
         "{{PROJECT_NAME}}": project_name,
@@ -33,9 +42,11 @@ def _render_template(src: Path, dst: Path, project_name: str, tech_stack: str,
 def _detect(project_dir: str) -> tuple[str, str, str]:
     """Run detect engine, return (project_name, stack, status)."""
     import yaml
+
     r = subprocess.run(
         [sys.executable, "-m", "superharness.engine.detect", "--project", project_dir],
-        capture_output=True, text=True
+        capture_output=True,
+        text=True,
     )
     if r.returncode != 0 or not r.stdout.strip():
         return os.path.basename(project_dir), "TBD", "greenfield"
@@ -65,7 +76,12 @@ def _interactive(project_dir: str) -> tuple[str, str, str, str, bool, str]:
         print("  3. approval-gated — agents wait for explicit approval")
         choice = input("> ").strip() or "2"
     else:
-        choice = input("? Autonomy level (1=autonomous 2=supervised 3=approval-gated): ").strip() or "2"
+        choice = (
+            input(
+                "? Autonomy level (1=autonomous 2=supervised 3=approval-gated): "
+            ).strip()
+            or "2"
+        )
 
     autonomy = {"1": "autonomous", "3": "approval-gated"}.get(choice, "supervised")
 
@@ -88,16 +104,26 @@ def _interactive(project_dir: str) -> tuple[str, str, str, str, bool, str]:
     # Build a profile doc and write to temp file for reuse
     today = date.today().isoformat()
     import yaml
-    tmp = tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False, prefix="superharness-profile-")  # shipguard:ignore PY-012
-    atexit.register(lambda p=tmp.name: os.path.isfile(p) and os.unlink(p))  # guaranteed cleanup even on exception
-    yaml.dump({
-        "project_name": name,
-        "created": today,
-        "autonomy": autonomy,
-        "primary_agent": "claude-code",
-        "stack": stack,
-        "status": status,
-    }, tmp, default_flow_style=False, sort_keys=False)
+
+    tmp = tempfile.NamedTemporaryFile(
+        mode="w", suffix=".yaml", delete=False, prefix="superharness-profile-"
+    )  # shipguard:ignore PY-012
+    atexit.register(
+        lambda p=tmp.name: os.path.isfile(p) and os.unlink(p)
+    )  # guaranteed cleanup even on exception
+    yaml.dump(
+        {
+            "project_name": name,
+            "created": today,
+            "autonomy": autonomy,
+            "primary_agent": "claude-code",
+            "stack": stack,
+            "status": status,
+        },
+        tmp,
+        default_flow_style=False,
+        sort_keys=False,
+    )
     tmp.close()
     return name, stack, status, goal, install_watcher, tmp.name
 
@@ -129,50 +155,95 @@ def _generate_features(tech_stack: str) -> list[dict]:
     ]
     stack_lower = tech_stack.lower()
     if "docker" in stack_lower:
-        features.append({
-            "id": "docker-build",
-            "category": "infra",
-            "description": "Docker image builds successfully",
-            "steps": ["Run docker build", "Verify image created"],
-            "passes": False,
-        })
+        features.append(
+            {
+                "id": "docker-build",
+                "category": "infra",
+                "description": "Docker image builds successfully",
+                "steps": ["Run docker build", "Verify image created"],
+                "passes": False,
+            }
+        )
     if "python" in stack_lower:
-        features.append({
-            "id": "pip-install",
-            "category": "integration",
-            "description": "Package installs via pip",
-            "steps": ["Run pip install -e .", "Verify import works"],
-            "passes": False,
-        })
+        features.append(
+            {
+                "id": "pip-install",
+                "category": "integration",
+                "description": "Package installs via pip",
+                "steps": ["Run pip install -e .", "Verify import works"],
+                "passes": False,
+            }
+        )
     return features
 
 
 def main(argv: list[str] | None = None) -> None:
     import argparse
 
-    p = argparse.ArgumentParser(prog="init", description="Initialize superharness in a project directory.")
-    p.add_argument("project_name", nargs="?", default="",
-                   help="Human-readable project name (default: current directory name)")
-    p.add_argument("tech_stack", nargs="?", default="",
-                   help="Tech stack label, e.g. Python, TypeScript, Go (default: TBD)")
-    p.add_argument("status_arg", nargs="?", default="", metavar="STATUS",
-                   help="Project status: active, paused, or done (default: active)")
-    p.add_argument("-n", "--dry-run", action="store_true",
-                   help="Preview what would be created without writing any files")
-    p.add_argument("--with-watcher", action="store_true",
-                   help="Install background watcher (launchd/systemd) after init")
-    p.add_argument("--from-profile", dest="from_profile", default="",
-                   help="Bootstrap from a saved profile YAML file")
-    p.add_argument("--detect", action="store_true",
-                   help="Auto-detect project name and stack from existing files")
-    p.add_argument("--interactive", action="store_true",
-                   help="Prompt for project name, stack, goal, and watcher install")
-    p.add_argument("--refresh", action="store_true",
-                   help="Re-run init on an existing project to update templates")
-    p.add_argument("--force", action="store_true",
-                   help="With --refresh: overwrite CLAUDE.md, AGENTS.md, SOUL.md even if they exist")
-    p.add_argument("--skip-hooks", action="store_true",
-                   help="Skip auto-installing Claude Code hooks into ~/.claude/settings.json")
+    p = argparse.ArgumentParser(
+        prog="init", description="Initialize superharness in a project directory."
+    )
+    p.add_argument(
+        "project_name",
+        nargs="?",
+        default="",
+        help="Human-readable project name (default: current directory name)",
+    )
+    p.add_argument(
+        "tech_stack",
+        nargs="?",
+        default="",
+        help="Tech stack label, e.g. Python, TypeScript, Go (default: TBD)",
+    )
+    p.add_argument(
+        "status_arg",
+        nargs="?",
+        default="",
+        metavar="STATUS",
+        help="Project status: active, paused, or done (default: active)",
+    )
+    p.add_argument(
+        "-n",
+        "--dry-run",
+        action="store_true",
+        help="Preview what would be created without writing any files",
+    )
+    p.add_argument(
+        "--with-watcher",
+        action="store_true",
+        help="Install background watcher (launchd/systemd) after init",
+    )
+    p.add_argument(
+        "--from-profile",
+        dest="from_profile",
+        default="",
+        help="Bootstrap from a saved profile YAML file",
+    )
+    p.add_argument(
+        "--detect",
+        action="store_true",
+        help="Auto-detect project name and stack from existing files",
+    )
+    p.add_argument(
+        "--interactive",
+        action="store_true",
+        help="Prompt for project name, stack, goal, and watcher install",
+    )
+    p.add_argument(
+        "--refresh",
+        action="store_true",
+        help="Re-run init on an existing project to update templates",
+    )
+    p.add_argument(
+        "--force",
+        action="store_true",
+        help="With --refresh: overwrite CLAUDE.md, AGENTS.md, SOUL.md even if they exist",
+    )
+    p.add_argument(
+        "--skip-hooks",
+        action="store_true",
+        help="Skip auto-installing Claude Code hooks into ~/.claude/settings.json",
+    )
     opts = p.parse_args(argv)
 
     project_dir = str(Path.cwd().resolve())
@@ -185,7 +256,14 @@ def main(argv: list[str] | None = None) -> None:
 
     if opts.interactive:
         result = _interactive(project_dir)
-        project_name, tech_stack, status, interactive_goal, install_watcher_q, tmp_profile = result
+        (
+            project_name,
+            tech_stack,
+            status,
+            interactive_goal,
+            install_watcher_q,
+            tmp_profile,
+        ) = result
         install_watcher = install_watcher_q  # user's explicit choice overrides default
         opts.from_profile = tmp_profile
 
@@ -193,6 +271,7 @@ def main(argv: list[str] | None = None) -> None:
         if not os.path.isfile(opts.from_profile):
             sys.exit(f"Profile file not found: {opts.from_profile}")
         import yaml
+
         doc = yaml.safe_load(Path(opts.from_profile).read_text(encoding="utf-8")) or {}
         project_name = str(doc.get("project_name") or os.path.basename(project_dir))
         tech_stack = str(doc.get("stack") or "TBD")
@@ -215,8 +294,12 @@ def main(argv: list[str] | None = None) -> None:
     print()
 
     if opts.dry_run:
-        print("[dry-run] Would create: .superharness/{handoffs,contracts,review-lenses,rules}")
-        print("[dry-run] Would create: .superharness/{ledger.md,features.json,heartbeat.yaml,.gitignore}")
+        print(
+            "[dry-run] Would create: .superharness/{handoffs,contracts,review-lenses,rules}"
+        )
+        print(
+            "[dry-run] Would create: .superharness/{ledger.md,features.json,heartbeat.yaml,.gitignore}"
+        )
         print("[dry-run] Would create if missing: CLAUDE.md, AGENTS.md, GEMINI.md")
         return
 
@@ -244,6 +327,7 @@ def main(argv: list[str] | None = None) -> None:
             import sqlite3 as _sq
             from superharness.engine.db import init_db, _resolve_journal_mode
             from superharness.utils.paths import resolve_xdg_state_db_path
+
             _xdg_db = resolve_xdg_state_db_path(str(project_dir))
             os.makedirs(os.path.dirname(_xdg_db), exist_ok=True)
             _conn = _sq.connect(_xdg_db, timeout=5000)
@@ -301,18 +385,26 @@ def main(argv: list[str] | None = None) -> None:
                 "circuit-breaker.json\n"
                 ".launchagents_snapshot\n"
                 "daemon-monitor.py\n",
-                encoding="utf-8"
+                encoding="utf-8",
             )
             print("Created: .superharness/.gitignore (runtime state excluded from git)")
 
         # ledger.md
         ledger_tmpl = template_dir / "ledger.md"
         if ledger_tmpl.is_file():
-            _render_template(ledger_tmpl, harness / "ledger.md", project_name, tech_stack, status, project_dir, today)
+            _render_template(
+                ledger_tmpl,
+                harness / "ledger.md",
+                project_name,
+                tech_stack,
+                status,
+                project_dir,
+                today,
+            )
         else:
             (harness / "ledger.md").write_text(
                 f"# Ledger — {project_name}\n\nAppend-only activity log. Never edit previous entries.\n",
-                encoding="utf-8"
+                encoding="utf-8",
             )
 
         # heartbeat.yaml
@@ -326,6 +418,7 @@ def main(argv: list[str] | None = None) -> None:
         features_dst = harness / "features.json"
         if not features_dst.exists():
             import json
+
             features = _generate_features(tech_stack)
             features_dst.write_text(
                 json.dumps({"features": features}, indent=2) + "\n",
@@ -335,7 +428,9 @@ def main(argv: list[str] | None = None) -> None:
 
     else:  # refresh mode
         if not harness.is_dir():
-            sys.exit("--refresh requires an existing .superharness/ directory. Run init first.")
+            sys.exit(
+                "--refresh requires an existing .superharness/ directory. Run init first."
+            )
         print("superharness — refresh templates")
         print("================================")
         print(f"  Project:  {project_name}")
@@ -384,13 +479,15 @@ def main(argv: list[str] | None = None) -> None:
                 "circuit-breaker.json\n"
                 ".launchagents_snapshot\n"
                 "daemon-monitor.py\n",
-                encoding="utf-8"
+                encoding="utf-8",
             )
             print("Created: .superharness/.gitignore (runtime state excluded from git)")
 
     # Read identity block for template rendering
     identity_src = template_dir / "identity-core.md"
-    identity_block = identity_src.read_text(encoding="utf-8") if identity_src.is_file() else ""
+    identity_block = (
+        identity_src.read_text(encoding="utf-8") if identity_src.is_file() else ""
+    )
 
     # CLAUDE.md
     claude_dst = Path(project_dir) / "CLAUDE.md"
@@ -398,7 +495,16 @@ def main(argv: list[str] | None = None) -> None:
     if not claude_dst.exists() or _overwrite_user_file:
         claude_tmpl = template_dir / "CLAUDE.md.template"
         if claude_tmpl.is_file():
-            _render_template(claude_tmpl, claude_dst, project_name, tech_stack, status, project_dir, today, identity_block)
+            _render_template(
+                claude_tmpl,
+                claude_dst,
+                project_name,
+                tech_stack,
+                status,
+                project_dir,
+                today,
+                identity_block,
+            )
         else:
             claude_dst.write_text(
                 f"# {project_name}\n\n"
@@ -410,7 +516,7 @@ def main(argv: list[str] | None = None) -> None:
                 f"## Cross-Agent Protocol\n"
                 f"- Run `shux contract` before starting work.\n"
                 f"- Keep task status, ledger, and handoff updated before stopping.\n",
-                encoding="utf-8"
+                encoding="utf-8",
             )
         print("Refreshed: CLAUDE.md" if opts.refresh else "Created: CLAUDE.md")
     else:
@@ -421,7 +527,15 @@ def main(argv: list[str] | None = None) -> None:
     if not agents_dst.exists() or _overwrite_user_file:
         agents_tmpl = template_dir / "AGENTS.md.template"
         if agents_tmpl.is_file():
-            _render_template(agents_tmpl, agents_dst, project_name, tech_stack, status, project_dir, today)
+            _render_template(
+                agents_tmpl,
+                agents_dst,
+                project_name,
+                tech_stack,
+                status,
+                project_dir,
+                today,
+            )
         else:
             agents_dst.write_text(
                 f"# {project_name}\n\n"
@@ -433,7 +547,7 @@ def main(argv: list[str] | None = None) -> None:
                 f"## Cross-Agent Protocol\n"
                 f"- Run `shux contract` before starting work.\n"
                 f"- Keep task status, ledger, and handoff updated before stopping.\n",
-                encoding="utf-8"
+                encoding="utf-8",
             )
         print("Refreshed: AGENTS.md" if opts.refresh else "Created: AGENTS.md")
     else:
@@ -444,7 +558,15 @@ def main(argv: list[str] | None = None) -> None:
     if not gemini_dst.exists() or _overwrite_user_file:
         gemini_tmpl = template_dir / "GEMINI.md.template"
         if gemini_tmpl.is_file():
-            _render_template(gemini_tmpl, gemini_dst, project_name, tech_stack, status, project_dir, today)
+            _render_template(
+                gemini_tmpl,
+                gemini_dst,
+                project_name,
+                tech_stack,
+                status,
+                project_dir,
+                today,
+            )
         else:
             gemini_dst.write_text(
                 f"# Gemini Agent — {project_name}\n\n"
@@ -453,7 +575,7 @@ def main(argv: list[str] | None = None) -> None:
                 f"Follow the lifecycle: todo → plan_proposed → plan_approved → in_progress → report_ready.\n"
                 f"Use `shux` / `superharness` CLI to advance task status and write handoffs.\n"
                 f"Never close a task — only the operator runs `shux close`.\n",
-                encoding="utf-8"
+                encoding="utf-8",
             )
         print("Refreshed: GEMINI.md" if opts.refresh else "Created: GEMINI.md")
     else:
@@ -464,7 +586,15 @@ def main(argv: list[str] | None = None) -> None:
     if not soul_dst.exists() or _overwrite_user_file:
         soul_tmpl = template_dir / "SOUL.md.template"
         if soul_tmpl.is_file():
-            _render_template(soul_tmpl, soul_dst, project_name, tech_stack, status, project_dir, today)
+            _render_template(
+                soul_tmpl,
+                soul_dst,
+                project_name,
+                tech_stack,
+                status,
+                project_dir,
+                today,
+            )
         else:
             soul_dst.write_text(
                 f"# Soul — {project_name}\n\n"
@@ -475,7 +605,7 @@ def main(argv: list[str] | None = None) -> None:
                 f"- Never edit .env, credentials, or secrets.\n"
                 f"- Never push directly to main without human review.\n"
                 f"- Run required checks before handoff or commit.\n",
-                encoding="utf-8"
+                encoding="utf-8",
             )
         print("Refreshed: SOUL.md" if opts.refresh else "Created: SOUL.md")
     else:
@@ -487,8 +617,11 @@ def main(argv: list[str] | None = None) -> None:
     if install_watcher and platform.system() == "Darwin":
         ensure_script = str(_SCRIPTS / "ensure-launchd-inbox-watcher.sh")
         if os.path.isfile(ensure_script):
-            r = subprocess.run(["bash", ensure_script, "--project", project_dir],
-                               capture_output=True, text=True)
+            r = subprocess.run(
+                ["bash", ensure_script, "--project", project_dir],
+                capture_output=True,
+                text=True,
+            )
             if r.returncode == 0:
                 print("Watcher: launchd inbox watcher is configured.")
                 watcher_started = True
@@ -498,8 +631,16 @@ def main(argv: list[str] | None = None) -> None:
     if not watcher_started and install_watcher:
         try:
             subprocess.run(
-                [sys.executable, "-m", "superharness.commands.inbox_watch", "--project", project_dir],
-                capture_output=True, text=True, timeout=5,
+                [
+                    sys.executable,
+                    "-m",
+                    "superharness.commands.inbox_watch",
+                    "--project",
+                    project_dir,
+                ],
+                capture_output=True,
+                text=True,
+                timeout=5,
             )
         except Exception:
             print("  Run manually: shux watcher-worker -p .")
@@ -508,10 +649,13 @@ def main(argv: list[str] | None = None) -> None:
     if not opts.skip_hooks:
         try:
             from superharness.commands.install_hooks import install_hooks
+
             install_hooks()
             print("Hooks: ~/.claude/settings.json updated with superharness hooks.")
         except Exception as exc:
-            print(f"Hooks: auto-install failed ({exc}). Run manually: shux install-hooks")
+            print(
+                f"Hooks: auto-install failed ({exc}). Run manually: shux install-hooks"
+            )
     else:
         print("Hooks: skipped (--skip-hooks)")
 
@@ -526,6 +670,7 @@ def main(argv: list[str] | None = None) -> None:
         profile_dest = harness / "profile.yaml"
         try:
             import yaml as _yaml
+
             doc = _yaml.safe_load(profile_dest.read_text()) or {}
             if "auto_dispatch" not in doc:
                 doc["auto_dispatch"] = True
@@ -538,10 +683,13 @@ def main(argv: list[str] | None = None) -> None:
     # Patch contract goal for interactive mode — reads bootstrap scaffold, not live state
     if interactive_goal:
         import re
+
         contract_path = harness / "contract.yaml"
         if contract_path.is_file():
-            text = contract_path.read_text(encoding="utf-8")  # noqa: state-read (bootstrap-only)
-            text = re.sub(r'^goal:.*$', f'goal: "{interactive_goal}"', text, flags=re.MULTILINE)
+            text = contract_path.read_text(encoding="utf-8")  # shipguard:ignore state-read: bootstrap-only import path
+            text = re.sub(
+                r"^goal:.*$", f'goal: "{interactive_goal}"', text, flags=re.MULTILINE
+            )
             contract_path.write_text(text, encoding="utf-8")
 
     # Clean up interactive temp profile
@@ -557,7 +705,9 @@ def main(argv: list[str] | None = None) -> None:
     print("  ├── handoffs/            ← agent handoff files")
     print("  ├── review-lenses/       ← project-specific lenses (optional)")
     print("  ├── rules/               ← project rules and policies")
-    print("  ├── features.json        ← project feature tracking (passes: false→true only)")
+    print(
+        "  ├── features.json        ← project feature tracking (passes: false→true only)"
+    )
     print("  └── ledger.md            ← append-only activity log")
     print("  State lives in SQLite (XDG state dir) — no state YAML files created.")
     print()
@@ -578,11 +728,17 @@ def main(argv: list[str] | None = None) -> None:
     print()
     print("Next steps (terminal):")
     print("  superharness doctor --project .   ← verify setup")
-    print('  superharness task create --project . --id my-task --title "..." --owner codex-cli')
-    print("  .superharness/.gitignore already created — runtime state excluded, protocol files tracked")
+    print(
+        '  superharness task create --project . --id my-task --title "..." --owner codex-cli'
+    )
+    print(
+        "  .superharness/.gitignore already created — runtime state excluded, protocol files tracked"
+    )
     print()
     if platform.system() != "Darwin":
-        print("Tip: To enable a background watcher (macOS only), re-run with --with-watcher")
+        print(
+            "Tip: To enable a background watcher (macOS only), re-run with --with-watcher"
+        )
         print("     or use: superharness watch --foreground --project . --interval 30")
 
     # Plugin install hint: auto-context in Claude Code requires the plugin
@@ -594,9 +750,13 @@ def main(argv: list[str] | None = None) -> None:
             print()
             print("⚡ To enable auto-context in Claude Code, install the plugin once:")
             print(f"   bash {adapter_install}")
-            print("   This makes Claude see your task context automatically on every session start.")
+            print(
+                "   This makes Claude see your task context automatically on every session start."
+            )
     print()
-    print("→ Next: run 'shux doctor' to verify your setup, then 'shux dashboard' to open the dashboard.")
+    print(
+        "→ Next: run 'shux doctor' to verify your setup, then 'shux dashboard' to open the dashboard."
+    )
     print()
     print("Dashboard: http://127.0.0.1:8787  (start with: shux dashboard)")
 

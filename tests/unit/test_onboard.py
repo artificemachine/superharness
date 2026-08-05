@@ -1,10 +1,9 @@
 """Tests for shux onboard — interactive setup wizard (TDD: written before implementation)."""
+
 from __future__ import annotations
 
 import subprocess
-import sys
-from pathlib import Path
-from tests.helpers import seed_sqlite_from_yaml, get_task_from_sqlite
+from tests.helpers import seed_sqlite_from_yaml
 
 import pytest
 import yaml
@@ -20,11 +19,18 @@ def runner():
 def project(tmp_path):
     """Minimal git repo without .superharness/."""
     subprocess.run(["git", "init", str(tmp_path)], capture_output=True)
-    subprocess.run(["git", "-C", str(tmp_path), "config", "user.email", "test@example.com"], capture_output=True)
-    subprocess.run(["git", "-C", str(tmp_path), "config", "user.name", "Test"], capture_output=True)
+    subprocess.run(
+        ["git", "-C", str(tmp_path), "config", "user.email", "test@example.com"],
+        capture_output=True,
+    )
+    subprocess.run(
+        ["git", "-C", str(tmp_path), "config", "user.name", "Test"], capture_output=True
+    )
     (tmp_path / "README.md").write_text("# test\n")
     subprocess.run(["git", "-C", str(tmp_path), "add", "."], capture_output=True)
-    subprocess.run(["git", "-C", str(tmp_path), "commit", "-m", "init"], capture_output=True)
+    subprocess.run(
+        ["git", "-C", str(tmp_path), "commit", "-m", "init"], capture_output=True
+    )
     return tmp_path
 
 
@@ -43,14 +49,21 @@ def initialized_project(project):
 # Step state + resumability
 # ---------------------------------------------------------------------------
 
+
 def test_onboard_creates_sqlite_row(runner, project):
     """SQLite is SoT — after running onboard, the onboarding_state row exists."""
     from superharness.commands.onboard import cmd_onboard
     from superharness.engine.db import get_connection, init_db
     from superharness.engine import onboarding_dao
-    result = runner.invoke(cmd_onboard, [
-        "--project", str(project), "--non-interactive",
-    ])
+
+    result = runner.invoke(
+        cmd_onboard,
+        [
+            "--project",
+            str(project),
+            "--non-interactive",
+        ],
+    )
     assert result.exit_code == 0, result.output
     conn = get_connection(str(project))
     try:
@@ -70,9 +83,15 @@ def test_onboard_init_creates_doctor_clean_scaffold(runner, project):
     Handoffs/ and state.sqlite3 are created later by other steps, not init proper.
     """
     from superharness.commands.onboard import cmd_onboard
-    result = runner.invoke(cmd_onboard, [
-        "--project", str(project), "--non-interactive",
-    ])
+
+    result = runner.invoke(
+        cmd_onboard,
+        [
+            "--project",
+            str(project),
+            "--non-interactive",
+        ],
+    )
     assert result.exit_code == 0, result.output
     sh = project / ".superharness"
     assert sh.is_dir(), ".superharness/ not created"
@@ -81,9 +100,15 @@ def test_onboard_init_creates_doctor_clean_scaffold(runner, project):
 def test_onboard_skips_init_if_exists(runner, initialized_project):
     """If .superharness/ already exists, the init step is skipped."""
     from superharness.commands.onboard import cmd_onboard
-    result = runner.invoke(cmd_onboard, [
-        "--project", str(initialized_project), "--non-interactive",
-    ])
+
+    result = runner.invoke(
+        cmd_onboard,
+        [
+            "--project",
+            str(initialized_project),
+            "--non-interactive",
+        ],
+    )
     assert result.exit_code == 0, result.output
     assert "skip" in result.output.lower() or "already" in result.output.lower()
 
@@ -93,6 +118,7 @@ def test_onboard_resumes_from_last_step(runner, project):
     from superharness.commands.onboard import cmd_onboard
     from superharness.engine.db import get_connection, init_db
     from superharness.engine import onboarding_dao
+
     sh = project / ".superharness"
     sh.mkdir()
     (sh / "contract.yaml").write_text("id: c1\ntasks: []\n")
@@ -106,9 +132,13 @@ def test_onboard_resumes_from_last_step(runner, project):
             version=1,
             config_version=2,
             steps={
-                "detect": "completed", "init": "completed",
-                "git_track": "pending", "doctor": "pending",
-                "task": "pending", "delegate": "pending", "summary": "pending",
+                "detect": "completed",
+                "init": "completed",
+                "git_track": "pending",
+                "doctor": "pending",
+                "task": "pending",
+                "delegate": "pending",
+                "summary": "pending",
             },
             updated_at="2026-05-25T00:00:00Z",
         )
@@ -116,9 +146,14 @@ def test_onboard_resumes_from_last_step(runner, project):
     finally:
         conn.close()
 
-    result = runner.invoke(cmd_onboard, [
-        "--project", str(project), "--non-interactive",
-    ])
+    result = runner.invoke(
+        cmd_onboard,
+        [
+            "--project",
+            str(project),
+            "--non-interactive",
+        ],
+    )
     assert result.exit_code == 0, result.output
     # Should not re-run detect/init
     assert result.output.count("Step 1") == 0 or "skip" in result.output.lower()
@@ -127,6 +162,7 @@ def test_onboard_resumes_from_last_step(runner, project):
 def test_onboard_idempotent(runner, project):
     """Running onboard twice doesn't duplicate state or crash."""
     from superharness.commands.onboard import cmd_onboard
+
     args = ["--project", str(project), "--non-interactive"]
     r1 = runner.invoke(cmd_onboard, args)
     assert r1.exit_code == 0, r1.output
@@ -138,40 +174,68 @@ def test_onboard_idempotent(runner, project):
 # Step 1 — detect
 # ---------------------------------------------------------------------------
 
+
 def test_onboard_step_detect_shows_stack(runner, project):
     """Output contains the detected project stack."""
     from superharness.commands.onboard import cmd_onboard
-    result = runner.invoke(cmd_onboard, [
-        "--project", str(project), "--non-interactive",
-    ])
+
+    result = runner.invoke(
+        cmd_onboard,
+        [
+            "--project",
+            str(project),
+            "--non-interactive",
+        ],
+    )
     assert result.exit_code == 0, result.output
     # detect step runs and prints something about the project
-    assert any(word in result.output.lower() for word in ("detect", "project", "git", "stack", "found"))
+    assert any(
+        word in result.output.lower()
+        for word in ("detect", "project", "git", "stack", "found")
+    )
 
 
 # ---------------------------------------------------------------------------
 # Step 3 — git tracking
 # ---------------------------------------------------------------------------
 
+
 def test_onboard_git_track_team_keeps_commit(runner, project):
     """team mode: .superharness/ must NOT appear in root .gitignore."""
     from superharness.commands.onboard import cmd_onboard
-    result = runner.invoke(cmd_onboard, [
-        "--project", str(project), "--non-interactive", "--git-mode", "team",
-    ])
+
+    result = runner.invoke(
+        cmd_onboard,
+        [
+            "--project",
+            str(project),
+            "--non-interactive",
+            "--git-mode",
+            "team",
+        ],
+    )
     assert result.exit_code == 0, result.output
     gitignore = project / ".gitignore"
     if gitignore.exists():
-        assert ".superharness" not in gitignore.read_text(), \
+        assert ".superharness" not in gitignore.read_text(), (
             ".superharness/ must not be gitignored in team mode"
+        )
 
 
 def test_onboard_git_track_solo_adds_gitignore(runner, project):
     """solo mode: .superharness/ appended to root .gitignore."""
     from superharness.commands.onboard import cmd_onboard
-    result = runner.invoke(cmd_onboard, [
-        "--project", str(project), "--non-interactive", "--git-mode", "solo",
-    ])
+
+    result = runner.invoke(
+        cmd_onboard,
+        [
+            "--project",
+            str(project),
+            "--non-interactive",
+            "--git-mode",
+            "solo",
+        ],
+    )
     assert result.exit_code == 0, result.output
     gitignore = project / ".gitignore"
     assert gitignore.exists(), ".gitignore not created"
@@ -181,20 +245,29 @@ def test_onboard_git_track_solo_adds_gitignore(runner, project):
 def test_onboard_git_track_idempotent(runner, project):
     """Running twice with solo mode doesn't duplicate .gitignore entry."""
     from superharness.commands.onboard import cmd_onboard
+
     args = ["--project", str(project), "--non-interactive", "--git-mode", "solo"]
     runner.invoke(cmd_onboard, args)
     runner.invoke(cmd_onboard, args)
     gitignore = project / ".gitignore"
     content = gitignore.read_text()
-    assert content.count(".superharness") == 1, "duplicate .superharness entry in .gitignore"
+    assert content.count(".superharness") == 1, (
+        "duplicate .superharness entry in .gitignore"
+    )
 
 
 def test_onboard_git_track_inner_gitignore(runner, project):
     """Inner .superharness/.gitignore always created with runtime exclusions."""
     from superharness.commands.onboard import cmd_onboard
-    result = runner.invoke(cmd_onboard, [
-        "--project", str(project), "--non-interactive",
-    ])
+
+    result = runner.invoke(
+        cmd_onboard,
+        [
+            "--project",
+            str(project),
+            "--non-interactive",
+        ],
+    )
     assert result.exit_code == 0, result.output
     inner = project / ".superharness" / ".gitignore"
     assert inner.exists(), ".superharness/.gitignore not created"
@@ -206,10 +279,16 @@ def test_onboard_git_track_inner_gitignore(runner, project):
 def test_onboard_fails_gracefully_without_git(runner, tmp_path):
     """Non-git project: step 3 is skipped, not crashed."""
     from superharness.commands.onboard import cmd_onboard
+
     (tmp_path / "somefile.txt").write_text("hi\n")
-    result = runner.invoke(cmd_onboard, [
-        "--project", str(tmp_path), "--non-interactive",
-    ])
+    result = runner.invoke(
+        cmd_onboard,
+        [
+            "--project",
+            str(tmp_path),
+            "--non-interactive",
+        ],
+    )
     assert result.exit_code == 0, result.output
     assert "skip" in result.output.lower() or "no git" in result.output.lower()
 
@@ -218,13 +297,20 @@ def test_onboard_fails_gracefully_without_git(runner, tmp_path):
 # Step 4 — doctor
 # ---------------------------------------------------------------------------
 
+
 def test_onboard_doctor_failure_non_blocking(runner, project):
     """Doctor warnings don't prevent reaching the summary step."""
     from superharness.commands.onboard import cmd_onboard
+
     # Run without any special agents installed — doctor will warn but not block
-    result = runner.invoke(cmd_onboard, [
-        "--project", str(project), "--non-interactive",
-    ])
+    result = runner.invoke(
+        cmd_onboard,
+        [
+            "--project",
+            str(project),
+            "--non-interactive",
+        ],
+    )
     assert result.exit_code == 0, result.output
     assert "summary" in result.output.lower() or "set up" in result.output.lower()
 
@@ -233,35 +319,53 @@ def test_onboard_doctor_failure_non_blocking(runner, project):
 # Step 5 — first task
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
 def test_onboard_step_task_creates_entry(runner, project):
     """--task-title creates a task entry in contract.yaml."""
     from superharness.commands.onboard import cmd_onboard
-    result = runner.invoke(cmd_onboard, [
-        "--project", str(project), "--non-interactive",
-        "--task-title", "Add login page",
-    ])
+
+    result = runner.invoke(
+        cmd_onboard,
+        [
+            "--project",
+            str(project),
+            "--non-interactive",
+            "--task-title",
+            "Add login page",
+        ],
+    )
     assert result.exit_code == 0, result.output
     contract = project / ".superharness" / "contract.yaml"
     assert contract.exists()
     doc = yaml.safe_load(contract.read_text())
     titles = [t.get("title", "") for t in doc.get("tasks", [])]
-    assert any("login" in t.lower() for t in titles), f"task not found in contract: {titles}"
+    assert any("login" in t.lower() for t in titles), (
+        f"task not found in contract: {titles}"
+    )
 
 
 # ---------------------------------------------------------------------------
 # Step 6 — delegate
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
 def test_onboard_step_delegate_enqueues(runner, project):
     """--enqueue adds the task to inbox.yaml."""
     from superharness.commands.onboard import cmd_onboard
-    result = runner.invoke(cmd_onboard, [
-        "--project", str(project), "--non-interactive",
-        "--task-title", "Fix the bug",
-        "--enqueue",
-    ])
+
+    result = runner.invoke(
+        cmd_onboard,
+        [
+            "--project",
+            str(project),
+            "--non-interactive",
+            "--task-title",
+            "Fix the bug",
+            "--enqueue",
+        ],
+    )
     assert result.exit_code == 0, result.output
     inbox = project / ".superharness" / "inbox.yaml"
     assert inbox.exists(), "inbox.yaml not created after --enqueue"
@@ -273,12 +377,19 @@ def test_onboard_step_delegate_enqueues(runner, project):
 # Step 7 — summary
 # ---------------------------------------------------------------------------
 
+
 def test_onboard_summary_shows_next_steps(runner, project):
     """Summary output contains 'shux contract' as a next step."""
     from superharness.commands.onboard import cmd_onboard
-    result = runner.invoke(cmd_onboard, [
-        "--project", str(project), "--non-interactive",
-    ])
+
+    result = runner.invoke(
+        cmd_onboard,
+        [
+            "--project",
+            str(project),
+            "--non-interactive",
+        ],
+    )
     assert result.exit_code == 0, result.output
     assert "shux contract" in result.output
 
@@ -287,19 +398,26 @@ def test_onboard_summary_shows_next_steps(runner, project):
 # Non-interactive + missing agent CLI
 # ---------------------------------------------------------------------------
 
+
 def test_onboard_non_interactive_no_prompts(runner, project, monkeypatch):
     """--non-interactive never calls input() or click.prompt()."""
     import builtins
-    original_input = builtins.input
+
 
     def _no_input(*a, **kw):
         raise AssertionError("input() called in non-interactive mode")
 
     monkeypatch.setattr(builtins, "input", _no_input)
     from superharness.commands.onboard import cmd_onboard
-    result = runner.invoke(cmd_onboard, [
-        "--project", str(project), "--non-interactive",
-    ])
+
+    result = runner.invoke(
+        cmd_onboard,
+        [
+            "--project",
+            str(project),
+            "--non-interactive",
+        ],
+    )
     assert result.exit_code == 0, result.output
 
 
@@ -308,11 +426,18 @@ def test_onboard_works_without_agent_cli(runner, project, monkeypatch):
     # Patch PATH so no agent CLIs are found
     monkeypatch.setenv("PATH", "/nonexistent")
     from superharness.commands.onboard import cmd_onboard
-    result = runner.invoke(cmd_onboard, [
-        "--project", str(project), "--non-interactive",
-        "--task-title", "test task",
-        "--enqueue",
-    ])
+
+    result = runner.invoke(
+        cmd_onboard,
+        [
+            "--project",
+            str(project),
+            "--non-interactive",
+            "--task-title",
+            "test task",
+            "--enqueue",
+        ],
+    )
     # Should complete without crashing (may skip real enqueue, but no exception)
     assert result.exit_code == 0, result.output
 
@@ -321,12 +446,19 @@ def test_onboard_works_without_agent_cli(runner, project, monkeypatch):
 # AGENTS.md creation
 # ---------------------------------------------------------------------------
 
+
 def test_onboard_creates_agents_md(runner, project):
     """Step 2 (init) writes AGENTS.md if it doesn't exist."""
     from superharness.commands.onboard import cmd_onboard
-    result = runner.invoke(cmd_onboard, [
-        "--project", str(project), "--non-interactive",
-    ])
+
+    result = runner.invoke(
+        cmd_onboard,
+        [
+            "--project",
+            str(project),
+            "--non-interactive",
+        ],
+    )
     assert result.exit_code == 0, result.output
     agents_md = project / "AGENTS.md"
     assert agents_md.exists(), "AGENTS.md not created by onboard"
@@ -339,9 +471,15 @@ def test_onboard_does_not_overwrite_agents_md(runner, project):
     existing = "# My custom AGENTS.md\nDo not overwrite me.\n"
     (project / "AGENTS.md").write_text(existing)
     from superharness.commands.onboard import cmd_onboard
-    result = runner.invoke(cmd_onboard, [
-        "--project", str(project), "--non-interactive",
-    ])
+
+    result = runner.invoke(
+        cmd_onboard,
+        [
+            "--project",
+            str(project),
+            "--non-interactive",
+        ],
+    )
     assert result.exit_code == 0, result.output
     assert (project / "AGENTS.md").read_text() == existing, "AGENTS.md was overwritten"
 
@@ -350,16 +488,23 @@ def test_onboard_does_not_overwrite_agents_md(runner, project):
 # Step hints (→ context lines)
 # ---------------------------------------------------------------------------
 
+
 def test_onboard_steps_have_context_hints(runner, project):
     """Each step prints at least one → hint line explaining what was done."""
     from superharness.commands.onboard import cmd_onboard
-    result = runner.invoke(cmd_onboard, [
-        "--project", str(project), "--non-interactive",
-    ])
+
+    result = runner.invoke(
+        cmd_onboard,
+        [
+            "--project",
+            str(project),
+            "--non-interactive",
+        ],
+    )
     assert result.exit_code == 0, result.output
     assert "→" in result.output, "No → hint lines found in onboard output"
     # At least 3 distinct hint lines
-    hint_lines = [l for l in result.output.splitlines() if "→" in l]
+    hint_lines = [line for line in result.output.splitlines() if "→" in line]
     assert len(hint_lines) >= 3, f"Expected ≥3 hint lines, got {len(hint_lines)}"
 
 
@@ -367,19 +512,23 @@ def test_onboard_steps_have_context_hints(runner, project):
 # Cold-start hint in shux --help
 # ---------------------------------------------------------------------------
 
+
 def test_help_cold_start_suggests_onboard(tmp_path, runner):
     """shux --help in a dir without .superharness/ mentions shux onboard."""
     from superharness.cli import main
+
     with runner.isolated_filesystem(temp_dir=tmp_path):
         result = runner.invoke(main, ["--help"])
     assert result.exit_code == 0
-    assert "onboard" in result.output.lower(), \
+    assert "onboard" in result.output.lower(), (
         "shux --help should mention 'onboard' for cold-start projects"
+    )
 
 
 # ---------------------------------------------------------------------------
 # Global ~/.claude/CLAUDE.md update
 # ---------------------------------------------------------------------------
+
 
 def test_onboard_appends_global_claude_md(runner, project, tmp_path, monkeypatch):
     """onboard appends a superharness section to global CLAUDE.md if not present."""
@@ -388,16 +537,24 @@ def test_onboard_appends_global_claude_md(runner, project, tmp_path, monkeypatch
     monkeypatch.setenv("SUPERHARNESS_GLOBAL_CLAUDE_MD", str(global_claude))
 
     from superharness.commands.onboard import cmd_onboard
-    result = runner.invoke(cmd_onboard, [
-        "--project", str(project), "--non-interactive",
-    ])
+
+    result = runner.invoke(
+        cmd_onboard,
+        [
+            "--project",
+            str(project),
+            "--non-interactive",
+        ],
+    )
     assert result.exit_code == 0, result.output
     content = global_claude.read_text()
     assert "superharness" in content.lower()
     assert "shux contract" in content
 
 
-def test_onboard_skips_global_if_already_present(runner, project, tmp_path, monkeypatch):
+def test_onboard_skips_global_if_already_present(
+    runner, project, tmp_path, monkeypatch
+):
     """If global CLAUDE.md already mentions superharness, it is not duplicated."""
     global_claude = tmp_path / "CLAUDE.md"
     original = "# Rules\n\n## superharness\nshux contract\nAlready configured.\n"
@@ -405,12 +562,14 @@ def test_onboard_skips_global_if_already_present(runner, project, tmp_path, monk
     monkeypatch.setenv("SUPERHARNESS_GLOBAL_CLAUDE_MD", str(global_claude))
 
     from superharness.commands.onboard import cmd_onboard
+
     runner.invoke(cmd_onboard, ["--project", str(project), "--non-interactive"])
     runner.invoke(cmd_onboard, ["--project", str(project), "--non-interactive"])
 
     content = global_claude.read_text()
-    assert content.count("shux contract") == original.count("shux contract"), \
+    assert content.count("shux contract") == original.count("shux contract"), (
         "superharness block was duplicated in global CLAUDE.md"
+    )
 
 
 def test_onboard_skips_global_if_no_claude_md(runner, project, tmp_path, monkeypatch):
@@ -419,7 +578,13 @@ def test_onboard_skips_global_if_no_claude_md(runner, project, tmp_path, monkeyp
     monkeypatch.setenv("SUPERHARNESS_GLOBAL_CLAUDE_MD", str(nonexistent))
 
     from superharness.commands.onboard import cmd_onboard
-    result = runner.invoke(cmd_onboard, [
-        "--project", str(project), "--non-interactive",
-    ])
+
+    result = runner.invoke(
+        cmd_onboard,
+        [
+            "--project",
+            str(project),
+            "--non-interactive",
+        ],
+    )
     assert result.exit_code == 0, result.output

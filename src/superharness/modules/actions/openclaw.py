@@ -1,4 +1,5 @@
 """OpenClaw module actions — delegate tasks to NemoClaw sandboxed agents."""
+
 from __future__ import annotations
 
 import logging
@@ -36,7 +37,9 @@ def call_mcp_tool(server: str, tool: str, arguments: dict[str, Any]) -> dict[str
     raise RuntimeError(f"MCP server '{server}' not available")
 
 
-def openclaw_send_task(context: dict[str, Any], settings: dict[str, Any]) -> dict[str, Any]:
+def openclaw_send_task(
+    context: dict[str, Any], settings: dict[str, Any]
+) -> dict[str, Any]:
     """Send task to OpenClaw agent via NemoClaw MCP server.
 
     Args:
@@ -71,7 +74,9 @@ Please execute this task and report back with results."""
 
     try:
         # Call MCP tool to send task to agent
-        logger.info(f"Sending task {task_id} to OpenClaw agent in sandbox '{sandbox_name}'")
+        logger.info(
+            f"Sending task {task_id} to OpenClaw agent in sandbox '{sandbox_name}'"
+        )
 
         result = call_mcp_tool(
             server=mcp_server,

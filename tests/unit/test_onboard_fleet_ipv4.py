@@ -6,14 +6,13 @@ death (see docs/brain-multi-agent-tiers-fleet.md: two Ollama servers shared
 port 11434, "localhost" resolved to the wrong one). Must always use explicit
 127.0.0.1.
 """
+
 from __future__ import annotations
 
 import inspect
 import json
 from pathlib import Path
 from unittest.mock import patch
-
-import pytest
 
 
 def test_no_localhost_literal_in_fleet_section():
@@ -52,6 +51,7 @@ def test_written_fleet_config_uses_ipv4_loopback(tmp_path, monkeypatch):
     fleet_path = tmp_path / ".config" / "superharness" / "fleet.yaml"
     assert fleet_path.exists()
     import yaml
+
     written = yaml.safe_load(fleet_path.read_text())
     endpoint = written["fleet"]["endpoints"]["all"]
     assert endpoint.startswith("http://127.0.0.1:11434"), endpoint

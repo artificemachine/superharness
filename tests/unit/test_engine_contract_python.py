@@ -1,4 +1,5 @@
 """Python-native tests for superharness.engine.contract (no Ruby subprocess)."""
+
 from __future__ import annotations
 
 import subprocess
@@ -112,7 +113,9 @@ def test_latest_handoff_task(tmp_path: Path) -> None:
     handoff_dir.mkdir()
     (handoff_dir / "h1.yaml").write_text("task: task-a\nto: claude-code\n")
     (handoff_dir / "h2.yaml").write_text("task: task-b\nto: codex-cli\n")
-    r = _run_contract("latest_handoff_task", ["--dir", str(handoff_dir), "--to", "codex-cli"])
+    r = _run_contract(
+        "latest_handoff_task", ["--dir", str(handoff_dir), "--to", "codex-cli"]
+    )
     assert r.returncode == 0
     assert "task-b" in r.stdout
 
@@ -121,12 +124,16 @@ def test_latest_handoff_task_no_match(tmp_path: Path) -> None:
     handoff_dir = tmp_path / "handoffs"
     handoff_dir.mkdir()
     (handoff_dir / "h1.yaml").write_text("task: task-a\nto: claude-code\n")
-    r = _run_contract("latest_handoff_task", ["--dir", str(handoff_dir), "--to", "codex-cli"])
+    r = _run_contract(
+        "latest_handoff_task", ["--dir", str(handoff_dir), "--to", "codex-cli"]
+    )
     assert r.returncode == 0
     assert r.stdout.strip() == ""
 
 
 def test_nonexistent_file(tmp_path: Path) -> None:
-    r = _run_contract("task_exists", ["--file", str(tmp_path / "nope.yaml"), "--task", "x"])
+    r = _run_contract(
+        "task_exists", ["--file", str(tmp_path / "nope.yaml"), "--task", "x"]
+    )
     assert r.returncode == 0
     assert r.stdout.strip() == "false"

@@ -9,7 +9,7 @@ import urllib.error
 import urllib.request
 import uuid
 from pathlib import Path
-from tests.helpers import seed_sqlite_from_yaml, get_task_from_sqlite
+from tests.helpers import seed_sqlite_from_yaml
 
 import pytest
 
@@ -33,13 +33,15 @@ def _setup_project(tmp_path: Path) -> Path:
             [
                 "id: monitor-contract",
                 "created: 2026-03-09",
-                "goal: \"Monitor\"",
+                'goal: "Monitor"',
                 "tasks: []",
             ]
         )
         + "\n"
     )
-    (harness / "ledger.md").write_text("Append-only activity log. Never edit previous entries.\n- [2026-03-09T12:00:00Z] monitor test\n")
+    (harness / "ledger.md").write_text(
+        "Append-only activity log. Never edit previous entries.\n- [2026-03-09T12:00:00Z] monitor test\n"
+    )
     (harness / "inbox.yaml").write_text(
         "\n".join(
             [
@@ -95,7 +97,12 @@ def _start_server(module, repo_root: Path, project: Path):
 _HTTP_TIMEOUT = 20 if os.environ.get("CI") else 2
 
 
-def _request_json(method: str, url: str, payload: dict | None = None, headers: dict[str, str] | None = None):
+def _request_json(
+    method: str,
+    url: str,
+    payload: dict | None = None,
+    headers: dict[str, str] | None = None,
+):
     body = None
     if payload is not None:
         body = json.dumps(payload).encode("utf-8")
@@ -121,7 +128,9 @@ def _stop_server(server, thread) -> None:
 
 
 @pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-def test_monitor_status_returns_contract_and_counts(repo_root, tmp_path, monkeypatch) -> None:
+def test_monitor_status_returns_contract_and_counts(
+    repo_root, tmp_path, monkeypatch
+) -> None:
     module = _load_monitor_module(repo_root)
     project = _setup_project(tmp_path)
     monkeypatch.setattr(
@@ -153,7 +162,11 @@ def test_monitor_status_returns_contract_and_counts(repo_root, tmp_path, monkeyp
 def test_monitor_action_rejects_missing_token(repo_root, tmp_path, monkeypatch) -> None:
     module = _load_monitor_module(repo_root)
     project = _setup_project(tmp_path)
-    monkeypatch.setattr(module.Handler, "_action", lambda self, action: (_ for _ in ()).throw(AssertionError("should not run")))
+    monkeypatch.setattr(
+        module.Handler,
+        "_action",
+        lambda self, action: (_ for _ in ()).throw(AssertionError("should not run")),
+    )
 
     server, thread, base_url = _start_server(module, repo_root, project)
     try:
@@ -170,10 +183,16 @@ def test_monitor_action_rejects_missing_token(repo_root, tmp_path, monkeypatch) 
     assert payload["error"] == "forbidden"
 
 
-def test_monitor_action_rejects_cross_origin_with_token(repo_root, tmp_path, monkeypatch) -> None:
+def test_monitor_action_rejects_cross_origin_with_token(
+    repo_root, tmp_path, monkeypatch
+) -> None:
     module = _load_monitor_module(repo_root)
     project = _setup_project(tmp_path)
-    monkeypatch.setattr(module.Handler, "_action", lambda self, action: (_ for _ in ()).throw(AssertionError("should not run")))
+    monkeypatch.setattr(
+        module.Handler,
+        "_action",
+        lambda self, action: (_ for _ in ()).throw(AssertionError("should not run")),
+    )
 
     server, thread, base_url = _start_server(module, repo_root, project)
     try:
@@ -194,10 +213,19 @@ def test_monitor_action_rejects_cross_origin_with_token(repo_root, tmp_path, mon
     assert payload["error"] == "forbidden"
 
 
-def test_monitor_action_accepts_same_origin_with_token(repo_root, tmp_path, monkeypatch) -> None:
+def test_monitor_action_accepts_same_origin_with_token(
+    repo_root, tmp_path, monkeypatch
+) -> None:
     module = _load_monitor_module(repo_root)
     project = _setup_project(tmp_path)
-    monkeypatch.setattr(module.Handler, "_action", lambda self, action, payload=None: ({"exit_code": 0, "stdout": action, "stderr": ""}, 200))
+    monkeypatch.setattr(
+        module.Handler,
+        "_action",
+        lambda self, action, payload=None: (
+            {"exit_code": 0, "stdout": action, "stderr": ""},
+            200,
+        ),
+    )
 
     server, thread, base_url = _start_server(module, repo_root, project)
     try:
@@ -219,7 +247,9 @@ def test_monitor_action_accepts_same_origin_with_token(repo_root, tmp_path, monk
     assert payload["stdout"] == "dispatch_print_codex"
 
 
-def test_monitor_action_remove_item_calls_inbox_remove(repo_root, tmp_path, monkeypatch) -> None:
+def test_monitor_action_remove_item_calls_inbox_remove(
+    repo_root, tmp_path, monkeypatch
+) -> None:
     module = _load_monitor_module(repo_root)
     project = _setup_project(tmp_path)
     captured: dict[str, object] = {}
@@ -256,8 +286,12 @@ def test_monitor_action_remove_item_calls_inbox_remove(repo_root, tmp_path, monk
     assert "sample-item" in args
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="launchctl/os.getuid not available on Windows")
-def test_monitor_action_watcher_start_installs_and_kickstarts(repo_root, tmp_path, monkeypatch) -> None:
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="launchctl/os.getuid not available on Windows"
+)
+def test_monitor_action_watcher_start_installs_and_kickstarts(
+    repo_root, tmp_path, monkeypatch
+) -> None:
     module = _load_monitor_module(repo_root)
     project = _setup_project(tmp_path)
     calls: list[list[str]] = []
@@ -300,8 +334,12 @@ def test_monitor_action_watcher_start_installs_and_kickstarts(repo_root, tmp_pat
     assert kickstart_call[:3] == ["launchctl", "kickstart", "-k"]
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="launchctl/os.getuid not available on Windows")
-def test_monitor_action_watcher_start_prefers_project_runtime_and_src(repo_root, tmp_path, monkeypatch) -> None:
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="launchctl/os.getuid not available on Windows"
+)
+def test_monitor_action_watcher_start_prefers_project_runtime_and_src(
+    repo_root, tmp_path, monkeypatch
+) -> None:
     module = _load_monitor_module(repo_root)
     project = _setup_project(tmp_path)
     (project / "src" / "superharness").mkdir(parents=True, exist_ok=True)
@@ -345,7 +383,10 @@ def test_monitor_action_watcher_start_prefers_project_runtime_and_src(repo_root,
     assert payload["exit_code"] == 0
     install_call = calls[0]
     assert install_call[0] == "/usr/bin/env"
-    assert any(part.startswith("PYTHONPATH=") and str(project / "src") in part for part in install_call)
+    assert any(
+        part.startswith("PYTHONPATH=") and str(project / "src") in part
+        for part in install_call
+    )
     assert "/tmp/project-python" in install_call
 
 
@@ -417,7 +458,9 @@ def test_plan_proposals_returns_plan_proposed_tasks(repo_root, tmp_path) -> None
     assert "feature X" in p["summary"]
 
 
-def test_plan_proposals_returns_empty_when_no_plan_proposed(repo_root, tmp_path) -> None:
+def test_plan_proposals_returns_empty_when_no_plan_proposed(
+    repo_root, tmp_path
+) -> None:
     module = _load_monitor_module(repo_root)
     project = _setup_project(tmp_path)  # has no plan_proposed tasks
     harness = project / ".superharness"
@@ -451,6 +494,7 @@ def test_confirm_plan_updates_contract_and_handoff(repo_root, tmp_path) -> None:
 
     # Contract task must now be todo
     import yaml
+
     doc = yaml.safe_load((harness / "contract.yaml").read_text())
     task = next(t for t in doc["tasks"] if t["id"] == "feature-x")
     assert task["status"] == "todo"
@@ -482,7 +526,12 @@ def test_confirm_plan_action_via_api(repo_root, tmp_path, monkeypatch) -> None:
     monkeypatch.setattr(
         module,
         "watcher_runtime",
-        lambda label: {"loaded": True, "state": "running", "last_exit_code": "0", "run_interval_seconds": 15},
+        lambda label: {
+            "loaded": True,
+            "state": "running",
+            "last_exit_code": "0",
+            "run_interval_seconds": 15,
+        },
     )
     monkeypatch.setattr(module, "contract_id", lambda path: "plan-contract")
     monkeypatch.setattr(module.shutil, "which", lambda name: None)
@@ -507,8 +556,12 @@ def test_confirm_plan_action_via_api(repo_root, tmp_path, monkeypatch) -> None:
     assert payload.get("ok") is True
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="launchctl/os.getuid not available on Windows")
-def test_monitor_helpers_parse_runtime_and_inbox(repo_root, tmp_path, monkeypatch) -> None:
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="launchctl/os.getuid not available on Windows"
+)
+def test_monitor_helpers_parse_runtime_and_inbox(
+    repo_root, tmp_path, monkeypatch
+) -> None:
     module = _load_monitor_module(repo_root)
     project = _setup_project(tmp_path)
 
@@ -558,31 +611,54 @@ def test_monitor_watcher_health_branches(repo_root) -> None:
         heartbeat={"level": "ok", "message": "Heartbeat OK (3s ago)."},
     )
     assert foreground_ok["level"] == "ok"
-    assert "foreground" in foreground_ok["message"].lower() or "manual" in foreground_ok["message"].lower()
+    assert (
+        "foreground" in foreground_ok["message"].lower()
+        or "manual" in foreground_ok["message"].lower()
+    )
 
     idle_ok = module.watcher_health(
-        {"loaded": True, "state": "not running", "last_exit_code": "0", "run_interval_seconds": 15},
+        {
+            "loaded": True,
+            "state": "not running",
+            "last_exit_code": "0",
+            "run_interval_seconds": 15,
+        },
         [],
         now,
     )
     assert idle_ok["level"] == "ok"
 
     active_warn = module.watcher_health(
-        {"loaded": True, "state": "active", "last_exit_code": "0", "run_interval_seconds": 15},
+        {
+            "loaded": True,
+            "state": "active",
+            "last_exit_code": "0",
+            "run_interval_seconds": 15,
+        },
         [{"status": "stale"}, {"status": "failed"}],
         now,
     )
     assert active_warn["level"] == "warn"
 
     unknown_state = module.watcher_health(
-        {"loaded": True, "state": "throttled", "last_exit_code": "5", "run_interval_seconds": 0},
+        {
+            "loaded": True,
+            "state": "throttled",
+            "last_exit_code": "5",
+            "run_interval_seconds": 0,
+        },
         [],
         now,
     )
     assert unknown_state["level"] == "warn"
 
     aging_pending = module.watcher_health(
-        {"loaded": True, "state": "running", "last_exit_code": "7", "run_interval_seconds": 0},
+        {
+            "loaded": True,
+            "state": "running",
+            "last_exit_code": "7",
+            "run_interval_seconds": 0,
+        },
         [{"status": "pending", "created_at": "2026-03-12T00:00:00Z"}],
         "2026-03-12T00:20:01Z",
     )
@@ -592,6 +668,7 @@ def test_monitor_watcher_health_branches(repo_root) -> None:
 
 def test_monitor_config_and_pending_approvals(repo_root, tmp_path, monkeypatch) -> None:
     from tests.helpers import seed_sqlite_handoff
+
     module = _load_monitor_module(repo_root)
     project = _setup_project(tmp_path)
     handoff_dir = project / ".superharness" / "handoffs"
@@ -619,7 +696,7 @@ def test_monitor_config_and_pending_approvals(repo_root, tmp_path, monkeypatch) 
     cfg.write_text(
         "\n".join(
             [
-                f"watcher_project: \"{project}\"",
+                f'watcher_project: "{project}"',
                 "interval_seconds: 20",
                 "recover_timeout_minutes: 8",
                 "recover_action: retry",
@@ -638,7 +715,10 @@ def test_monitor_config_and_pending_approvals(repo_root, tmp_path, monkeypatch) 
     assert parsed["target"] == "codex-cli"
     assert parsed["codex_bypass"] is True
 
-    assert module.contract_id(project / ".superharness" / "contract.yaml") == "monitor-contract"
+    assert (
+        module.contract_id(project / ".superharness" / "contract.yaml")
+        == "monitor-contract"
+    )
 
 
 @pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
@@ -725,7 +805,9 @@ def test_monitor_watcher_runtime_nonzero_exit(repo_root, monkeypatch) -> None:
     assert runtime["loaded"] is False
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="launchctl/os.getuid not available on Windows")
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="launchctl/os.getuid not available on Windows"
+)
 def test_monitor_watcher_runtime_unparseable_interval(repo_root, monkeypatch) -> None:
     module = _load_monitor_module(repo_root)
 
@@ -737,7 +819,9 @@ def test_monitor_watcher_runtime_unparseable_interval(repo_root, monkeypatch) ->
     monkeypatch.setattr(
         module.subprocess,
         "run",
-        lambda *args, **kwargs: _RunResult(0, "state = running\nrun interval = notanumber seconds\n"),
+        lambda *args, **kwargs: _RunResult(
+            0, "state = running\nrun interval = notanumber seconds\n"
+        ),
     )
     runtime = module.watcher_runtime("com.example.test")
     assert runtime["loaded"] is True
@@ -760,7 +844,12 @@ def test_monitor_watcher_health_stale_and_failed_backlog(repo_root) -> None:
     now = "2026-03-12T00:10:00Z"
 
     result = module.watcher_health(
-        {"loaded": True, "state": "running", "last_exit_code": "0", "run_interval_seconds": 15},
+        {
+            "loaded": True,
+            "state": "running",
+            "last_exit_code": "0",
+            "run_interval_seconds": 15,
+        },
         [{"status": "stale"}, {"status": "failed"}, {"status": "pending"}],
         now,
     )
@@ -774,7 +863,12 @@ def test_monitor_watcher_health_running_healthy(repo_root) -> None:
     now = "2026-03-12T00:10:00Z"
 
     result = module.watcher_health(
-        {"loaded": True, "state": "running", "last_exit_code": "0", "run_interval_seconds": 15},
+        {
+            "loaded": True,
+            "state": "running",
+            "last_exit_code": "0",
+            "run_interval_seconds": 15,
+        },
         [{"status": "pending"}],
         now,
     )
@@ -803,7 +897,12 @@ def test_monitor_html_endpoint(repo_root, tmp_path, monkeypatch) -> None:
     monkeypatch.setattr(
         module,
         "watcher_runtime",
-        lambda label: {"loaded": False, "state": "", "last_exit_code": "", "run_interval_seconds": 0},
+        lambda label: {
+            "loaded": False,
+            "state": "",
+            "last_exit_code": "",
+            "run_interval_seconds": 0,
+        },
     )
 
     server, thread, base_url = _start_server(module, repo_root, project)
@@ -823,7 +922,12 @@ def test_monitor_handoff_md_endpoint(repo_root, tmp_path, monkeypatch) -> None:
     monkeypatch.setattr(
         module,
         "watcher_runtime",
-        lambda label: {"loaded": False, "state": "", "last_exit_code": "", "run_interval_seconds": 0},
+        lambda label: {
+            "loaded": False,
+            "state": "",
+            "last_exit_code": "",
+            "run_interval_seconds": 0,
+        },
     )
 
     report = project / ".superharness" / "handoffs" / "test-report.md"
@@ -831,7 +935,9 @@ def test_monitor_handoff_md_endpoint(repo_root, tmp_path, monkeypatch) -> None:
 
     server, thread, base_url = _start_server(module, repo_root, project)
     try:
-        req = urllib.request.Request(base_url + "/.superharness/handoffs/test-report.md")
+        req = urllib.request.Request(
+            base_url + "/.superharness/handoffs/test-report.md"
+        )
         with urllib.request.urlopen(req, timeout=2) as resp:
             body = resp.read().decode("utf-8")
             assert resp.status == 200
@@ -846,12 +952,19 @@ def test_monitor_handoff_md_not_found(repo_root, tmp_path, monkeypatch) -> None:
     monkeypatch.setattr(
         module,
         "watcher_runtime",
-        lambda label: {"loaded": False, "state": "", "last_exit_code": "", "run_interval_seconds": 0},
+        lambda label: {
+            "loaded": False,
+            "state": "",
+            "last_exit_code": "",
+            "run_interval_seconds": 0,
+        },
     )
 
     server, thread, base_url = _start_server(module, repo_root, project)
     try:
-        req = urllib.request.Request(base_url + "/.superharness/handoffs/nonexistent.md")
+        req = urllib.request.Request(
+            base_url + "/.superharness/handoffs/nonexistent.md"
+        )
         try:
             urllib.request.urlopen(req, timeout=2)
             assert False, "Expected 404"
@@ -867,12 +980,19 @@ def test_monitor_handoff_md_path_traversal(repo_root, tmp_path, monkeypatch) -> 
     monkeypatch.setattr(
         module,
         "watcher_runtime",
-        lambda label: {"loaded": False, "state": "", "last_exit_code": "", "run_interval_seconds": 0},
+        lambda label: {
+            "loaded": False,
+            "state": "",
+            "last_exit_code": "",
+            "run_interval_seconds": 0,
+        },
     )
 
     server, thread, base_url = _start_server(module, repo_root, project)
     try:
-        req = urllib.request.Request(base_url + "/.superharness/handoffs/../../contract.yaml")
+        req = urllib.request.Request(
+            base_url + "/.superharness/handoffs/../../contract.yaml"
+        )
         try:
             urllib.request.urlopen(req, timeout=2)
         except urllib.error.HTTPError as exc:
@@ -888,7 +1008,12 @@ def test_monitor_action_approve_task(repo_root, tmp_path, monkeypatch) -> None:
 
     def fake_run_cmd(self, args, timeout=30):
         captured.append(args)
-        return {"exit_code": 0, "stdout": "approved", "stderr": "", "cmd": " ".join(args)}
+        return {
+            "exit_code": 0,
+            "stdout": "approved",
+            "stderr": "",
+            "cmd": " ".join(args),
+        }
 
     monkeypatch.setattr(module.Handler, "_run_cmd", fake_run_cmd)
 
@@ -991,7 +1116,10 @@ def test_monitor_heartbeat_health_missing(repo_root, tmp_path) -> None:
 
     result = module.heartbeat_health(project)
     assert result["level"] == "warn"
-    assert "missing" in result["message"].lower() or "no heartbeat" in result["message"].lower()
+    assert (
+        "missing" in result["message"].lower()
+        or "no heartbeat" in result["message"].lower()
+    )
 
 
 def test_monitor_heartbeat_health_stale(repo_root, tmp_path) -> None:
@@ -1003,7 +1131,9 @@ def test_monitor_heartbeat_health_stale(repo_root, tmp_path) -> None:
     from datetime import datetime, timezone
 
     stale_time = _time.time() - 600
-    stale_ts = datetime.fromtimestamp(stale_time, tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    stale_ts = datetime.fromtimestamp(stale_time, tz=timezone.utc).strftime(
+        "%Y-%m-%dT%H:%M:%SZ"
+    )
     heartbeat.write_text(stale_ts + "\n")
 
     result = module.heartbeat_health(project)
@@ -1023,8 +1153,12 @@ def test_monitor_heartbeat_health_reads_worker_project(repo_root, tmp_path) -> N
     from datetime import datetime, timezone
 
     fresh_ts = datetime.now(tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-    (worker / ".superharness" / "watcher.heartbeat").write_text(fresh_ts + "\n", encoding="utf-8")
-    (project / ".superharness" / "watcher.heartbeat").write_text("2026-01-01T00:00:00Z\n", encoding="utf-8")
+    (worker / ".superharness" / "watcher.heartbeat").write_text(
+        fresh_ts + "\n", encoding="utf-8"
+    )
+    (project / ".superharness" / "watcher.heartbeat").write_text(
+        "2026-01-01T00:00:00Z\n", encoding="utf-8"
+    )
 
     result = module.heartbeat_health(project)
 
@@ -1066,7 +1200,11 @@ def test_monitor_status_includes_heartbeat(repo_root, tmp_path, monkeypatch) -> 
 
     server, thread, base_url = _start_server(module, repo_root, project)
     try:
-        status, payload = _request_json("GET", base_url + "/api/status", headers={"X-Superharness-Token": module.Handler.auth_token})
+        status, payload = _request_json(
+            "GET",
+            base_url + "/api/status",
+            headers={"X-Superharness-Token": module.Handler.auth_token},
+        )
     finally:
         _stop_server(server, thread)
 
@@ -1075,25 +1213,40 @@ def test_monitor_status_includes_heartbeat(repo_root, tmp_path, monkeypatch) -> 
     assert payload["heartbeat"]["level"] in ("ok", "warn")
 
 
-def test_monitor_status_reports_foreground_when_heartbeat_ok_and_launchd_missing(repo_root, tmp_path, monkeypatch) -> None:
+def test_monitor_status_reports_foreground_when_heartbeat_ok_and_launchd_missing(
+    repo_root, tmp_path, monkeypatch
+) -> None:
     module = _load_monitor_module(repo_root)
     project = _setup_project(tmp_path)
     monkeypatch.setattr(
         module,
         "watcher_runtime",
-        lambda label: {"loaded": False, "state": "", "last_exit_code": "", "run_interval_seconds": 0},
+        lambda label: {
+            "loaded": False,
+            "state": "",
+            "last_exit_code": "",
+            "run_interval_seconds": 0,
+        },
     )
     monkeypatch.setattr(
         module,
         "heartbeat_health",
-        lambda project_dir: {"level": "ok", "message": "Heartbeat OK (2s ago).", "age_seconds": 2},
+        lambda project_dir: {
+            "level": "ok",
+            "message": "Heartbeat OK (2s ago).",
+            "age_seconds": 2,
+        },
     )
     monkeypatch.setattr(module, "contract_id", lambda path: "demo")
     monkeypatch.setattr(module.shutil, "which", lambda name: None)
 
     server, thread, base_url = _start_server(module, repo_root, project)
     try:
-        status, payload = _request_json("GET", base_url + "/api/status", headers={"X-Superharness-Token": module.Handler.auth_token})
+        status, payload = _request_json(
+            "GET",
+            base_url + "/api/status",
+            headers={"X-Superharness-Token": module.Handler.auth_token},
+        )
     finally:
         _stop_server(server, thread)
 
@@ -1103,14 +1256,20 @@ def test_monitor_status_reports_foreground_when_heartbeat_ok_and_launchd_missing
     assert "foreground" in payload["watcher_health"]["message"].lower()
 
 
-def test_version_sanity_warns_when_dashboard_drifts_from_checkout(repo_root, tmp_path, monkeypatch) -> None:
+def test_version_sanity_warns_when_dashboard_drifts_from_checkout(
+    repo_root, tmp_path, monkeypatch
+) -> None:
     module = _load_monitor_module(repo_root)
     project = _setup_project(tmp_path)
     (project / "src" / "superharness").mkdir(parents=True, exist_ok=True)
-    (project / "src" / "superharness" / "__init__.py").write_text('__version__ = "9.9.9"\n', encoding="utf-8")
+    (project / "src" / "superharness" / "__init__.py").write_text(
+        '__version__ = "9.9.9"\n', encoding="utf-8"
+    )
     worker = tmp_path / "worker"
     (worker / "src" / "superharness").mkdir(parents=True, exist_ok=True)
-    (worker / "src" / "superharness" / "__init__.py").write_text('__version__ = "9.9.9"\n', encoding="utf-8")
+    (worker / "src" / "superharness" / "__init__.py").write_text(
+        '__version__ = "9.9.9"\n', encoding="utf-8"
+    )
     (project / ".superharness" / "watcher.yaml").write_text(
         f'watcher_project: "{worker}"\n',
         encoding="utf-8",
@@ -1166,9 +1325,13 @@ def test_task_report_handoff_and_markdown(repo_root, tmp_path) -> None:
         "# My Task Report\n\nCompleted successfully.\n"
     )
     from tests.helpers import seed_sqlite_handoff, seed_sqlite_from_yaml
+
     seed_sqlite_from_yaml(project)
     seed_sqlite_handoff(
-        project, "my-task", phase="report", status="done",
+        project,
+        "my-task",
+        phase="report",
+        status="done",
         from_agent="codex-cli",
         content=(
             "task: my-task\nto: codex-cli\nstatus: done\n"
@@ -1205,17 +1368,29 @@ def test_task_report_discussion_submission(repo_root, tmp_path) -> None:
     import sqlite3 as _sq
     from superharness.engine.db import get_connection as _gc, init_db as _idb
     from superharness.engine import discussions_dao as _ddao
+
     _legacy = project / ".superharness" / "state.sqlite3"
     _legacy.parent.mkdir(parents=True, exist_ok=True)
     if not _legacy.exists():
         _sq.connect(str(_legacy)).close()
     _conn = _gc(str(project))
     _idb(_conn)
-    _ddao.create(_conn, id="discuss-test-123", topic="Review approach",
-                 owners=["claude-code", "codex-cli"], now="2026-01-01T00:00:00Z")
-    _ddao.add_round(_conn, discussion_id="discuss-test-123", round_number=1,
-                    agent="claude-code", content="Need more testing.",
-                    verdict="partial", now="2026-01-01T01:00:00Z")
+    _ddao.create(
+        _conn,
+        id="discuss-test-123",
+        topic="Review approach",
+        owners=["claude-code", "codex-cli"],
+        now="2026-01-01T00:00:00Z",
+    )
+    _ddao.add_round(
+        _conn,
+        discussion_id="discuss-test-123",
+        round_number=1,
+        agent="claude-code",
+        content="Need more testing.",
+        verdict="partial",
+        now="2026-01-01T01:00:00Z",
+    )
     _conn.commit()
     _conn.close()
 
@@ -1249,20 +1424,38 @@ def test_task_report_discussion_all_agents(repo_root, tmp_path) -> None:
     import sqlite3 as _sq
     from superharness.engine.db import get_connection as _gc, init_db as _idb
     from superharness.engine import discussions_dao as _ddao
+
     _legacy = project / ".superharness" / "state.sqlite3"
     _legacy.parent.mkdir(parents=True, exist_ok=True)
     if not _legacy.exists():
         _sq.connect(str(_legacy)).close()
     _conn = _gc(str(project))
     _idb(_conn)
-    _ddao.create(_conn, id="discuss-all-456", topic="Multi agent",
-                 owners=["claude-code", "codex-cli"], now="2026-01-01T00:00:00Z")
-    _ddao.add_round(_conn, discussion_id="discuss-all-456", round_number=1,
-                    agent="claude-code", content="Looks good.",
-                    verdict="agree", now="2026-01-01T01:00:00Z")
-    _ddao.add_round(_conn, discussion_id="discuss-all-456", round_number=1,
-                    agent="codex-cli", content="Needs rework.",
-                    verdict="disagree", now="2026-01-01T02:00:00Z")
+    _ddao.create(
+        _conn,
+        id="discuss-all-456",
+        topic="Multi agent",
+        owners=["claude-code", "codex-cli"],
+        now="2026-01-01T00:00:00Z",
+    )
+    _ddao.add_round(
+        _conn,
+        discussion_id="discuss-all-456",
+        round_number=1,
+        agent="claude-code",
+        content="Looks good.",
+        verdict="agree",
+        now="2026-01-01T01:00:00Z",
+    )
+    _ddao.add_round(
+        _conn,
+        discussion_id="discuss-all-456",
+        round_number=1,
+        agent="codex-cli",
+        content="Needs rework.",
+        verdict="disagree",
+        now="2026-01-01T02:00:00Z",
+    )
     _conn.commit()
     _conn.close()
 
@@ -1295,6 +1488,7 @@ def test_task_report_missing_data(repo_root, tmp_path) -> None:
 
 def _make_eaddrinuse(errno_code: int = 48) -> OSError:
     import errno as _errno
+
     exc = OSError(_errno.EADDRINUSE, "Address already in use")
     exc.errno = errno_code
     return exc
@@ -1324,6 +1518,7 @@ def test_monitor_main_auto_finds_free_port(repo_root, tmp_path, monkeypatch) -> 
     monkeypatch.setattr(module.webbrowser, "open", lambda url: None)
 
     import sys
+
     orig = sys.argv
     sys.argv = ["dashboard-ui.py", "--project", str(project), "--no-open"]
     try:
@@ -1338,7 +1533,9 @@ def test_monitor_main_auto_finds_free_port(repo_root, tmp_path, monkeypatch) -> 
     assert call_log.index(8788) == call_log.index(8787) + 1
 
 
-def test_monitor_main_skips_multiple_occupied_ports(repo_root, tmp_path, monkeypatch) -> None:
+def test_monitor_main_skips_multiple_occupied_ports(
+    repo_root, tmp_path, monkeypatch
+) -> None:
     """main() skips several occupied ports before finding a free one."""
     module = _load_monitor_module(repo_root)
     project = _setup_project(tmp_path)
@@ -1363,6 +1560,7 @@ def test_monitor_main_skips_multiple_occupied_ports(repo_root, tmp_path, monkeyp
     monkeypatch.setattr(module.webbrowser, "open", lambda url: None)
 
     import sys
+
     orig = sys.argv
     sys.argv = ["dashboard-ui.py", "--project", str(project), "--no-open"]
     try:
@@ -1376,7 +1574,9 @@ def test_monitor_main_skips_multiple_occupied_ports(repo_root, tmp_path, monkeyp
     assert set(call_log[:-1]) == busy_ports
 
 
-def test_monitor_main_exits_when_all_ports_busy(repo_root, tmp_path, monkeypatch) -> None:
+def test_monitor_main_exits_when_all_ports_busy(
+    repo_root, tmp_path, monkeypatch
+) -> None:
     """main() raises SystemExit when no port in the scan range is free."""
     module = _load_monitor_module(repo_root)
     project = _setup_project(tmp_path)
@@ -1388,6 +1588,7 @@ def test_monitor_main_exits_when_all_ports_busy(repo_root, tmp_path, monkeypatch
     monkeypatch.setattr(module, "ThreadingHTTPServer", FakeServer)
 
     import sys
+
     orig = sys.argv
     sys.argv = ["dashboard-ui.py", "--project", str(project), "--no-open"]
     try:
@@ -1397,7 +1598,9 @@ def test_monitor_main_exits_when_all_ports_busy(repo_root, tmp_path, monkeypatch
         sys.argv = orig
 
 
-def test_monitor_main_explicit_port_fails_clearly(repo_root, tmp_path, monkeypatch) -> None:
+def test_monitor_main_explicit_port_fails_clearly(
+    repo_root, tmp_path, monkeypatch
+) -> None:
     """Explicit --port does not fall back; exits with a clear error."""
     module = _load_monitor_module(repo_root)
     project = _setup_project(tmp_path)
@@ -1409,8 +1612,16 @@ def test_monitor_main_explicit_port_fails_clearly(repo_root, tmp_path, monkeypat
     monkeypatch.setattr(module, "ThreadingHTTPServer", FakeServer)
 
     import sys
+
     orig = sys.argv
-    sys.argv = ["dashboard-ui.py", "--project", str(project), "--port", "9000", "--no-open"]
+    sys.argv = [
+        "dashboard-ui.py",
+        "--project",
+        str(project),
+        "--port",
+        "9000",
+        "--no-open",
+    ]
     try:
         with pytest.raises(SystemExit, match="9000"):
             module.main()
@@ -1442,6 +1653,7 @@ def test_monitor_main_linux_eaddrinuse(repo_root, tmp_path, monkeypatch) -> None
     monkeypatch.setattr(module.webbrowser, "open", lambda url: None)
 
     import sys
+
     orig = sys.argv
     sys.argv = ["dashboard-ui.py", "--project", str(project), "--no-open"]
     try:
@@ -1456,10 +1668,18 @@ def test_monitor_main_linux_eaddrinuse(repo_root, tmp_path, monkeypatch) -> None
 
 # ── task lifecycle: _set_task_status ──────────────────────────────────────
 
+
 def _make_contract(harness: Path, tasks: list[dict]) -> None:
     import yaml
+
     harness.mkdir(parents=True, exist_ok=True)
-    doc = {"id": "test", "status": "active", "tasks": tasks, "decisions": [], "failures": []}
+    doc = {
+        "id": "test",
+        "status": "active",
+        "tasks": tasks,
+        "decisions": [],
+        "failures": [],
+    }
     (harness / "contract.yaml").write_text(yaml.dump(doc))
 
 
@@ -1467,10 +1687,23 @@ def _make_contract(harness: Path, tasks: list[dict]) -> None:
 def test_set_task_status_transitions_correctly(repo_root, tmp_path):
     m = _load_monitor_module(repo_root)
     harness = tmp_path / ".superharness"
-    _make_contract(harness, [{"id": "t1", "status": "plan_proposed", "title": "T1", "owner": "claude-code"}])
-    result = m._set_task_status(harness, "t1", "plan_approved", from_status="plan_proposed")
+    _make_contract(
+        harness,
+        [
+            {
+                "id": "t1",
+                "status": "plan_proposed",
+                "title": "T1",
+                "owner": "claude-code",
+            }
+        ],
+    )
+    result = m._set_task_status(
+        harness, "t1", "plan_approved", from_status="plan_proposed"
+    )
     assert result["ok"] is True
     import yaml
+
     doc = yaml.safe_load((harness / "contract.yaml").read_text())
     task = next(t for t in doc["tasks"] if t["id"] == "t1")
     assert task["status"] == "plan_approved"
@@ -1480,8 +1713,13 @@ def test_set_task_status_transitions_correctly(repo_root, tmp_path):
 def test_set_task_status_rejects_wrong_from_status(repo_root, tmp_path):
     m = _load_monitor_module(repo_root)
     harness = tmp_path / ".superharness"
-    _make_contract(harness, [{"id": "t1", "status": "in_progress", "title": "T1", "owner": "claude-code"}])
-    result = m._set_task_status(harness, "t1", "plan_approved", from_status="plan_proposed")
+    _make_contract(
+        harness,
+        [{"id": "t1", "status": "in_progress", "title": "T1", "owner": "claude-code"}],
+    )
+    result = m._set_task_status(
+        harness, "t1", "plan_approved", from_status="plan_proposed"
+    )
     assert result["ok"] is False
     assert "in_progress" in result["error"]
 
@@ -1497,25 +1735,49 @@ def test_set_task_status_missing_task_returns_error(repo_root, tmp_path):
 def test_set_task_status_no_from_status_always_transitions(repo_root, tmp_path):
     m = _load_monitor_module(repo_root)
     harness = tmp_path / ".superharness"
-    _make_contract(harness, [{"id": "t1", "status": "in_progress", "title": "T1", "owner": "claude-code"}])
+    _make_contract(
+        harness,
+        [{"id": "t1", "status": "in_progress", "title": "T1", "owner": "claude-code"}],
+    )
     result = m._set_task_status(harness, "t1", "report_ready")
     assert result["ok"] is True
 
 
 # ── contract_tasks ────────────────────────────────────────────────────────
 
+
 @pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
 def test_contract_tasks_returns_all_tasks(repo_root, tmp_path):
     m = _load_monitor_module(repo_root)
     harness = tmp_path / ".superharness"
-    _make_contract(harness, [
-        {"id": "a", "status": "todo", "title": "A", "owner": "claude-code"},
-        {"id": "b", "status": "plan_proposed", "title": "B", "owner": "codex-cli"},
-        {"id": "c", "status": "done", "title": "C", "owner": "claude-code", "verified": True},
-    ])
+    _make_contract(
+        harness,
+        [
+            {"id": "a", "status": "todo", "title": "A", "owner": "claude-code"},
+            {"id": "b", "status": "plan_proposed", "title": "B", "owner": "codex-cli"},
+            {
+                "id": "c",
+                "status": "done",
+                "title": "C",
+                "owner": "claude-code",
+                "verified": True,
+            },
+        ],
+    )
     tasks = m.contract_tasks(harness / "contract.yaml")
     assert len(tasks) == 3
-    assert tasks[0] == {"id": "a", "title": "A", "status": "todo", "owner": "claude-code", "review_target": "", "verified": False, "workflow": "", "scheduled_after": "", "due_by": "", "depends_on": []}
+    assert tasks[0] == {
+        "id": "a",
+        "title": "A",
+        "status": "todo",
+        "owner": "claude-code",
+        "review_target": "",
+        "verified": False,
+        "workflow": "",
+        "scheduled_after": "",
+        "due_by": "",
+        "depends_on": [],
+    }
     assert tasks[1]["status"] == "plan_proposed"
     assert tasks[2]["verified"] is True
 
@@ -1523,9 +1785,17 @@ def test_contract_tasks_returns_all_tasks(repo_root, tmp_path):
 def test_contract_tasks_adds_review_target_for_review_requested(repo_root, tmp_path):
     m = _load_monitor_module(repo_root)
     harness = tmp_path / ".superharness"
-    _make_contract(harness, [
-        {"id": "r1", "status": "review_requested", "title": "Needs review", "owner": "codex-cli"},
-    ])
+    _make_contract(
+        harness,
+        [
+            {
+                "id": "r1",
+                "status": "review_requested",
+                "title": "Needs review",
+                "owner": "codex-cli",
+            },
+        ],
+    )
     tasks = m.contract_tasks(harness / "contract.yaml")
     assert tasks[0]["review_target"] == "claude-code"
 
@@ -1537,20 +1807,31 @@ def test_contract_tasks_returns_empty_for_missing_file(repo_root, tmp_path):
 
 # ── lifecycle phase coverage ──────────────────────────────────────────────
 
+
 def test_full_lifecycle_status_transitions(repo_root, tmp_path):
     """Walk through all lifecycle phases using _set_task_status."""
     m = _load_monitor_module(repo_root)
     harness = tmp_path / ".superharness"
-    _make_contract(harness, [{"id": "task1", "status": "todo", "title": "Full lifecycle", "owner": "claude-code"}])
+    _make_contract(
+        harness,
+        [
+            {
+                "id": "task1",
+                "status": "todo",
+                "title": "Full lifecycle",
+                "owner": "claude-code",
+            }
+        ],
+    )
 
     transitions = [
-        ("todo",          "plan_proposed",    None),
-        ("plan_proposed", "plan_approved",    "plan_proposed"),
-        ("plan_approved", "in_progress",      "plan_approved"),
-        ("in_progress",   "report_ready",     "in_progress"),
-        ("report_ready",  "review_requested", "report_ready"),
+        ("todo", "plan_proposed", None),
+        ("plan_proposed", "plan_approved", "plan_proposed"),
+        ("plan_approved", "in_progress", "plan_approved"),
+        ("in_progress", "report_ready", "in_progress"),
+        ("report_ready", "review_requested", "report_ready"),
         ("review_requested", "review_passed", "review_requested"),
-        ("review_passed", "done",             None),
+        ("review_passed", "done", None),
     ]
     for from_st, to_st, required_from in transitions:
         r = m._set_task_status(harness, "task1", to_st, from_status=required_from)
@@ -1561,8 +1842,20 @@ def test_review_failed_loops_back(repo_root, tmp_path):
     """review_failed → plan_proposed is a valid transition."""
     m = _load_monitor_module(repo_root)
     harness = tmp_path / ".superharness"
-    _make_contract(harness, [{"id": "loop-task", "status": "review_failed", "title": "Loop", "owner": "claude-code"}])
-    r = m._set_task_status(harness, "loop-task", "plan_proposed", from_status="review_failed")
+    _make_contract(
+        harness,
+        [
+            {
+                "id": "loop-task",
+                "status": "review_failed",
+                "title": "Loop",
+                "owner": "claude-code",
+            }
+        ],
+    )
+    r = m._set_task_status(
+        harness, "loop-task", "plan_proposed", from_status="review_failed"
+    )
     assert r["ok"] is True
 
 
@@ -1577,7 +1870,12 @@ def test_monitor_action_enqueue_task(repo_root, tmp_path, monkeypatch) -> None:
 
     def fake_run_cmd(self, args, timeout=30):
         captured["args"] = args
-        return {"exit_code": 0, "stdout": "Enqueued", "stderr": "", "cmd": " ".join(args)}
+        return {
+            "exit_code": 0,
+            "stdout": "Enqueued",
+            "stderr": "",
+            "cmd": " ".join(args),
+        }
 
     monkeypatch.setattr(module.Handler, "_run_cmd", fake_run_cmd)
 
@@ -1608,7 +1906,9 @@ def test_monitor_action_enqueue_task(repo_root, tmp_path, monkeypatch) -> None:
     assert "--priority" in args
 
 
-def test_monitor_enqueue_with_instructions_saves_file(repo_root, tmp_path, monkeypatch) -> None:
+def test_monitor_enqueue_with_instructions_saves_file(
+    repo_root, tmp_path, monkeypatch
+) -> None:
     """enqueue_with_instructions saves instructions file and enqueues task."""
     module = _load_monitor_module(repo_root)
     project = _setup_project(tmp_path)
@@ -1616,7 +1916,12 @@ def test_monitor_enqueue_with_instructions_saves_file(repo_root, tmp_path, monke
 
     def fake_run_cmd(self, args, timeout=30):
         captured["args"] = args
-        return {"exit_code": 0, "stdout": "Enqueued", "stderr": "", "cmd": " ".join(args)}
+        return {
+            "exit_code": 0,
+            "stdout": "Enqueued",
+            "stderr": "",
+            "cmd": " ".join(args),
+        }
 
     monkeypatch.setattr(module.Handler, "_run_cmd", fake_run_cmd)
 
@@ -1641,14 +1946,18 @@ def test_monitor_enqueue_with_instructions_saves_file(repo_root, tmp_path, monke
 
     assert status == 200
     # Instructions file should be saved
-    instructions_file = project / ".superharness" / "handoffs" / "mod.0-loader-instructions.md"
+    instructions_file = (
+        project / ".superharness" / "handoffs" / "mod.0-loader-instructions.md"
+    )
     assert instructions_file.exists()
     content = instructions_file.read_text()
     assert "TDD" in content
     assert "5 failing tests" in content
 
 
-def test_monitor_action_enqueue_task_invalid_target(repo_root, tmp_path, monkeypatch) -> None:
+def test_monitor_action_enqueue_task_invalid_target(
+    repo_root, tmp_path, monkeypatch
+) -> None:
     """enqueue_task with invalid target returns 400."""
     module = _load_monitor_module(repo_root)
     project = _setup_project(tmp_path)
@@ -1673,7 +1982,9 @@ def test_monitor_action_enqueue_task_invalid_target(repo_root, tmp_path, monkeyp
     assert "invalid target" in payload.get("error", "")
 
 
-def test_monitor_action_enqueue_task_missing_parts(repo_root, tmp_path, monkeypatch) -> None:
+def test_monitor_action_enqueue_task_missing_parts(
+    repo_root, tmp_path, monkeypatch
+) -> None:
     """enqueue_task with missing task_id or target returns 400."""
     module = _load_monitor_module(repo_root)
     project = _setup_project(tmp_path)
@@ -1699,20 +2010,34 @@ def test_monitor_action_enqueue_task_missing_parts(repo_root, tmp_path, monkeypa
 
 
 @pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-def test_monitor_action_request_review_enqueues_opposite_agent_and_updates_status(repo_root, tmp_path, monkeypatch) -> None:
+def test_monitor_action_request_review_enqueues_opposite_agent_and_updates_status(
+    repo_root, tmp_path, monkeypatch
+) -> None:
     module = _load_monitor_module(repo_root)
     project = _setup_project(tmp_path)
     harness = project / ".superharness"
     _make_contract(
         harness,
-        [{"id": "review-me", "status": "report_ready", "title": "Review me", "owner": "codex-cli"}],
+        [
+            {
+                "id": "review-me",
+                "status": "report_ready",
+                "title": "Review me",
+                "owner": "codex-cli",
+            }
+        ],
     )
 
     captured: dict[str, object] = {}
 
     def fake_run_cmd(self, args, timeout=30):  # noqa: ANN001, ANN202
         captured["args"] = args
-        return {"exit_code": 0, "stdout": "Enqueued", "stderr": "", "cmd": " ".join(args)}
+        return {
+            "exit_code": 0,
+            "stdout": "Enqueued",
+            "stderr": "",
+            "cmd": " ".join(args),
+        }
 
     monkeypatch.setattr(module.Handler, "_run_cmd", fake_run_cmd)
     module.Handler.project_dir = project
@@ -1738,13 +2063,22 @@ def test_monitor_action_request_review_enqueues_opposite_agent_and_updates_statu
 
 
 @pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-def test_monitor_action_request_review_rejects_when_already_enqueued(repo_root, tmp_path) -> None:
+def test_monitor_action_request_review_rejects_when_already_enqueued(
+    repo_root, tmp_path
+) -> None:
     module = _load_monitor_module(repo_root)
     project = _setup_project(tmp_path)
     harness = project / ".superharness"
     _make_contract(
         harness,
-        [{"id": "review-me", "status": "report_ready", "title": "Review me", "owner": "codex-cli"}],
+        [
+            {
+                "id": "review-me",
+                "status": "report_ready",
+                "title": "Review me",
+                "owner": "codex-cli",
+            }
+        ],
     )
     (harness / "inbox.yaml").write_text(
         "\n".join(
@@ -1770,20 +2104,34 @@ def test_monitor_action_request_review_rejects_when_already_enqueued(repo_root, 
     assert "already enqueued" in payload["error"]
 
 
-def test_monitor_action_close_without_review_runs_close_command(repo_root, tmp_path, monkeypatch) -> None:
+def test_monitor_action_close_without_review_runs_close_command(
+    repo_root, tmp_path, monkeypatch
+) -> None:
     module = _load_monitor_module(repo_root)
     project = _setup_project(tmp_path)
     harness = project / ".superharness"
     _make_contract(
         harness,
-        [{"id": "close-me", "status": "report_ready", "title": "Close me", "owner": "codex-cli"}],
+        [
+            {
+                "id": "close-me",
+                "status": "report_ready",
+                "title": "Close me",
+                "owner": "codex-cli",
+            }
+        ],
     )
 
     captured: dict[str, object] = {}
 
     def fake_run_cmd(self, args, timeout=30):  # noqa: ANN001, ANN202
         captured["args"] = args
-        return {"exit_code": 0, "stdout": "Closed task 'close-me' (actor=owner)", "stderr": "", "cmd": " ".join(args)}
+        return {
+            "exit_code": 0,
+            "stdout": "Closed task 'close-me' (actor=owner)",
+            "stderr": "",
+            "cmd": " ".join(args),
+        }
 
     monkeypatch.setattr(module.Handler, "_run_cmd", fake_run_cmd)
     module.Handler.project_dir = project
@@ -1800,7 +2148,9 @@ def test_monitor_action_close_without_review_runs_close_command(repo_root, tmp_p
     assert "--actor" in args and "owner" in args
 
 
-def test_task_report_endpoint_returns_500_on_crash(repo_root, tmp_path, monkeypatch) -> None:
+def test_task_report_endpoint_returns_500_on_crash(
+    repo_root, tmp_path, monkeypatch
+) -> None:
     """If task_report() raises, endpoint returns 500 JSON instead of dropping connection."""
     module = _load_monitor_module(repo_root)
     project = _setup_project(tmp_path)
@@ -1825,7 +2175,9 @@ def test_task_report_endpoint_returns_500_on_crash(repo_root, tmp_path, monkeypa
 
 
 @pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-def test_monitor_action_enqueue_task_duplicate_blocked(repo_root, tmp_path, monkeypatch) -> None:
+def test_monitor_action_enqueue_task_duplicate_blocked(
+    repo_root, tmp_path, monkeypatch
+) -> None:
     """enqueue_task for a task already in inbox (pending/launched) returns 409."""
     module = _load_monitor_module(repo_root)
     project = _setup_project(tmp_path)
@@ -1863,7 +2215,9 @@ def test_monitor_action_enqueue_task_duplicate_blocked(repo_root, tmp_path, monk
 
 
 @pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-def test_monitor_action_enqueue_task_paused_also_blocked(repo_root, tmp_path, monkeypatch) -> None:
+def test_monitor_action_enqueue_task_paused_also_blocked(
+    repo_root, tmp_path, monkeypatch
+) -> None:
     """enqueue_task for a task with a paused inbox item returns 409."""
     module = _load_monitor_module(repo_root)
     project = _setup_project(tmp_path)
@@ -1898,7 +2252,9 @@ def test_monitor_action_enqueue_task_paused_also_blocked(repo_root, tmp_path, mo
     assert "already" in payload.get("error", "").lower()
 
 
-def test_monitor_action_enqueue_task_allows_after_done(repo_root, tmp_path, monkeypatch) -> None:
+def test_monitor_action_enqueue_task_allows_after_done(
+    repo_root, tmp_path, monkeypatch
+) -> None:
     """enqueue_task allowed if previous inbox item for same task is done."""
     module = _load_monitor_module(repo_root)
     project = _setup_project(tmp_path)
@@ -1916,7 +2272,12 @@ def test_monitor_action_enqueue_task_allows_after_done(repo_root, tmp_path, monk
 
     def fake_run_cmd(self, args, timeout=30):
         captured["args"] = args
-        return {"exit_code": 0, "stdout": "Enqueued", "stderr": "", "cmd": " ".join(args)}
+        return {
+            "exit_code": 0,
+            "stdout": "Enqueued",
+            "stderr": "",
+            "cmd": " ".join(args),
+        }
 
     monkeypatch.setattr(module.Handler, "_run_cmd", fake_run_cmd)
 
@@ -1947,8 +2308,11 @@ def test_monitor_action_mark_done(repo_root, tmp_path, monkeypatch) -> None:
     project = _setup_project(tmp_path)
     harness = project / ".superharness"
     import yaml
+
     contract = yaml.safe_load((harness / "contract.yaml").read_text()) or {}
-    contract["tasks"] = [{"id": "test-task", "status": "todo", "title": "Test", "owner": "claude-code"}]
+    contract["tasks"] = [
+        {"id": "test-task", "status": "todo", "title": "Test", "owner": "claude-code"}
+    ]
     (harness / "contract.yaml").write_text(yaml.dump(contract))
 
     server, thread, base_url = _start_server(module, repo_root, project)
@@ -1974,14 +2338,24 @@ def test_monitor_action_mark_done(repo_root, tmp_path, monkeypatch) -> None:
     assert task["status"] == "done"
 
 
-def test_monitor_action_mark_done_wrong_status(repo_root, tmp_path, monkeypatch) -> None:
+def test_monitor_action_mark_done_wrong_status(
+    repo_root, tmp_path, monkeypatch
+) -> None:
     """mark_done on a non-todo task returns error."""
     module = _load_monitor_module(repo_root)
     project = _setup_project(tmp_path)
     harness = project / ".superharness"
     import yaml
+
     contract = yaml.safe_load((harness / "contract.yaml").read_text()) or {}
-    contract["tasks"] = [{"id": "test-task", "status": "in_progress", "title": "Test", "owner": "claude-code"}]
+    contract["tasks"] = [
+        {
+            "id": "test-task",
+            "status": "in_progress",
+            "title": "Test",
+            "owner": "claude-code",
+        }
+    ]
     (harness / "contract.yaml").write_text(yaml.dump(contract))
 
     server, thread, base_url = _start_server(module, repo_root, project)
@@ -2027,8 +2401,16 @@ def test_status_includes_active_inbox_tasks(repo_root, tmp_path, monkeypatch) ->
             "  priority: 2\n"
         )
 
-    monkeypatch.setattr(module.Handler, "_run_cmd", lambda self, args, timeout=30: {
-        "exit_code": 0, "stdout": "", "stderr": "", "cmd": ""})
+    monkeypatch.setattr(
+        module.Handler,
+        "_run_cmd",
+        lambda self, args, timeout=30: {
+            "exit_code": 0,
+            "stdout": "",
+            "stderr": "",
+            "cmd": "",
+        },
+    )
 
     server, thread, base_url = _start_server(module, repo_root, project)
     try:
@@ -2058,8 +2440,16 @@ def test_status_includes_done_inbox_tasks(repo_root, tmp_path, monkeypatch) -> N
             "  priority: 2\n"
         )
 
-    monkeypatch.setattr(module.Handler, "_run_cmd", lambda self, args, timeout=30: {
-        "exit_code": 0, "stdout": "", "stderr": "", "cmd": ""})
+    monkeypatch.setattr(
+        module.Handler,
+        "_run_cmd",
+        lambda self, args, timeout=30: {
+            "exit_code": 0,
+            "stdout": "",
+            "stderr": "",
+            "cmd": "",
+        },
+    )
 
     server, thread, base_url = _start_server(module, repo_root, project)
     try:
@@ -2174,13 +2564,17 @@ def test_task_instructions_api_endpoint(repo_root, tmp_path, monkeypatch) -> Non
     assert "TDD" in payload["instructions"]
 
 
-def test_task_report_reads_markdown_handoff_with_frontmatter(repo_root, tmp_path) -> None:
+def test_task_report_reads_markdown_handoff_with_frontmatter(
+    repo_root, tmp_path
+) -> None:
     """task_report finds .md handoffs with YAML frontmatter."""
     module = _load_monitor_module(repo_root)
     project = tmp_path / "proj-md-handoff"
     harness = project / ".superharness"
     (harness / "handoffs").mkdir(parents=True)
-    (harness / "contract.yaml").write_text("id: c1\ntasks:\n- id: mod.1-runner\n  status: done\n  title: Runner\n  owner: claude-code\n")
+    (harness / "contract.yaml").write_text(
+        "id: c1\ntasks:\n- id: mod.1-runner\n  status: done\n  title: Runner\n  owner: claude-code\n"
+    )
     md_content = (
         "---\n"
         "task_id: mod.1-runner\n"
@@ -2193,13 +2587,19 @@ def test_task_report_reads_markdown_handoff_with_frontmatter(repo_root, tmp_path
         "## What Was Done\n\n"
         "Built the module runner with 7 tests.\n"
     )
-    (harness / "handoffs" / "mod.1-runner-2026-03-20-claude-code.md").write_text(md_content)
+    (harness / "handoffs" / "mod.1-runner-2026-03-20-claude-code.md").write_text(
+        md_content
+    )
 
     # Seed SQLite — task_report reads handoffs from SQLite, not YAML/MD files
     from tests.helpers import seed_sqlite_from_yaml, seed_sqlite_handoff
+
     seed_sqlite_from_yaml(project)
     seed_sqlite_handoff(
-        project, "mod.1-runner", phase="report", status="done",
+        project,
+        "mod.1-runner",
+        phase="report",
+        status="done",
         from_agent="claude-code",
         content="task_id: mod.1-runner\nfrom: claude-code\nto: next-agent\nstatus: done\ntimestamp: 2026-03-20T12:00:00Z\nsummary: Built the module runner with 7 tests.\n",
         now="2026-03-20T12:00:00Z",
@@ -2208,10 +2608,15 @@ def test_task_report_reads_markdown_handoff_with_frontmatter(repo_root, tmp_path
     result = module.task_report(project, "mod.1-runner", "claude-code")
     assert result["contract_status"] == "done"
     assert result.get("handoff_status") == "done"
-    assert "module runner" in result.get("markdown_report", "").lower() or "module runner" in result.get("handoff_summary", "").lower()
+    assert (
+        "module runner" in result.get("markdown_report", "").lower()
+        or "module runner" in result.get("handoff_summary", "").lower()
+    )
 
 
-def test_task_log_endpoint_returns_log_content(repo_root, tmp_path, monkeypatch) -> None:
+def test_task_log_endpoint_returns_log_content(
+    repo_root, tmp_path, monkeypatch
+) -> None:
     """GET /api/task-log returns log file content for a task."""
     module = _load_monitor_module(repo_root)
     project = _setup_project(tmp_path)
@@ -2262,7 +2667,9 @@ def test_autohealth_loop_exists_and_callable(repo_root, tmp_path, monkeypatch) -
     assert callable(module.autohealth_loop)
 
 
-def test_autohealth_check_returns_health_status(repo_root, tmp_path, monkeypatch) -> None:
+def test_autohealth_check_returns_health_status(
+    repo_root, tmp_path, monkeypatch
+) -> None:
     """autohealth_check pings the server and returns True/False."""
     module = _load_monitor_module(repo_root)
     assert hasattr(module, "autohealth_check"), "autohealth_check function must exist"
@@ -2285,7 +2692,7 @@ def test_html_contains_dedicated_left_aligned_task_actions(repo_root) -> None:
     html = module.HTML
     assert ".task-actions" in html
     assert ".task-meta" in html
-    assert 'row.className = \'task-row\'' in html
+    assert "row.className = 'task-row'" in html
     assert 'class="task-actions"' in html
     assert "actionButtons.join(" in html
 
@@ -2328,8 +2735,8 @@ def test_html_requires_verification_before_close_bypass(repo_root) -> None:
     module = _load_monitor_module(repo_root)
     html = module.HTML
     assert "Verify First" in html
-    assert 'if (t.verified)' in html
-    assert 'Run verify before closing' in html
+    assert "if (t.verified)" in html
+    assert "Run verify before closing" in html
 
 
 def test_html_shows_reviewer_for_review_requested_rows(repo_root) -> None:
@@ -2342,10 +2749,12 @@ def test_html_shows_reviewer_for_review_requested_rows(repo_root) -> None:
 
 def test_monitor_bootstraps_into_venv_when_yaml_missing(repo_root) -> None:
     """Repo monitor should have a bootstrap path for missing PyYAML in plain python3."""
-    source = (repo_root / "src" / "superharness" / "scripts" / "dashboard-ui.py").read_text()
+    source = (
+        repo_root / "src" / "superharness" / "scripts" / "dashboard-ui.py"
+    ).read_text()
     assert "def _ensure_python_with_yaml()" in source
-    assert 'SUPERHARNESS_MONITOR_REEXEC' in source
-    assert '_ensure_python_with_yaml()' in source
+    assert "SUPERHARNESS_MONITOR_REEXEC" in source
+    assert "_ensure_python_with_yaml()" in source
 
 
 # ── feat.monitor-operator-upgrade: board view, review queue, agent health ──
@@ -2362,16 +2771,66 @@ def _setup_board_project(tmp_path: Path) -> Path:
     doc = {
         "id": "board-contract",
         "tasks": [
-            {"id": "t-todo", "status": "todo", "title": "Todo task", "owner": "claude-code"},
-            {"id": "t-plan-p", "status": "plan_proposed", "title": "Plan proposed", "owner": "claude-code"},
-            {"id": "t-plan-a", "status": "plan_approved", "title": "Plan approved", "owner": "codex-cli"},
-            {"id": "t-inprog", "status": "in_progress", "title": "In progress", "owner": "claude-code"},
-            {"id": "t-rpt", "status": "report_ready", "title": "Report ready", "owner": "codex-cli"},
-            {"id": "t-rr", "status": "review_requested", "title": "Review requested", "owner": "claude-code"},
-            {"id": "t-rpas", "status": "review_passed", "title": "Review passed", "owner": "codex-cli"},
-            {"id": "t-rfail", "status": "review_failed", "title": "Review failed", "owner": "claude-code"},
-            {"id": "t-done", "status": "done", "title": "Done task", "owner": "claude-code"},
-            {"id": "t-stop", "status": "stopped", "title": "Stopped task", "owner": "codex-cli"},
+            {
+                "id": "t-todo",
+                "status": "todo",
+                "title": "Todo task",
+                "owner": "claude-code",
+            },
+            {
+                "id": "t-plan-p",
+                "status": "plan_proposed",
+                "title": "Plan proposed",
+                "owner": "claude-code",
+            },
+            {
+                "id": "t-plan-a",
+                "status": "plan_approved",
+                "title": "Plan approved",
+                "owner": "codex-cli",
+            },
+            {
+                "id": "t-inprog",
+                "status": "in_progress",
+                "title": "In progress",
+                "owner": "claude-code",
+            },
+            {
+                "id": "t-rpt",
+                "status": "report_ready",
+                "title": "Report ready",
+                "owner": "codex-cli",
+            },
+            {
+                "id": "t-rr",
+                "status": "review_requested",
+                "title": "Review requested",
+                "owner": "claude-code",
+            },
+            {
+                "id": "t-rpas",
+                "status": "review_passed",
+                "title": "Review passed",
+                "owner": "codex-cli",
+            },
+            {
+                "id": "t-rfail",
+                "status": "review_failed",
+                "title": "Review failed",
+                "owner": "claude-code",
+            },
+            {
+                "id": "t-done",
+                "status": "done",
+                "title": "Done task",
+                "owner": "claude-code",
+            },
+            {
+                "id": "t-stop",
+                "status": "stopped",
+                "title": "Stopped task",
+                "owner": "codex-cli",
+            },
         ],
     }
     (harness / "contract.yaml").write_text(yaml.dump(doc))
@@ -2427,7 +2886,9 @@ def test_board_view_totals_match_column_counts(repo_root, tmp_path) -> None:
         assert result["totals"][col] == len(tasks), f"totals[{col!r}] mismatch"
 
 
-def test_board_view_returns_safe_empty_for_missing_contract(repo_root, tmp_path) -> None:
+def test_board_view_returns_safe_empty_for_missing_contract(
+    repo_root, tmp_path
+) -> None:
     """board_view() returns safe empty structure when contract.yaml is absent."""
     module = _load_monitor_module(repo_root)
     result = module.board_view(tmp_path / "nonexistent.yaml")
@@ -2435,20 +2896,31 @@ def test_board_view_returns_safe_empty_for_missing_contract(repo_root, tmp_path)
     assert all(len(v) == 0 for v in result["columns"].values())
 
 
-def test_board_api_endpoint_returns_grouped_tasks(repo_root, tmp_path, monkeypatch) -> None:
+def test_board_api_endpoint_returns_grouped_tasks(
+    repo_root, tmp_path, monkeypatch
+) -> None:
     """GET /api/board returns columns, review_queue, totals, and now_utc."""
     module = _load_monitor_module(repo_root)
     project = _setup_board_project(tmp_path)
     monkeypatch.setattr(
         module,
         "watcher_runtime",
-        lambda label: {"loaded": False, "state": "", "last_exit_code": "", "run_interval_seconds": 0},
+        lambda label: {
+            "loaded": False,
+            "state": "",
+            "last_exit_code": "",
+            "run_interval_seconds": 0,
+        },
     )
     monkeypatch.setattr(module.shutil, "which", lambda name: None)
 
     server, thread, base_url = _start_server(module, repo_root, project)
     try:
-        status, payload = _request_json("GET", base_url + "/api/board", headers={"X-Superharness-Token": module.Handler.auth_token})
+        status, payload = _request_json(
+            "GET",
+            base_url + "/api/board",
+            headers={"X-Superharness-Token": module.Handler.auth_token},
+        )
     finally:
         _stop_server(server, thread)
 
@@ -2470,12 +2942,18 @@ def test_board_api_includes_agent_status(repo_root, tmp_path, monkeypatch) -> No
     monkeypatch.setattr(
         module,
         "_agent_status_health",
-        lambda project_dir, **kwargs: {"agents": {"claude-code": {"level": "ok", "message": "healthy"}}},
+        lambda project_dir, **kwargs: {
+            "agents": {"claude-code": {"level": "ok", "message": "healthy"}}
+        },
     )
 
     server, thread, base_url = _start_server(module, repo_root, project)
     try:
-        status, payload = _request_json("GET", base_url + "/api/board", headers={"X-Superharness-Token": module.Handler.auth_token})
+        status, payload = _request_json(
+            "GET",
+            base_url + "/api/board",
+            headers={"X-Superharness-Token": module.Handler.auth_token},
+        )
     finally:
         _stop_server(server, thread)
 
@@ -2493,7 +2971,12 @@ def test_status_includes_review_queue_count(repo_root, tmp_path, monkeypatch) ->
     monkeypatch.setattr(
         module,
         "watcher_runtime",
-        lambda label: {"loaded": False, "state": "", "last_exit_code": "", "run_interval_seconds": 0},
+        lambda label: {
+            "loaded": False,
+            "state": "",
+            "last_exit_code": "",
+            "run_interval_seconds": 0,
+        },
     )
     monkeypatch.setattr(module, "contract_id", lambda path: "board-contract")
     monkeypatch.setattr(module.shutil, "which", lambda name: None)
@@ -2529,6 +3012,7 @@ def test_board_view_task_fields_are_complete(repo_root, tmp_path) -> None:
 
 # ── feat.monitor-operator-upgrade tests ──────────────────────────────────────
 
+
 def _setup_project_with_tasks(tmp_path: Path) -> Path:
     """Create a project with contract tasks spanning multiple workflow states."""
     project = _setup_project(tmp_path)
@@ -2536,7 +3020,7 @@ def _setup_project_with_tasks(tmp_path: Path) -> Path:
     (harness / "contract.yaml").write_text(
         "id: board-contract\n"
         "created: 2026-04-05\n"
-        "goal: \"Board test\"\n"
+        'goal: "Board test"\n'
         "tasks:\n"
         "- id: task.todo\n"
         "  title: A todo task\n"
@@ -2587,7 +3071,8 @@ def _setup_project_with_tasks(tmp_path: Path) -> Path:
 def test_board_tasks_groups_by_column(repo_root) -> None:
     """board_tasks() groups contract tasks into board columns."""
     module = _load_monitor_module(repo_root)
-    import tempfile, yaml
+    import tempfile
+
     with tempfile.TemporaryDirectory() as tmp:
         contract = Path(tmp) / "contract.yaml"
         contract.write_text(
@@ -2646,6 +3131,7 @@ def test_review_queue_returns_review_state_tasks(repo_root) -> None:
     """review_queue() returns tasks in review states ordered by urgency."""
     module = _load_monitor_module(repo_root)
     import tempfile
+
     with tempfile.TemporaryDirectory() as tmp:
         contract = Path(tmp) / "contract.yaml"
         contract.write_text(
@@ -2679,6 +3165,7 @@ def test_review_queue_empty_for_no_review_tasks(repo_root) -> None:
     """review_queue() returns empty list when no tasks are in review states."""
     module = _load_monitor_module(repo_root)
     import tempfile
+
     with tempfile.TemporaryDirectory() as tmp:
         contract = Path(tmp) / "contract.yaml"
         contract.write_text(
@@ -2722,19 +3209,34 @@ def test_budget_signals_reads_agent_status_files(repo_root, tmp_path) -> None:
     result = module.budget_signals(project)
     assert "agents" in result
     # Should have claude-code budget data
-    assert "claude-code" in result["agents"] or result.get("available") is False  # fallback ok
+    assert (
+        "claude-code" in result["agents"] or result.get("available") is False
+    )  # fallback ok
 
 
 def test_monitor_board_endpoint_exists(repo_root, tmp_path, monkeypatch) -> None:
     """GET /api/board returns 200 with board, review_queue, agent_health, budget fields."""
     module = _load_monitor_module(repo_root)
     project = _setup_project_with_tasks(tmp_path)
-    monkeypatch.setattr(module, "watcher_runtime", lambda label: {"loaded": False, "state": "", "last_exit_code": "", "run_interval_seconds": 0})
+    monkeypatch.setattr(
+        module,
+        "watcher_runtime",
+        lambda label: {
+            "loaded": False,
+            "state": "",
+            "last_exit_code": "",
+            "run_interval_seconds": 0,
+        },
+    )
     monkeypatch.setattr(module.shutil, "which", lambda name: None)
 
     server, thread, base_url = _start_server(module, repo_root, project)
     try:
-        status, payload = _request_json("GET", base_url + "/api/board", headers={"X-Superharness-Token": module.Handler.auth_token})
+        status, payload = _request_json(
+            "GET",
+            base_url + "/api/board",
+            headers={"X-Superharness-Token": module.Handler.auth_token},
+        )
     finally:
         _stop_server(server, thread)
 
@@ -2747,11 +3249,22 @@ def test_monitor_board_endpoint_exists(repo_root, tmp_path, monkeypatch) -> None
 
 
 @pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-def test_monitor_board_endpoint_groups_tasks_correctly(repo_root, tmp_path, monkeypatch) -> None:
+def test_monitor_board_endpoint_groups_tasks_correctly(
+    repo_root, tmp_path, monkeypatch
+) -> None:
     """GET /api/board groups tasks into correct columns."""
     module = _load_monitor_module(repo_root)
     project = _setup_project_with_tasks(tmp_path)
-    monkeypatch.setattr(module, "watcher_runtime", lambda label: {"loaded": False, "state": "", "last_exit_code": "", "run_interval_seconds": 0})
+    monkeypatch.setattr(
+        module,
+        "watcher_runtime",
+        lambda label: {
+            "loaded": False,
+            "state": "",
+            "last_exit_code": "",
+            "run_interval_seconds": 0,
+        },
+    )
     monkeypatch.setattr(module.shutil, "which", lambda name: None)
 
     server, thread, base_url = _start_server(module, repo_root, project)
@@ -2776,11 +3289,22 @@ def test_monitor_board_endpoint_groups_tasks_correctly(repo_root, tmp_path, monk
 
 
 @pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-def test_monitor_board_endpoint_review_queue_populated(repo_root, tmp_path, monkeypatch) -> None:
+def test_monitor_board_endpoint_review_queue_populated(
+    repo_root, tmp_path, monkeypatch
+) -> None:
     """GET /api/board includes review queue with tasks in review states."""
     module = _load_monitor_module(repo_root)
     project = _setup_project_with_tasks(tmp_path)
-    monkeypatch.setattr(module, "watcher_runtime", lambda label: {"loaded": False, "state": "", "last_exit_code": "", "run_interval_seconds": 0})
+    monkeypatch.setattr(
+        module,
+        "watcher_runtime",
+        lambda label: {
+            "loaded": False,
+            "state": "",
+            "last_exit_code": "",
+            "run_interval_seconds": 0,
+        },
+    )
     monkeypatch.setattr(module.shutil, "which", lambda name: None)
 
     server, thread, base_url = _start_server(module, repo_root, project)
@@ -2804,12 +3328,25 @@ def test_monitor_review_queue_endpoint_exists(repo_root, tmp_path, monkeypatch) 
     """GET /api/review-queue returns 200 with queue field."""
     module = _load_monitor_module(repo_root)
     project = _setup_project_with_tasks(tmp_path)
-    monkeypatch.setattr(module, "watcher_runtime", lambda label: {"loaded": False, "state": "", "last_exit_code": "", "run_interval_seconds": 0})
+    monkeypatch.setattr(
+        module,
+        "watcher_runtime",
+        lambda label: {
+            "loaded": False,
+            "state": "",
+            "last_exit_code": "",
+            "run_interval_seconds": 0,
+        },
+    )
     monkeypatch.setattr(module.shutil, "which", lambda name: None)
 
     server, thread, base_url = _start_server(module, repo_root, project)
     try:
-        status, payload = _request_json("GET", base_url + "/api/review-queue", headers={"X-Superharness-Token": module.Handler.auth_token})
+        status, payload = _request_json(
+            "GET",
+            base_url + "/api/review-queue",
+            headers={"X-Superharness-Token": module.Handler.auth_token},
+        )
     finally:
         _stop_server(server, thread)
 
@@ -2819,11 +3356,22 @@ def test_monitor_review_queue_endpoint_exists(repo_root, tmp_path, monkeypatch) 
 
 
 @pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-def test_monitor_review_queue_endpoint_returns_review_tasks(repo_root, tmp_path, monkeypatch) -> None:
+def test_monitor_review_queue_endpoint_returns_review_tasks(
+    repo_root, tmp_path, monkeypatch
+) -> None:
     """GET /api/review-queue returns only review-state tasks."""
     module = _load_monitor_module(repo_root)
     project = _setup_project_with_tasks(tmp_path)
-    monkeypatch.setattr(module, "watcher_runtime", lambda label: {"loaded": False, "state": "", "last_exit_code": "", "run_interval_seconds": 0})
+    monkeypatch.setattr(
+        module,
+        "watcher_runtime",
+        lambda label: {
+            "loaded": False,
+            "state": "",
+            "last_exit_code": "",
+            "run_interval_seconds": 0,
+        },
+    )
     monkeypatch.setattr(module.shutil, "which", lambda name: None)
 
     server, thread, base_url = _start_server(module, repo_root, project)
@@ -2843,11 +3391,22 @@ def test_monitor_review_queue_endpoint_returns_review_tasks(repo_root, tmp_path,
 
 
 @pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-def test_monitor_status_includes_review_queue_and_board(repo_root, tmp_path, monkeypatch) -> None:
+def test_monitor_status_includes_review_queue_and_board(
+    repo_root, tmp_path, monkeypatch
+) -> None:
     """GET /api/status includes review_queue and board_columns for operator use."""
     module = _load_monitor_module(repo_root)
     project = _setup_project_with_tasks(tmp_path)
-    monkeypatch.setattr(module, "watcher_runtime", lambda label: {"loaded": True, "state": "running", "last_exit_code": "0", "run_interval_seconds": 15})
+    monkeypatch.setattr(
+        module,
+        "watcher_runtime",
+        lambda label: {
+            "loaded": True,
+            "state": "running",
+            "last_exit_code": "0",
+            "run_interval_seconds": 15,
+        },
+    )
     monkeypatch.setattr(module, "contract_id", lambda path: "board-contract")
     monkeypatch.setattr(module.shutil, "which", lambda name: None)
 
@@ -2868,7 +3427,9 @@ def test_monitor_status_includes_review_queue_and_board(repo_root, tmp_path, mon
     assert "todo" in board or "review" in board
 
 
-def test_monitor_html_contains_board_and_review_queue_elements(repo_root, tmp_path, monkeypatch) -> None:
+def test_monitor_html_contains_board_and_review_queue_elements(
+    repo_root, tmp_path, monkeypatch
+) -> None:
     """HTML page contains board view and review queue DOM elements."""
     module = _load_monitor_module(repo_root)
     project = _setup_project(tmp_path)
@@ -2877,6 +3438,7 @@ def test_monitor_html_contains_board_and_review_queue_elements(repo_root, tmp_pa
     server, thread, base_url = _start_server(module, repo_root, project)
     try:
         import urllib.request
+
         with urllib.request.urlopen(base_url + "/", timeout=2) as resp:
             html = resp.read().decode("utf-8")
     finally:
@@ -2885,12 +3447,21 @@ def test_monitor_html_contains_board_and_review_queue_elements(repo_root, tmp_pa
     # Board view element
     assert "boardColumns" in html or "boardView" in html or "board-col" in html
     # Review queue element
-    assert "reviewQueueList" in html or "reviewQueueCard" in html or "review queue" in html.lower()
+    assert (
+        "reviewQueueList" in html
+        or "reviewQueueCard" in html
+        or "review queue" in html.lower()
+    )
     # Agent health element
-    assert "agentHealthList" in html or "agentHealthCard" in html or "agent health" in html.lower()
+    assert (
+        "agentHealthList" in html
+        or "agentHealthCard" in html
+        or "agent health" in html.lower()
+    )
 
 
 # ── propose_plan: author plan inline from dashboard ──────────────────────────
+
 
 def _setup_project_with_todo_task(tmp_path: Path) -> Path:
     """Project with a single todo + implementation task."""
@@ -2934,6 +3505,7 @@ def test_propose_plan_transitions_status_and_writes_handoff(repo_root, tmp_path)
 
     # Contract status updated
     import yaml
+
     doc = yaml.safe_load((harness / "contract.yaml").read_text())
     assert doc["tasks"][0]["status"] == "plan_proposed"
     assert doc["tasks"][0]["plan_proposed_at"]
@@ -2962,8 +3534,12 @@ def test_propose_plan_rejects_non_todo_task(repo_root, tmp_path):
     module._set_task_status(harness, "feat.one", "plan_approved")
 
     result = module._propose_plan_handoff(
-        harness, "feat.one",
-        plan_summary="x", tdd_red="x", tdd_green="x", tdd_refactor="x",
+        harness,
+        "feat.one",
+        plan_summary="x",
+        tdd_red="x",
+        tdd_green="x",
+        tdd_refactor="x",
     )
     assert result["ok"] is False
     assert "expected 'todo'" in result["error"]
@@ -2979,12 +3555,17 @@ def test_propose_plan_defaults_empty_tdd_fields_to_placeholder(repo_root, tmp_pa
     harness = project / ".superharness"
 
     result = module._propose_plan_handoff(
-        harness, "feat.one",
-        plan_summary="", tdd_red="", tdd_green="", tdd_refactor="",
+        harness,
+        "feat.one",
+        plan_summary="",
+        tdd_red="",
+        tdd_green="",
+        tdd_refactor="",
     )
     assert result["ok"] is True
 
     import yaml
+
     handoffs = list((harness / "handoffs").glob("feat.one-plan-*.yaml"))
     ho = yaml.safe_load(handoffs[0].read_text())
     assert "pending" in ho["tdd"]["red"]
@@ -2999,8 +3580,12 @@ def test_propose_plan_missing_task_returns_error(repo_root, tmp_path):
     harness = project / ".superharness"
 
     result = module._propose_plan_handoff(
-        harness, "does.not.exist",
-        plan_summary="x", tdd_red="x", tdd_green="x", tdd_refactor="x",
+        harness,
+        "does.not.exist",
+        plan_summary="x",
+        tdd_red="x",
+        tdd_green="x",
+        tdd_refactor="x",
     )
     assert result["ok"] is False
     assert "not found" in result["error"]

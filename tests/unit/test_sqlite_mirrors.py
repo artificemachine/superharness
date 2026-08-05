@@ -12,6 +12,7 @@ Covers:
 - yaml_sync._apply_enqueue_inbox: acquires _inbox_lock (B8)
 - _yaml_writes_enabled: returns False when STATE_BACKEND=sqlite_only (B9)
 """
+
 from __future__ import annotations
 
 import os
@@ -27,7 +28,10 @@ from superharness.engine import inbox_dao, tasks_dao
 # Fixtures
 # ---------------------------------------------------------------------------
 
-pytestmark = pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
+pytestmark = pytest.mark.skip(
+    reason="legacy YAML fixture — pending SQLite migration (see PR #208)"
+)
+
 
 @pytest.fixture
 def project(tmp_path):
@@ -65,13 +69,23 @@ T0 = "2026-01-01T00:00:00Z"
 # B5 — _ensure_task_in_sqlite
 # ---------------------------------------------------------------------------
 
+
 class TestEnsureTaskInSqlite:
     def test_creates_row_from_contract(self, project, db_conn):
-        _write_contract(project, [
-            {"id": "t1", "title": "Task One", "status": "todo",
-             "owner": "claude-code", "project_path": str(project)},
-        ])
+        _write_contract(
+            project,
+            [
+                {
+                    "id": "t1",
+                    "title": "Task One",
+                    "status": "todo",
+                    "owner": "claude-code",
+                    "project_path": str(project),
+                },
+            ],
+        )
         from superharness.commands.inbox_watch import _ensure_task_in_sqlite
+
         _ensure_task_in_sqlite(db_conn, "t1", str(project), T0)
         row = tasks_dao.get(db_conn, "t1")
         assert row is not None
@@ -81,18 +95,33 @@ class TestEnsureTaskInSqlite:
 
     def test_noop_when_task_already_exists(self, project, db_conn):
         existing = tasks_dao.TaskRow(
-            id="t1", title="Existing", owner=None, status="in_progress",
-            effort=None, project_path=None, development_method=None,
-            acceptance_criteria=[], test_types=[], out_of_scope=[],
-            definition_of_done=[], context=None, tdd=None,
-            version=1, created_at=T0, blocked_by=[],
+            id="t1",
+            title="Existing",
+            owner=None,
+            status="in_progress",
+            effort=None,
+            project_path=None,
+            development_method=None,
+            acceptance_criteria=[],
+            test_types=[],
+            out_of_scope=[],
+            definition_of_done=[],
+            context=None,
+            tdd=None,
+            version=1,
+            created_at=T0,
+            blocked_by=[],
         )
         tasks_dao.upsert(db_conn, existing)
         db_conn.commit()
-        _write_contract(project, [
-            {"id": "t1", "title": "Task One", "status": "todo"},
-        ])
+        _write_contract(
+            project,
+            [
+                {"id": "t1", "title": "Task One", "status": "todo"},
+            ],
+        )
         from superharness.commands.inbox_watch import _ensure_task_in_sqlite
+
         _ensure_task_in_sqlite(db_conn, "t1", str(project), T0)
         row = tasks_dao.get(db_conn, "t1")
         # should still have original title, not overwritten
@@ -100,6 +129,7 @@ class TestEnsureTaskInSqlite:
 
     def test_noop_when_contract_missing(self, project, db_conn):
         from superharness.commands.inbox_watch import _ensure_task_in_sqlite
+
         # No contract.yaml — should not raise
         _ensure_task_in_sqlite(db_conn, "t-missing", str(project), T0)
         assert tasks_dao.get(db_conn, "t-missing") is None
@@ -107,6 +137,7 @@ class TestEnsureTaskInSqlite:
     def test_noop_when_task_not_in_contract(self, project, db_conn):
         _write_contract(project, [{"id": "other", "title": "Other", "status": "todo"}])
         from superharness.commands.inbox_watch import _ensure_task_in_sqlite
+
         _ensure_task_in_sqlite(db_conn, "t-ghost", str(project), T0)
         assert tasks_dao.get(db_conn, "t-ghost") is None
 
@@ -115,16 +146,36 @@ class TestEnsureTaskInSqlite:
 # B1 + B5 — _sqlite_mirror_inbox_enqueue
 # ---------------------------------------------------------------------------
 
+
 class TestSqliteMirrorInboxEnqueue:
     def test_enqueues_item_and_task(self, project):
-        _write_contract(project, [
-            {"id": "t1", "title": "Task One", "status": "plan_approved",
-             "owner": "claude-code", "project_path": str(project)},
-        ])
-        items = [{"id": "i1", "task": "t1", "to": "claude-code",
-                  "status": "pending", "priority": 2, "retry_count": 0,
-                  "max_retries": 3, "created_at": T0, "project": str(project)}]
+        _write_contract(
+            project,
+            [
+                {
+                    "id": "t1",
+                    "title": "Task One",
+                    "status": "plan_approved",
+                    "owner": "claude-code",
+                    "project_path": str(project),
+                },
+            ],
+        )
+        items = [
+            {
+                "id": "i1",
+                "task": "t1",
+                "to": "claude-code",
+                "status": "pending",
+                "priority": 2,
+                "retry_count": 0,
+                "max_retries": 3,
+                "created_at": T0,
+                "project": str(project),
+            }
+        ]
         from superharness.commands.inbox_watch import _sqlite_mirror_inbox_enqueue
+
         _sqlite_mirror_inbox_enqueue(str(project), items, T0)
 
         conn = get_connection(str(project))
@@ -140,14 +191,33 @@ class TestSqliteMirrorInboxEnqueue:
             conn.close()
 
     def test_silently_handles_duplicate_item_id(self, project):
-        _write_contract(project, [
-            {"id": "t1", "title": "T1", "status": "plan_approved",
-             "owner": "claude-code", "project_path": str(project)},
-        ])
-        items = [{"id": "i1", "task": "t1", "to": "claude-code",
-                  "status": "pending", "priority": 2, "retry_count": 0,
-                  "max_retries": 3, "created_at": T0, "project": str(project)}]
+        _write_contract(
+            project,
+            [
+                {
+                    "id": "t1",
+                    "title": "T1",
+                    "status": "plan_approved",
+                    "owner": "claude-code",
+                    "project_path": str(project),
+                },
+            ],
+        )
+        items = [
+            {
+                "id": "i1",
+                "task": "t1",
+                "to": "claude-code",
+                "status": "pending",
+                "priority": 2,
+                "retry_count": 0,
+                "max_retries": 3,
+                "created_at": T0,
+                "project": str(project),
+            }
+        ]
         from superharness.commands.inbox_watch import _sqlite_mirror_inbox_enqueue
+
         _sqlite_mirror_inbox_enqueue(str(project), items, T0)
         # Second call should not raise and must not create a duplicate row
         _sqlite_mirror_inbox_enqueue(str(project), items, T0)
@@ -165,14 +235,19 @@ class TestSqliteMirrorInboxEnqueue:
 # B2 — _sqlite_mirror_inbox_retry
 # ---------------------------------------------------------------------------
 
+
 class TestSqliteMirrorInboxRetry:
     def _seed_inbox(self, project, db_conn):
         db_conn.execute(
             "INSERT INTO tasks (id, title, status, version, created_at) VALUES (?, 'T', 'todo', 1, ?)",
             ("t1", T0),
         )
-        inbox_dao.enqueue(db_conn, id="i1", task_id="t1", target_agent="claude-code", now=T0)
-        db_conn.execute("UPDATE inbox SET status='failed', failed_reason='oops' WHERE id='i1'")
+        inbox_dao.enqueue(
+            db_conn, id="i1", task_id="t1", target_agent="claude-code", now=T0
+        )
+        db_conn.execute(
+            "UPDATE inbox SET status='failed', failed_reason='oops' WHERE id='i1'"
+        )
         db_conn.commit()
 
     def test_resets_status_to_pending(self, project, db_conn):
@@ -181,6 +256,7 @@ class TestSqliteMirrorInboxRetry:
 
         retried = [{"id": "i1", "retry_count": 1}]
         from superharness.commands.inbox_watch import _sqlite_mirror_inbox_retry
+
         _sqlite_mirror_inbox_retry(str(project), retried, T0)
 
         conn = get_connection(str(project))
@@ -197,14 +273,26 @@ class TestSqliteMirrorInboxRetry:
 # B3 — _sqlite_mirror_task_status
 # ---------------------------------------------------------------------------
 
+
 class TestSqliteMirrorTaskStatus:
     def _seed_task(self, project, db_conn):
         row = tasks_dao.TaskRow(
-            id="t1", title="T", owner=None, status="in_progress",
-            effort=None, project_path=None, development_method=None,
-            acceptance_criteria=[], test_types=[], out_of_scope=[],
-            definition_of_done=[], context=None, tdd=None,
-            version=1, created_at=T0, blocked_by=[],
+            id="t1",
+            title="T",
+            owner=None,
+            status="in_progress",
+            effort=None,
+            project_path=None,
+            development_method=None,
+            acceptance_criteria=[],
+            test_types=[],
+            out_of_scope=[],
+            definition_of_done=[],
+            context=None,
+            tdd=None,
+            version=1,
+            created_at=T0,
+            blocked_by=[],
         )
         tasks_dao.upsert(db_conn, row)
         db_conn.commit()
@@ -214,6 +302,7 @@ class TestSqliteMirrorTaskStatus:
         db_conn.close()
 
         from superharness.commands.inbox_watch import _sqlite_mirror_task_status
+
         _sqlite_mirror_task_status(str(project), "t1", "report_ready", T0)
 
         conn = get_connection(str(project))
@@ -226,6 +315,7 @@ class TestSqliteMirrorTaskStatus:
 
     def test_noop_when_task_absent(self, project):
         from superharness.commands.inbox_watch import _sqlite_mirror_task_status
+
         # Should not raise even when task not in SQLite
         _sqlite_mirror_task_status(str(project), "nonexistent", "done", T0)
 
@@ -234,9 +324,11 @@ class TestSqliteMirrorTaskStatus:
 # B4 + B6 — state_reader._inbox_from_sqlite / _inbox_row_to_yaml_shape
 # ---------------------------------------------------------------------------
 
+
 class TestStateReaderInboxShape:
     def test_inbox_row_to_yaml_shape_maps_fields(self):
         from superharness.engine.state_reader import _inbox_row_to_yaml_shape
+
         row = {
             "id": "i1",
             "task_id": "t1",
@@ -257,14 +349,21 @@ class TestStateReaderInboxShape:
             "INSERT INTO tasks (id, title, status, version, created_at) VALUES (?, 'T', 'todo', 1, ?)",
             ("t1", T0),
         )
-        inbox_dao.enqueue(db_conn, id="i1", task_id="t1", target_agent="claude-code",
-                          project_path=str(project), now=T0)
+        inbox_dao.enqueue(
+            db_conn,
+            id="i1",
+            task_id="t1",
+            target_agent="claude-code",
+            project_path=str(project),
+            now=T0,
+        )
         db_conn.commit()
         db_conn.close()
 
         os.environ["STATE_BACKEND"] = "sqlite_only"
         try:
             from superharness.engine import state_reader
+
             items = state_reader.get_inbox_items(str(project))
             assert len(items) == 1
             item = items[0]
@@ -282,9 +381,11 @@ class TestStateReaderInboxShape:
 # B6 — archive_yaml._inbox_row_to_yaml_shape
 # ---------------------------------------------------------------------------
 
+
 class TestArchiveYamlShape:
     def test_inbox_row_to_yaml_shape(self):
         from superharness.commands.archive_yaml import _inbox_row_to_yaml_shape
+
         row = {
             "id": "i2",
             "task_id": "t2",
@@ -304,15 +405,25 @@ class TestArchiveYamlShape:
 # B7 — auto_enqueue_todo / auto_enqueue_approved use new_item_ids set
 # ---------------------------------------------------------------------------
 
+
 class TestAutoEnqueueNewItemTracking:
     def _setup_auto_project(self, tmp_path, task_status: str) -> tuple:
         project = tmp_path / "proj"
         sh = project / ".superharness"
         sh.mkdir(parents=True)
-        profile = {"auto_dispatch": True, "autonomy": "autonomous", "max_concurrent_tasks": 5}
+        profile = {
+            "auto_dispatch": True,
+            "autonomy": "autonomous",
+            "max_concurrent_tasks": 5,
+        }
         (sh / "profile.yaml").write_text(yaml.dump(profile))
-        task = {"id": "t1", "title": "T1", "status": task_status,
-                "owner": "claude-code", "project_path": str(project)}
+        task = {
+            "id": "t1",
+            "title": "T1",
+            "status": task_status,
+            "owner": "claude-code",
+            "project_path": str(project),
+        }
         (sh / "contract.yaml").write_text(yaml.dump({"tasks": [task]}))
         (sh / "inbox.yaml").write_text("# inbox\n[]\n")
         return project
@@ -320,6 +431,7 @@ class TestAutoEnqueueNewItemTracking:
     def test_auto_enqueue_todo_does_not_double_mirror(self, tmp_path):
         project = self._setup_auto_project(tmp_path, "todo")
         from superharness.commands.inbox_watch import auto_enqueue_todo
+
         # First call: should add 1 item
         count1 = auto_enqueue_todo(str(project))
         assert count1 == 1
@@ -330,6 +442,7 @@ class TestAutoEnqueueNewItemTracking:
     def test_auto_enqueue_approved_does_not_double_mirror(self, tmp_path):
         project = self._setup_auto_project(tmp_path, "plan_approved")
         from superharness.commands.inbox_watch import auto_enqueue_approved
+
         count1 = auto_enqueue_approved(str(project))
         assert count1 == 1
         count2 = auto_enqueue_approved(str(project))
@@ -340,14 +453,24 @@ class TestAutoEnqueueNewItemTracking:
         project = tmp_path / "proj"
         sh = project / ".superharness"
         sh.mkdir(parents=True)
-        profile = {"auto_dispatch": True, "autonomy": "autonomous",
-                   "max_concurrent_tasks": 5, "state_backend": "sqlite_only"}
+        profile = {
+            "auto_dispatch": True,
+            "autonomy": "autonomous",
+            "max_concurrent_tasks": 5,
+            "state_backend": "sqlite_only",
+        }
         (sh / "profile.yaml").write_text(yaml.dump(profile))
-        task = {"id": "t1", "title": "T1", "status": "plan_approved",
-                "owner": "claude-code", "project_path": str(project)}
+        task = {
+            "id": "t1",
+            "title": "T1",
+            "status": "plan_approved",
+            "owner": "claude-code",
+            "project_path": str(project),
+        }
         (sh / "contract.yaml").write_text(yaml.dump({"tasks": [task]}))
 
         from superharness.commands.inbox_watch import auto_enqueue_approved
+
         count1 = auto_enqueue_approved(str(project))
         assert count1 == 1
 
@@ -369,23 +492,44 @@ class TestAutoEnqueueNewItemTracking:
 # Issue 7 — _auto_retry_failed_sqlite (post-archive retry path)
 # ---------------------------------------------------------------------------
 
+
 class TestAutoRetryFailedSqlite:
     def test_resets_failed_items_with_retries_remaining(self, project, db_conn):
         t = tasks_dao.TaskRow(
-            id="t1", title="T", owner=None, status="todo",
-            effort=None, project_path=None, development_method=None,
-            acceptance_criteria=[], test_types=[], out_of_scope=[],
-            definition_of_done=[], context=None, tdd=None,
-            version=1, created_at=T0, blocked_by=[],
+            id="t1",
+            title="T",
+            owner=None,
+            status="todo",
+            effort=None,
+            project_path=None,
+            development_method=None,
+            acceptance_criteria=[],
+            test_types=[],
+            out_of_scope=[],
+            definition_of_done=[],
+            context=None,
+            tdd=None,
+            version=1,
+            created_at=T0,
+            blocked_by=[],
         )
         tasks_dao.upsert(db_conn, t)
-        inbox_dao.enqueue(db_conn, id="i1", task_id="t1", target_agent="claude-code",
-                          max_retries=3, now=T0)
-        db_conn.execute("UPDATE inbox SET status='failed', retry_count=1, failed_reason='oops' WHERE id='i1'")
+        inbox_dao.enqueue(
+            db_conn,
+            id="i1",
+            task_id="t1",
+            target_agent="claude-code",
+            max_retries=3,
+            now=T0,
+        )
+        db_conn.execute(
+            "UPDATE inbox SET status='failed', retry_count=1, failed_reason='oops' WHERE id='i1'"
+        )
         db_conn.commit()
         db_conn.close()
 
         from superharness.commands.inbox_watch import _auto_retry_failed_sqlite
+
         _auto_retry_failed_sqlite(str(project))
 
         conn = get_connection(str(project))
@@ -399,20 +543,38 @@ class TestAutoRetryFailedSqlite:
 
     def test_leaves_exhausted_items_as_failed(self, project, db_conn):
         t = tasks_dao.TaskRow(
-            id="t1", title="T", owner=None, status="todo",
-            effort=None, project_path=None, development_method=None,
-            acceptance_criteria=[], test_types=[], out_of_scope=[],
-            definition_of_done=[], context=None, tdd=None,
-            version=1, created_at=T0, blocked_by=[],
+            id="t1",
+            title="T",
+            owner=None,
+            status="todo",
+            effort=None,
+            project_path=None,
+            development_method=None,
+            acceptance_criteria=[],
+            test_types=[],
+            out_of_scope=[],
+            definition_of_done=[],
+            context=None,
+            tdd=None,
+            version=1,
+            created_at=T0,
+            blocked_by=[],
         )
         tasks_dao.upsert(db_conn, t)
-        inbox_dao.enqueue(db_conn, id="i1", task_id="t1", target_agent="claude-code",
-                          max_retries=3, now=T0)
+        inbox_dao.enqueue(
+            db_conn,
+            id="i1",
+            task_id="t1",
+            target_agent="claude-code",
+            max_retries=3,
+            now=T0,
+        )
         db_conn.execute("UPDATE inbox SET status='failed', retry_count=3 WHERE id='i1'")
         db_conn.commit()
         db_conn.close()
 
         from superharness.commands.inbox_watch import _auto_retry_failed_sqlite
+
         _auto_retry_failed_sqlite(str(project))
 
         conn = get_connection(str(project))
@@ -428,15 +590,18 @@ class TestAutoRetryFailedSqlite:
 # B9 — _yaml_writes_enabled
 # ---------------------------------------------------------------------------
 
+
 class TestYamlWritesEnabled:
     def test_returns_true_by_default(self, project):
         from superharness.commands.inbox_watch import _yaml_writes_enabled
+
         assert _yaml_writes_enabled(str(project)) is True
 
     def test_returns_false_when_env_sqlite_only(self, project):
         os.environ["STATE_BACKEND"] = "sqlite_only"
         try:
             from superharness.commands.inbox_watch import _yaml_writes_enabled
+
             assert _yaml_writes_enabled(str(project)) is False
         finally:
             del os.environ["STATE_BACKEND"]
@@ -445,6 +610,7 @@ class TestYamlWritesEnabled:
         os.environ["STATE_BACKEND"] = "dual"
         try:
             from superharness.commands.inbox_watch import _yaml_writes_enabled
+
             assert _yaml_writes_enabled(str(project)) is True
         finally:
             del os.environ["STATE_BACKEND"]
@@ -454,20 +620,31 @@ class TestYamlWritesEnabled:
             yaml.dump({"state_backend": "sqlite_only"})
         )
         from superharness.commands.inbox_watch import _yaml_writes_enabled
+
         assert _yaml_writes_enabled(str(project)) is False
 
     def test_auto_enqueue_skips_yaml_write_when_sqlite_only(self, tmp_path):
         project = tmp_path / "proj"
         sh = project / ".superharness"
         sh.mkdir(parents=True)
-        profile = {"auto_dispatch": True, "autonomy": "autonomous",
-                   "max_concurrent_tasks": 5, "state_backend": "sqlite_only"}
+        profile = {
+            "auto_dispatch": True,
+            "autonomy": "autonomous",
+            "max_concurrent_tasks": 5,
+            "state_backend": "sqlite_only",
+        }
         (sh / "profile.yaml").write_text(yaml.dump(profile))
-        task = {"id": "t1", "title": "T1", "status": "todo",
-                "owner": "claude-code", "project_path": str(project)}
+        task = {
+            "id": "t1",
+            "title": "T1",
+            "status": "todo",
+            "owner": "claude-code",
+            "project_path": str(project),
+        }
         (sh / "contract.yaml").write_text(yaml.dump({"tasks": [task]}))
 
         from superharness.commands.inbox_watch import auto_enqueue_todo
+
         count = auto_enqueue_todo(str(project))
         assert count == 1
         # inbox.yaml must NOT have been created

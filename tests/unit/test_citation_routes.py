@@ -5,12 +5,18 @@ plus the per-task observations list. Each route is a pure
 (conn, ...) -> (payload, status) helper, so we can unit-test without
 spinning up the HTTP server.
 """
+
 from __future__ import annotations
 
 import pytest
 
 from superharness.engine.db import get_connection, init_db, now_iso
-from superharness.engine import handoffs_dao, decisions_dao, failures_dao, observations_dao
+from superharness.engine import (
+    handoffs_dao,
+    decisions_dao,
+    failures_dao,
+    observations_dao,
+)
 from superharness.commands.citation import (
     CITATION_KINDS,
     route_citation,
@@ -38,6 +44,7 @@ def conn(tmp_path):
 # Kinds and id-parsing
 # ---------------------------------------------------------------------------
 
+
 def test_all_expected_kinds():
     assert CITATION_KINDS == {"observation", "handoff", "decision", "failure"}
 
@@ -57,6 +64,7 @@ def test_invalid_id_returns_400(conn):
 # ---------------------------------------------------------------------------
 # Handoff
 # ---------------------------------------------------------------------------
+
 
 def test_handoff_route_200(conn):
     row = handoffs_dao.append(
@@ -87,6 +95,7 @@ def test_handoff_route_404_when_missing(conn):
 # Decision
 # ---------------------------------------------------------------------------
 
+
 def test_decision_route_200(conn):
     row = decisions_dao.record(
         conn, task_id="t-1", decision="picked A", reason="best fit", now=now_iso()
@@ -106,9 +115,14 @@ def test_decision_route_404(conn):
 # Failure
 # ---------------------------------------------------------------------------
 
+
 def test_failure_route_200(conn):
     row = failures_dao.record(
-        conn, task_id="t-1", pattern="tests failed", error_snippet="flaky", now=now_iso()
+        conn,
+        task_id="t-1",
+        pattern="tests failed",
+        error_snippet="flaky",
+        now=now_iso(),
     )
     payload, status = route_citation(conn, "failure", str(row.id))
     assert status == 200
@@ -125,6 +139,7 @@ def test_failure_route_404(conn):
 # Observation (delegates to existing DAO)
 # ---------------------------------------------------------------------------
 
+
 def test_observation_route_200(conn):
     oid = observations_dao.insert(conn, "t-1", "report_ready", "did stuff")
     payload, status = route_citation(conn, "observation", str(oid))
@@ -140,6 +155,7 @@ def test_observation_route_404(conn):
 # ---------------------------------------------------------------------------
 # Task observations list
 # ---------------------------------------------------------------------------
+
 
 def test_task_observations_empty_is_200(conn):
     payload, status = route_task_observations(conn, "unknown-task")

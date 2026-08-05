@@ -4,21 +4,32 @@ Extracted from commands/delegate.py (C5 decomposition).
 Scans acceptance criteria, TDD blocks, git history, skill hints, and failure
 patterns to produce a compact context string for dispatched agents.
 """
+
 from __future__ import annotations
 
 import logging
 import os
 import re
 import subprocess
-from typing import Any
 
 logger = logging.getLogger(__name__)
 
 # Stopwords filtered from keyword extraction
-_KEYWORD_STOPWORDS = frozenset({
-    "that", "this", "with", "from", "have", "been", "should", "must",
-    "when", "each", "into",
-})
+_KEYWORD_STOPWORDS = frozenset(
+    {
+        "that",
+        "this",
+        "with",
+        "from",
+        "have",
+        "been",
+        "should",
+        "must",
+        "when",
+        "each",
+        "into",
+    }
+)
 _TDD_STOPWORDS = _KEYWORD_STOPWORDS | {"test", "tests", "code", "make", "pass"}
 
 
@@ -27,13 +38,13 @@ def _extract_keywords(task: dict) -> list[str]:
     keywords: list[str] = []
 
     for ac in task.get("acceptance_criteria") or []:
-        for word in re.findall(r'[a-z_]{4,}', str(ac).lower()):
+        for word in re.findall(r"[a-z_]{4,}", str(ac).lower()):
             if word not in _KEYWORD_STOPWORDS:
                 keywords.append(word)
 
     tdd = task.get("tdd") or {}
     for phase in ("red", "green", "refactor"):
-        for word in re.findall(r'[a-z_]{4,}', str(tdd.get(phase, "")).lower()):
+        for word in re.findall(r"[a-z_]{4,}", str(tdd.get(phase, "")).lower()):
             if word not in _TDD_STOPWORDS:
                 keywords.append(word)
 
@@ -58,7 +69,10 @@ def _find_relevant_files(project_dir: str, keywords: list[str]) -> list[str]:
         try:
             r = subprocess.run(
                 ["grep", "-rl", "--include=*.py", "-m", "3", kw, src_dir],
-                capture_output=True, text=True, check=False, timeout=5,
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=5,
             )
             for f in r.stdout.strip().splitlines()[:3]:
                 if f:
@@ -74,7 +88,10 @@ def _get_recent_git_changes(project_dir: str) -> list[str]:
     try:
         r = subprocess.run(
             ["git", "diff", "--name-only", "HEAD~3"],
-            capture_output=True, text=True, check=False, timeout=5,
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=5,
             cwd=project_dir,
         )
         return [f for f in r.stdout.strip().splitlines() if f.endswith(".py")][:5]
@@ -94,6 +111,7 @@ def build_context_hint(project_dir: str, task: dict) -> str:
     # 0. Agent memory (global + project — Hermes adaptation)
     try:
         from superharness.engine.agent_memory import get_dispatch_memory_context
+
         memory_context = get_dispatch_memory_context(project_dir)
         if memory_context:
             lines.append(memory_context)
@@ -102,10 +120,20 @@ def build_context_hint(project_dir: str, task: dict) -> str:
 
     # 0.5 Behavioral profile (user adaptation — Iteration 4)
     try:
-        from superharness.engine.behavioral import load_profile, user_profile_path, format_profile_for_context
+        from superharness.engine.behavioral import (
+            load_profile,
+            user_profile_path,
+            format_profile_for_context,
+        )
+
         profile = load_profile(os.path.join(user_profile_path(), "task_style.json"))
         # Merge all profile files
-        for fname in ["task_style.json", "review_style.json", "model_prefs.json", "autonomy_profile.json"]:
+        for fname in [
+            "task_style.json",
+            "review_style.json",
+            "model_prefs.json",
+            "autonomy_profile.json",
+        ]:
             p = load_profile(os.path.join(user_profile_path(), fname))
             if p:
                 profile.update({fname.replace(".json", ""): p})
@@ -122,7 +150,9 @@ def build_context_hint(project_dir: str, task: dict) -> str:
     if keywords:
         relevant_files = _find_relevant_files(project_dir, keywords)
         if relevant_files:
-            lines.append("\nRelevant source files (start here, don't explore from scratch):")
+            lines.append(
+                "\nRelevant source files (start here, don't explore from scratch):"
+            )
             for f in relevant_files:
                 lines.append(f"  - {f}")
 
@@ -136,6 +166,7 @@ def build_context_hint(project_dir: str, task: dict) -> str:
     # 3. Past skill hints
     try:
         from superharness.engine.skill_extractor import get_skill_hints
+
         skill_hints = get_skill_hints(project_dir, task)
         if skill_hints:
             lines.append("\nRelated past skills (reuse proven approaches):")
@@ -149,6 +180,7 @@ def build_context_hint(project_dir: str, task: dict) -> str:
     if task_id:
         try:
             from superharness.engine.failure_patterns import get_failure_hints
+
             hints = get_failure_hints(project_dir, task_id)
             if hints:
                 lines.append("\nPrior failure hints (avoid repeating these mistakes):")
@@ -157,9 +189,12 @@ def build_context_hint(project_dir: str, task: dict) -> str:
 
                 try:
                     from superharness.commands.doctor import get_doctor_summary
+
                     health = get_doctor_summary(project_dir)
                     if health:
-                        lines.append("\nCurrent system health (check for environmental blockers):")
+                        lines.append(
+                            "\nCurrent system health (check for environmental blockers):"
+                        )
                         lines.append(health)
                 except Exception as e:
                     logger.warning("Doctor summary failed: %s", e)

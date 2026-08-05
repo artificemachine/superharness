@@ -1,4 +1,5 @@
 """Detector that scans commands against dangerous patterns."""
+
 from superharness.guard.dangerous_patterns import DANGEROUS_PATTERNS
 
 

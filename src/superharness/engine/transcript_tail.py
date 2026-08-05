@@ -22,6 +22,7 @@ directly instead of this heuristic.
 
 See docs/PLAN-steal-omnigent.md iteration 7.
 """
+
 from __future__ import annotations
 
 import json
@@ -101,12 +102,16 @@ def _get_cursor(conn: sqlite3.Connection, dispatch_id: str) -> Optional[_Cursor]
     if row is None:
         return None
     return _Cursor(
-        dispatch_id=row["dispatch_id"], path=row["path"],
-        byte_offset=row["byte_offset"], updated_at=row["updated_at"],
+        dispatch_id=row["dispatch_id"],
+        path=row["path"],
+        byte_offset=row["byte_offset"],
+        updated_at=row["updated_at"],
     )
 
 
-def _set_cursor(conn: sqlite3.Connection, dispatch_id: str, path: str, byte_offset: int) -> None:
+def _set_cursor(
+    conn: sqlite3.Connection, dispatch_id: str, path: str, byte_offset: int
+) -> None:
     now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     conn.execute(
         """
@@ -165,7 +170,9 @@ def tail_step(conn: sqlite3.Connection, dispatch_id: str, transcript_path: Path)
     """
     path_str = str(transcript_path)
     stored = _get_cursor(conn, dispatch_id)
-    offset = stored.byte_offset if (stored is not None and stored.path == path_str) else 0
+    offset = (
+        stored.byte_offset if (stored is not None and stored.path == path_str) else 0
+    )
 
     try:
         size = transcript_path.stat().st_size
@@ -175,7 +182,8 @@ def tail_step(conn: sqlite3.Connection, dispatch_id: str, transcript_path: Path)
     if size < offset:
         logger.warning(
             "transcript_tail: %s shrank below stored cursor offset (rotation/truncation); "
-            "resetting cursor to 0", path_str,
+            "resetting cursor to 0",
+            path_str,
         )
         offset = 0
 
@@ -197,7 +205,9 @@ def tail_step(conn: sqlite3.Connection, dispatch_id: str, transcript_path: Path)
             try:
                 record = json.loads(text)
             except json.JSONDecodeError:
-                logger.warning("transcript_tail: malformed JSON line skipped in %s", path_str)
+                logger.warning(
+                    "transcript_tail: malformed JSON line skipped in %s", path_str
+                )
                 continue
             if _is_tool_use(record):
                 emit(TranscriptProgress(task_id=dispatch_id, line_kind="tool_use"))
