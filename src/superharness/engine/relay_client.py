@@ -24,69 +24,22 @@ import json
 import logging
 import os
 import shutil
-import stat
 import subprocess
-from pathlib import Path
+
+from superharness.engine.credentials import (
+    credentials_path,
+    read_credentials_file,
+    write_credentials_file,
+)
 
 logger = logging.getLogger(__name__)
-
-# ---------------------------------------------------------------------------
-# Credentials file helpers
-# ---------------------------------------------------------------------------
-
-_CREDENTIALS_PATH = Path.home() / ".config" / "superharness" / "credentials.env"
-
-
-def credentials_path() -> Path:
-    """Return machine-level credentials file path (overridable via env for tests)."""
-    override = os.environ.get("SUPERHARNESS_CREDENTIALS_FILE")
-    if override:
-        return Path(override)
-    return _CREDENTIALS_PATH
-
-
-def _read_env_file(path: Path) -> dict[str, str]:
-    """Parse KEY=VALUE lines from *path* (ignores comments / blanks / malformed)."""
-    out: dict[str, str] = {}
-    if not path.exists():
-        return out
-    try:
-        for line in path.read_text(encoding="utf-8").splitlines():
-            stripped = line.strip()
-            if not stripped or stripped.startswith("#") or "=" not in stripped:
-                continue
-            key, _, value = stripped.partition("=")
-            out[key.strip()] = value.strip().strip('"').strip("'")
-    except OSError:
-        logger.warning("relay_client: could not read credentials file %s", path)
-    return out
-
-
-def _write_env_file_merge(path: Path, updates: dict[str, str]) -> None:
-    """Merge *updates* into *path* (preserves unrelated keys + comments). Mode 0600."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    preserved: list[str] = []
-    managed = set(updates.keys())
-    if path.exists():
-        for line in path.read_text(encoding="utf-8").splitlines():
-            stripped = line.strip()
-            if not stripped or stripped.startswith("#"):
-                preserved.append(line)
-                continue
-            key = stripped.split("=", 1)[0].strip()
-            if key not in managed:
-                preserved.append(line)
-    appended = [f"{k}={v}" for k, v in updates.items()]
-    path.write_text("\n".join(preserved + appended) + "\n", encoding="utf-8")
-    path.chmod(stat.S_IRUSR | stat.S_IWUSR)  # 0600
-
 
 # ----- Relay backend -------------------------------------------------------
 
 
 def load_credentials() -> dict[str, str]:
     """Load relay credentials (file + env-var fallback)."""
-    env = _read_env_file(credentials_path())
+    env = read_credentials_file()
     return {
         "relay_token": env.get(
             "SUPERHARNESS_RELAY_TOKEN", os.environ.get("SUPERHARNESS_RELAY_TOKEN", "")
@@ -106,8 +59,7 @@ def save_credentials(
     relay_ssh_host: str, relay_token: str, relay_dest: str = "telegram"
 ) -> None:
     """Persist relay credentials (mode 0600). Merges with existing file content."""
-    _write_env_file_merge(
-        credentials_path(),
+    write_credentials_file(
         {
             "SUPERHARNESS_RELAY_SSH_HOST": relay_ssh_host,
             "SUPERHARNESS_RELAY_TOKEN": relay_token,
@@ -130,7 +82,7 @@ relay_is_configured = is_configured  # alias for the dual-backend API
 
 def load_telegram_credentials() -> dict[str, str]:
     """Load direct-bot credentials (file + env-var fallback)."""
-    env = _read_env_file(credentials_path())
+    env = read_credentials_file()
     return {
         "bot_token": env.get(
             "SUPERHARNESS_TELEGRAM_BOT_TOKEN",
@@ -145,8 +97,7 @@ def load_telegram_credentials() -> dict[str, str]:
 
 def save_telegram_credentials(bot_token: str, chat_id: str) -> None:
     """Persist direct-bot credentials (mode 0600)."""
-    _write_env_file_merge(
-        credentials_path(),
+    write_credentials_file(
         {
             "SUPERHARNESS_TELEGRAM_BOT_TOKEN": bot_token,
             "SUPERHARNESS_TELEGRAM_CHAT_ID": chat_id,
@@ -165,7 +116,7 @@ def telegram_is_configured() -> bool:
 
 def load_ntfy_credentials() -> dict[str, str]:
     """Load ntfy.sh credentials (file + env-var fallback)."""
-    env = _read_env_file(credentials_path())
+    env = read_credentials_file()
     return {
         "ntfy_topic": env.get(
             "SUPERHARNESS_NTFY_TOPIC", os.environ.get("SUPERHARNESS_NTFY_TOPIC", "")
@@ -181,8 +132,7 @@ def save_ntfy_credentials(
     ntfy_topic: str, ntfy_server: str = "https://ntfy.sh"
 ) -> None:
     """Persist ntfy.sh credentials (mode 0600)."""
-    _write_env_file_merge(
-        credentials_path(),
+    write_credentials_file(
         {
             "SUPERHARNESS_NTFY_TOPIC": ntfy_topic,
             "SUPERHARNESS_NTFY_SERVER": ntfy_server,

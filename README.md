@@ -251,6 +251,7 @@ SUPERHARNESS_ALLOW_LIVE_TESTS=1 RUN_PROVIDER_SMOKE=1 pytest tests/integration/te
 🏗️ **[Architecture](docs/ARCHITECTURE.md)** — Why it exists, how it works, design decisions
 🔒 **[Security](SECURITY.md)** — Threat model and operational safety notes
 📚 **[Docs index](docs/README.md)** — Every active doc, by topic
+📈 **[Langfuse observability](docs/langfuse-observability.md)** — Optional privacy-safe dispatch telemetry via `superharness[observability]` and `shux doctor --langfuse-auth`
 🔍 **[Audit trail](docs/audits/)** — Self-audit reports, including findings against this repo
 
 ---

@@ -29,6 +29,7 @@ def test_locked_runtime_dependencies_meet_security_floors() -> None:
     versions = {
         package["name"]: _version_tuple(package["version"])
         for package in lock["package"]
+        if package["name"] in _SECURITY_FLOORS
     }
 
     below_floor = {

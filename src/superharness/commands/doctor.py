@@ -37,7 +37,7 @@ def _operator_running_for_project(project_dir: str) -> bool:
     """
     try:
         r = subprocess.run(["ps", "aux"], capture_output=True, text=True, timeout=5)
-    except Exception:
+    except (OSError, subprocess.SubprocessError):
         return False
     abspath = os.path.abspath(project_dir)
     for line in r.stdout.splitlines():
@@ -60,6 +60,27 @@ def _install_hint(dep: str) -> str:
         "codex": "npm i -g @openai/codex",
     }
     return hints.get(dep, "")
+
+
+def _langfuse_status(probe_auth: bool = False) -> tuple[str, bool]:
+    """Return one secret-free doctor line and whether it is a warning."""
+    from superharness.engine import langfuse_telemetry
+
+    try:
+        state, detail = langfuse_telemetry.readiness()
+        if state == "disabled":
+            return "INFO langfuse: disabled", False
+        if state in {"incomplete", "missing-sdk"}:
+            return f"WARN langfuse: {detail}", True
+        if state != "configured":
+            return f"WARN langfuse: unexpected readiness state {state}", True
+        if not probe_auth:
+            return f"PASS langfuse: configured ({detail})", False
+        if langfuse_telemetry.probe_auth():
+            return f"PASS langfuse: authenticated ({detail})", False
+        return "WARN langfuse: authentication failed", True
+    except Exception as exc:
+        return f"WARN langfuse: diagnostic failed ({type(exc).__name__})", True
 
 
 def get_doctor_summary(project_dir: str) -> str:
@@ -96,7 +117,7 @@ def get_doctor_summary(project_dir: str) -> str:
         if r.stdout.strip():
             count = len(r.stdout.strip().splitlines())
             lines.insert(0, f"WARN git:working tree is dirty ({count} modified files)")
-    except Exception as e:
+    except (OSError, subprocess.SubprocessError) as e:
         logger.warning("doctor.py unexpected error: %s", e, exc_info=True)
         pass
     if not lines:
@@ -122,6 +143,11 @@ def main(argv: list[str] | None = None) -> None:
         "--check",
         action="store_true",
         help="Exit with non-zero status if any check fails (useful in CI)",
+    )
+    p.add_argument(
+        "--langfuse-auth",
+        action="store_true",
+        help="Probe configured Langfuse credentials (performs a network request)",
     )
     opts = p.parse_args(argv)
 
@@ -149,6 +175,11 @@ def main(argv: list[str] | None = None) -> None:
     check_dep("python3")
     check_dep("claude")
     check_dep("codex")
+
+    langfuse_line, langfuse_warn = _langfuse_status(opts.langfuse_auth)
+    print(langfuse_line)
+    if langfuse_warn:
+        warns += 1
 
     harness_dir = os.path.join(project_dir, ".superharness")
     if os.path.isdir(harness_dir):
