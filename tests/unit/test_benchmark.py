@@ -5,6 +5,16 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
+
+@pytest.fixture(autouse=True)
+def _isolate_telemetry_credentials(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv(
+        "SUPERHARNESS_CREDENTIALS_FILE", str(tmp_path / "credentials.env")
+    )
+    monkeypatch.delenv("SUPERHARNESS_LANGFUSE_ENABLED", raising=False)
+
 
 def _setup(tmp_path: Path) -> str:
     (tmp_path / ".superharness").mkdir()
@@ -56,6 +66,64 @@ class TestRecordDispatch:
         records = load_records(project)
         assert records[0]["slot_index"] == 2
         assert records[0]["fanout_n"] == 4
+
+    def test_exports_exact_record_after_local_append(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        from superharness.engine import langfuse_telemetry
+        from superharness.engine.benchmark import load_records, record_dispatch
+
+        project = _setup(tmp_path)
+        exported = []
+
+        def fake_export(project_dir, record):
+            assert len(load_records(project_dir)) == 1
+            exported.append((project_dir, record))
+            return True
+
+        monkeypatch.setattr(langfuse_telemetry, "emit_dispatch_event", fake_export)
+
+        record_dispatch(
+            project,
+            "feat.parallel",
+            "codex-cli",
+            "done",
+            3.456,
+            cost_usd=0.1234567,
+            model="test-model",
+            slot_index=2,
+            fanout_n=4,
+        )
+
+        assert len(exported) == 1
+        assert exported[0][0] == project
+        assert exported[0][1] == load_records(project)[0]
+        assert exported[0][1]["duration_seconds"] == 3.46
+        assert exported[0][1]["cost_usd"] == 0.123457
+        assert exported[0][1]["slot_index"] == 2
+        assert exported[0][1]["fanout_n"] == 4
+
+    def test_export_failure_cannot_remove_local_record(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        from superharness.engine import langfuse_telemetry
+        from superharness.engine.benchmark import load_records, record_dispatch
+
+        project = _setup(tmp_path)
+
+        def broken_export(project_dir, record):
+            raise RuntimeError("synthetic exporter failure")
+
+        monkeypatch.setattr(langfuse_telemetry, "emit_dispatch_event", broken_export)
+
+        assert (
+            record_dispatch(project, "feat.local", "claude-code", "failed", 5.0)
+            is None
+        )
+        records = load_records(project)
+        assert len(records) == 1
+        assert records[0]["task_id"] == "feat.local"
+        assert records[0]["outcome"] == "failed"
 
 
 class TestLoadRecords:
