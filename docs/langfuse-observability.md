@@ -24,6 +24,10 @@ Run `chmod 600 $HOME/.config/superharness/credentials.env`. Environment
 variables are fallback values; an entry in this file takes precedence. See
 [gateway security](gateway-security.md) for the machine credential model.
 
+When observability is enabled with a valid HTTP(S) `LANGFUSE_BASE_URL`, the
+dashboard header shows a **Langfuse ↗** button to that configured instance. The
+button is hidden when observability is disabled or the URL is missing or invalid.
+
 ## Privacy boundary
 
 Exported fields are pseudonymous project/task IDs, agent, outcome, duration,

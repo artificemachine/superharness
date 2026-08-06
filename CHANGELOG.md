@@ -828,3 +828,4 @@ chore: submitted gemini-cli round 1 position for gap analysis discussion
 - 2026-08-06: feat(doctor): report Langfuse readiness
 - 2026-08-06: docs(observability): add Langfuse operator runbook
 - 2026-08-06: security(credentials): replace credential files atomically with owner-only permissions and reject symlink targets
+- 2026-08-06: feat(dashboard): add a safe external link to the Langfuse observability dashboard

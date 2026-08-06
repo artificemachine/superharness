@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 import errno as _errno_mod
+import html as html_lib
 import ipaddress
 import json
 import os
@@ -25,6 +26,7 @@ from urllib.parse import parse_qs, urlparse
 
 from superharness import __version__
 from superharness.engine import db, dashboard_presenter
+from superharness.engine.langfuse_telemetry import load_settings as load_langfuse_settings
 from superharness.engine.process import pid_alive
 
 
@@ -60,6 +62,29 @@ def _ensure_python_with_yaml() -> None:
 
 
 HTML = (Path(__file__).parent / "dashboard.html").read_text(encoding="utf-8")
+
+
+def render_dashboard_html(langfuse_base_url: str) -> str:
+    """Render the optional Langfuse link from trusted runtime configuration."""
+    base_url = langfuse_base_url.strip()
+    try:
+        parsed = urlparse(base_url)
+    except ValueError:
+        return HTML.replace("__LANGFUSE_LINK__", "")
+    if (
+        parsed.scheme not in {"http", "https"}
+        or not parsed.netloc
+        or parsed.username is not None
+        or parsed.password is not None
+    ):
+        return HTML.replace("__LANGFUSE_LINK__", "")
+
+    safe_url = html_lib.escape(base_url, quote=True)
+    link = (
+        f'<a class="external-link" href="{safe_url}" target="_blank" '
+        'rel="noopener noreferrer">Langfuse ↗</a>'
+    )
+    return HTML.replace("__LANGFUSE_LINK__", link)
 
 # Registry of known agent names — add new agents here as the ecosystem grows.
 KNOWN_AGENTS: list[str] = ["claude-code", "codex-cli", "gemini-cli", "opencode"]
@@ -3339,7 +3364,9 @@ class Handler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         p = parsed.path
         if p in {"/", "/index.html"}:
-            self._html(HTML)
+            settings = load_langfuse_settings()
+            base_url = settings.base_url if settings.enabled else ""
+            self._html(render_dashboard_html(base_url))
             return
 
         # Every /api/* GET is read-only but still discloses task reports,
