@@ -108,6 +108,14 @@ LEAK_ALLOWLIST: dict[str, tuple[str, ...]] = {
     "tests/unit/test_gateway_wizard.py": ("private-ip",),
 }
 
+# This deployment hostname is intentionally public and is part of the
+# Superharness observability contract. Keep the exemption path-scoped so the
+# local blocklist still rejects the same domain everywhere else.
+PUBLIC_BLOCKLIST_ALLOWLIST: dict[str, tuple[str, ...]] = {
+    "docs/langfuse-observability.md": ("gitsilence.net",),
+    "tests/contract/test_langfuse_dependency.py": ("gitsilence.net",),
+}
+
 
 def _tracked_files() -> list[str]:
     out = subprocess.run(
@@ -172,7 +180,14 @@ def test_no_blocklisted_identifiers_in_tracked_files():
         if rel == _SELF:
             continue
         text = _read(rel)
-        hits = [ident for ident in blocklist if ident.lower() in text.lower()]
+        allowed = {
+            ident.lower() for ident in PUBLIC_BLOCKLIST_ALLOWLIST.get(rel, ())
+        }
+        hits = [
+            ident
+            for ident in blocklist
+            if ident.lower() in text.lower() and ident.lower() not in allowed
+        ]
         if hits:
             offenders[rel] = hits
     assert not offenders, (
