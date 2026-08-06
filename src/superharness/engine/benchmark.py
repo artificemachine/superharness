@@ -82,9 +82,18 @@ def record_dispatch(
             os.write(fd, line.encode("utf-8"))
         finally:
             os.close(fd)
-    except Exception as e:
+    except (OSError, TypeError, ValueError) as e:
         logger.warning("benchmark.py unexpected error: %s", e, exc_info=True)
         pass
+    else:
+        try:
+            from superharness.engine.langfuse_telemetry import emit_dispatch_event
+
+            emit_dispatch_event(project_dir, asdict(rec))
+        except Exception as e:
+            logger.warning(
+                "benchmark telemetry export failed (%s)", type(e).__name__
+            )
 
 
 def load_records(project_dir: str) -> list[dict]:
@@ -101,7 +110,7 @@ def load_records(project_dir: str) -> list[dict]:
                     records.append(json.loads(line))
                 except json.JSONDecodeError:
                     pass
-    except Exception as e:
+    except (OSError, UnicodeError) as e:
         logger.warning("benchmark.py unexpected error: %s", e, exc_info=True)
         pass
     return records

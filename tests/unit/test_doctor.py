@@ -51,6 +51,94 @@ def test_doctor_help(repo_root) -> None:
     assert result.returncode == 0
     assert "--project" in result.stdout
     assert "--check" in result.stdout
+    assert "--langfuse-auth" in result.stdout
+
+
+def test_langfuse_status_reports_disabled(monkeypatch) -> None:
+    from superharness.commands import doctor
+    from superharness.engine import langfuse_telemetry
+
+    monkeypatch.setattr(
+        langfuse_telemetry, "readiness", lambda: ("disabled", "disabled")
+    )
+    monkeypatch.setattr(
+        langfuse_telemetry,
+        "probe_auth",
+        lambda: (_ for _ in ()).throw(AssertionError("unexpected auth probe")),
+    )
+
+    assert doctor._langfuse_status(probe_auth=False) == (
+        "INFO langfuse: disabled",
+        False,
+    )
+
+
+def test_langfuse_status_warns_for_incomplete_and_missing_sdk(monkeypatch) -> None:
+    from superharness.commands import doctor
+    from superharness.engine import langfuse_telemetry
+
+    monkeypatch.setattr(
+        langfuse_telemetry,
+        "readiness",
+        lambda: ("incomplete", "missing LANGFUSE_SECRET_KEY"),
+    )
+    assert doctor._langfuse_status() == (
+        "WARN langfuse: missing LANGFUSE_SECRET_KEY",
+        True,
+    )
+
+    monkeypatch.setattr(
+        langfuse_telemetry,
+        "readiness",
+        lambda: ("missing-sdk", "install superharness[observability]"),
+    )
+    assert doctor._langfuse_status() == (
+        "WARN langfuse: install superharness[observability]",
+        True,
+    )
+
+
+def test_langfuse_status_is_offline_unless_auth_flag_is_set(monkeypatch) -> None:
+    from superharness.commands import doctor
+    from superharness.engine import langfuse_telemetry
+
+    calls = []
+    monkeypatch.setattr(
+        langfuse_telemetry,
+        "readiness",
+        lambda: ("configured", "https://langfuse.example.test"),
+    )
+    monkeypatch.setattr(
+        langfuse_telemetry, "probe_auth", lambda: calls.append("auth") or True
+    )
+
+    assert doctor._langfuse_status(probe_auth=False) == (
+        "PASS langfuse: configured (https://langfuse.example.test)",
+        False,
+    )
+    assert calls == []
+    assert doctor._langfuse_status(probe_auth=True) == (
+        "PASS langfuse: authenticated (https://langfuse.example.test)",
+        False,
+    )
+    assert calls == ["auth"]
+
+
+def test_langfuse_status_auth_failure_is_a_warning(monkeypatch) -> None:
+    from superharness.commands import doctor
+    from superharness.engine import langfuse_telemetry
+
+    monkeypatch.setattr(
+        langfuse_telemetry,
+        "readiness",
+        lambda: ("configured", "https://langfuse.example.test"),
+    )
+    monkeypatch.setattr(langfuse_telemetry, "probe_auth", lambda: False)
+
+    assert doctor._langfuse_status(probe_auth=True) == (
+        "WARN langfuse: authentication failed",
+        True,
+    )
 
 
 def test_doctor_passes_healthy_project(repo_root, tmp_path) -> None:

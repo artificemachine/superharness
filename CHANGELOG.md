@@ -821,3 +821,10 @@ chore: submitted gemini-cli round 1 position for gap analysis discussion
 - 2026-08-05 (v1.81.9): security(testing+privacy+deps): make pytest hermetic by default (deterministic routing, noop summarizer, inert agent-CLI stubs unless an explicit live-test opt-in is set); remove maintainer-specific vault/cloud references from public source and docs with regression guards; and raise audited runtime dependency floors for Click, cryptography, idna, joserfc, MCP, pydantic-settings, Pygments, and PyJWT. Locked runtime export has no known `pip-audit` vulnerabilities.
 - 2026-08-05 (v1.81.9): fix(security): harden `doctor` protected-directory detection with resolved `Path.is_relative_to()` containment, replacing a ShipGuard-blocked prefix comparison; add a regression test for a similarly prefixed sibling directory.
 - 2026-08-05 (v1.81.9): fix(ci): keep the public-installer contract test hermetic by checking only tracked installer sources, not an intentionally ignored local PyPI setup note unavailable to CI clones.
+- 2026-08-06: refactor(credentials): extract machine credential store
+- 2026-08-06: build(observability): add optional Langfuse SDK
+- 2026-08-06: feat(observability): add privacy-first Langfuse adapter
+- 2026-08-06: feat(observability): export completed dispatch events
+- 2026-08-06: feat(doctor): report Langfuse readiness
+- 2026-08-06: docs(observability): add Langfuse operator runbook
+- 2026-08-06: security(credentials): replace credential files atomically with owner-only permissions and reject symlink targets
