@@ -7,7 +7,10 @@ will spawn to run that agent. See docs/PLAN-steal-omnigent.md iterations 5-6.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
+
+if TYPE_CHECKING:
+    from superharness.engine.model_discovery import DiscoveredModel
 
 
 @dataclass(frozen=True)
@@ -35,6 +38,18 @@ class Harness(Protocol):
         self, task: dict, project_dir: str, non_interactive: bool
     ) -> Invocation: ...
 
+    def discover_models(
+        self, auth_mode: str = "unknown"
+    ) -> list["DiscoveredModel"]:
+        """Return models available on this host for the given auth mode.
+
+        Iteration 1 of PLAN-dynamic-model-selection.md: the default is a
+        no-op (``[]``).  Adapters that expose a native model-list command
+        (opencode) or a probe (codex/claude/gemini) override this in
+        iterations 2-3.
+        """
+        return []
+
 
 def _base_env(overrides: dict[str, str] | None = None) -> dict[str, str]:
     """Shared env-assembly helper for adapters (iteration 6 refactor target).
@@ -44,6 +59,35 @@ def _base_env(overrides: dict[str, str] | None = None) -> dict[str, str]:
     every current adapter's legacy behavior of not building a bespoke env.
     """
     return dict(overrides or {})
+
+
+def discover_via_probe(
+    agent: str, auth_mode: str = "unknown", budget_seconds: float = 5.0
+) -> list["DiscoveredModel"]:
+    """Probe-based discovery for agents without a native model-list command.
+
+    Iteration 6 of PLAN-dynamic-model-selection.md: builds the accept chain
+    from the agent's adapter manifest (auth-compat-aware) and runs one
+    ProbeDiscovery pass over it.  Returns [] when the manifest can't be
+    loaded or the chain is empty — never raises.
+    """
+    from superharness.engine.adapter_registry import AdapterValidationError, load_manifest
+    from superharness.engine.probe_discovery import ProbeDiscovery
+
+    try:
+        manifest = load_manifest(agent)
+    except (AdapterValidationError, KeyError, TypeError, ValueError, OSError):
+        return []
+    chain = manifest.resolve_accept_chain("mini", auth_mode)
+    if not chain:
+        return []
+    probe = ProbeDiscovery(
+        agent=agent,
+        accept_chain=chain,
+        auth_mode=auth_mode,
+        budget_seconds=budget_seconds,
+    )
+    return probe.run()
 
 
 def build_generic_invocation(

@@ -6,12 +6,15 @@ model names. Falls back to ("standard", "medium") on any failure.
 
 from __future__ import annotations
 
+import logging
 import os
 import subprocess
 
 from superharness.engine.taxonomy import VALID_EFFORTS
 from superharness.engine.config_loader import load_yaml_config
 from superharness.engine.adapter_registry import flagship
+
+logger = logging.getLogger(__name__)
 
 MODEL_MAP: dict[str, dict[str, str]] = {
     "claude-code": {
@@ -456,7 +459,6 @@ def classify_task(
     All outputs are normalized to ensure identical behavior regardless
     of which model in the chain responds.
     """
-    mmap = _load_model_map(project_dir)
     criteria_str = ", ".join(criteria) if criteria else "none"
     files_str = ", ".join(files) if files else "none"
     failed_str = "yes" if previously_failed else "no"
@@ -480,9 +482,16 @@ def classify_task(
         return _normalize_classification(*result)
 
     # 2. Agent CLIs — cloud models, best quality fallback
+    project_map = _load_model_map(project_dir)
     for agent_name, cmd_template in _CLASSIFIER_AGENTS:
-        agent_map = mmap.get(agent_name, {})
-        model = agent_map.get("mini", "")
+        # A project override without a mini tier deliberately excludes the
+        # agent from classification (legacy skip semantic) — honor it.
+        if "mini" not in project_map.get(agent_name, {}):
+            continue
+        # Iteration 5: resolve the classifier's own mini model through the
+        # dynamic pipeline so a host whose mini tier is unavailable falls
+        # back to a working model instead of 400-ing on classify.
+        model = resolve_model_for_tier(agent_name, "mini", project_dir)
         if not model:
             continue
         result = _try_classify(agent_name, cmd_template, model, prompt)
@@ -494,6 +503,9 @@ def classify_task(
 
 
 _CODEX_AUTH_MODE_CACHE: str | None = None
+# Per-agent auth-mode cache (iteration 5 generalization). Keyed by agent
+# name; each agent's detection command is memoized once per process.
+_AGENT_AUTH_MODE_CACHE: dict[str, str] = {}
 
 # File written to .superharness/ so auth state survives across processes
 # and can be read by the dashboard to surface "⚠ auth changed" warnings.
@@ -532,6 +544,28 @@ def detect_codex_auth_mode() -> str:
     except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
         _CODEX_AUTH_MODE_CACHE = "unknown"
     return _CODEX_AUTH_MODE_CACHE
+
+
+def detect_auth_mode_for_agent(agent: str) -> str:
+    """Return the auth mode for an agent: 'chatgpt' | 'apikey' | 'unknown'.
+
+    Iteration 5 of PLAN-dynamic-model-selection.md.  Only codex-cli has a
+    detectable auth mode today (via ``codex login status``); all other
+    agents return ``"unknown"``.  Memoized per agent per process.
+    """
+    if agent == "codex-cli":
+        return detect_codex_auth_mode()
+    cached = _AGENT_AUTH_MODE_CACHE.get(agent)
+    if cached is not None:
+        return cached
+    _AGENT_AUTH_MODE_CACHE[agent] = "unknown"
+    return "unknown"
+
+
+def reset_auth_mode_cache() -> None:
+    """Invalidate all per-agent auth-mode caches so the next call re-detects."""
+    reset_codex_auth_cache()
+    _AGENT_AUTH_MODE_CACHE.clear()
 
 
 def reset_codex_auth_cache() -> None:
@@ -668,6 +702,15 @@ def _apply_chatgpt_auth_override(
         return model
     if detect_codex_auth_mode() != "chatgpt":
         return model
+    # Iteration 5 (PLAN-dynamic-model-selection.md): chatgpt_account_overrides
+    # is deprecated in favor of the manifest's auth_compat block. Loaded for
+    # backward compat; warn once per use so projects migrate.
+    logger.warning(
+        "DEPRECATED: chatgpt_account_overrides for model %s — migrate to "
+        "auth_compat in adapter_manifests/codex-cli.yaml "
+        "(PLAN-dynamic-model-selection.md iteration 5)",
+        model,
+    )
     return overrides[model]
 
 
@@ -693,6 +736,118 @@ def resolve_model(target: str, tier: str, project_dir: str | None = None) -> str
         )
         return _apply_chatgpt_auth_override(target, fallback, project_dir)
     return _apply_chatgpt_auth_override(target, model_id, project_dir)
+
+
+# ---------------------------------------------------------------------------
+# Dynamic model discovery (PLAN-dynamic-model-selection.md, iterations 2-5)
+# ---------------------------------------------------------------------------
+
+
+def _model_discovery_cache_path(project_dir: str | None) -> str | None:
+    """Resolve the model-discovery cache DB path for a project.
+
+    Iteration 2: reuse the project's active state db so the cache survives
+    across processes without a second file. Returns None when the project
+    state path cannot be resolved (falls back to manifest resolution).
+
+    The state-path resolver fails closed with StateDatabaseConflictError on
+    split-brain (explicit STATE_DIR vs pre-existing legacy db).  The cache is
+    a best-effort optimization, so a conflict degrades to None rather than
+    crashing the caller (doctor's two-DB warning must still print).
+    """
+    if not project_dir:
+        return None
+    try:
+        from superharness.utils.paths import (
+            StateDatabaseConflictError,
+            resolve_active_state_db_path,
+        )
+
+        return resolve_active_state_db_path(project_dir)
+    except (OSError, ValueError, TypeError, StateDatabaseConflictError):
+        return None
+
+
+def _discover_for_agent(
+    agent: str, auth_mode: str = "unknown"
+) -> list["DiscoveredModel"]:
+    """Run the harness's discovery for one agent. Never raises."""
+    try:
+        from superharness.harnesses import get_harness
+
+        harness = get_harness(agent)
+        return list(harness.discover_models(auth_mode))
+    except (KeyError, TypeError):
+        return []
+
+
+def resolve_model_for_tier(
+    target: str, tier: str, project_dir: str | None = None
+) -> str:
+    """Resolve a tier to a concrete model, cache-first and auth-aware.
+
+    Iteration 5 of PLAN-dynamic-model-selection.md:
+      1. Detect the agent's auth mode (codex: chatgpt/apikey; others: unknown).
+      2. Cache hit for (project, agent, auth_mode) → return cached model.
+      3. Cache miss → run harness discovery; pick the first model that is
+         in the tier's accept chain (auth_compat-aware); persist + return.
+      4. Discovery fails or yields no chain match → manifest preferred
+         (existing behaviour via resolve_model).
+
+    ``resolve_model()`` is kept as a thin wrapper around this function so
+    existing callers keep working.
+    """
+    import sqlite3
+
+    from superharness.engine.model_discovery import ModelDiscoveryCache
+
+    auth_mode = detect_auth_mode_for_agent(target)
+    db_path = _model_discovery_cache_path(project_dir)
+
+    # 1. Cache hit
+    if db_path:
+        try:
+            cache = ModelDiscoveryCache(db_path)
+            cached = cache.get(project_dir, target, auth_mode)
+            if cached:
+                return cached.id
+        except (sqlite3.Error, OSError, ValueError):
+            pass
+
+    # 2. Discovery, accept-chain matched
+    discovered = _discover_for_agent(target, auth_mode)
+    if discovered:
+        chain = _tier_accept_chain(target, tier, auth_mode)
+        chosen = next(
+            (d for d in discovered if d.id in chain),
+            None,
+        )
+        if chosen is None and discovered:
+            chosen = discovered[0]
+        if chosen:
+            if db_path:
+                try:
+                    cache = ModelDiscoveryCache(db_path)
+                    cache.set(project_dir, target, chosen)
+                except (sqlite3.Error, OSError, ValueError):
+                    pass
+            return chosen.id
+
+    # 3. Manifest preferred (legacy)
+    return resolve_model(target, tier, project_dir)
+
+
+def _tier_accept_chain(target: str, tier: str, auth_mode: str) -> list[str]:
+    """Ordered accept chain for (target, tier, auth_mode), never raising."""
+    try:
+        from superharness.engine.adapter_registry import AdapterValidationError, load_manifest
+
+        manifest = load_manifest(target)
+        return manifest.resolve_accept_chain(tier, auth_mode)
+    except AdapterValidationError:
+        return []
+    except (KeyError, TypeError, ValueError):
+        return []
 
 
 def resolve_tier(model_name: str) -> str | None:

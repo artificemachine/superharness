@@ -990,11 +990,12 @@ def delegate(
         and (not resolved_model or not resolved_effort)
     ):
         try:
-            from superharness.engine.adapter_registry import (
-                clear_manifest_cache,
-                resolve_model as _resolve_model,
+            from superharness.engine.adapter_registry import clear_manifest_cache
+            from superharness.engine.model_router import (
+                classify_task,
+                resolve_model_for_tier,
+                resolve_tier,
             )
-            from superharness.engine.model_router import classify_task, resolve_tier
 
             # Force reload of manifests (prevents stale "sonnet" fallback)
             clear_manifest_cache()
@@ -1009,9 +1010,8 @@ def delegate(
                 previously_failed=previously_failed,
             )
             if not resolved_model:
-                _m = _resolve_model(target, classified_tier)
-                resolved_model = (
-                    _m.get("id", classified_tier) if isinstance(_m, dict) else _m
+                resolved_model = resolve_model_for_tier(
+                    target, classified_tier, project_dir
                 )
                 model_source = "auto-classified"
             if not resolved_effort:
@@ -1026,13 +1026,13 @@ def delegate(
         if profile_model:
             try:
                 from superharness.engine.model_router import (
-                    resolve_model as _resolve_model,
+                    resolve_model_for_tier,
                     resolve_tier,
                 )
 
                 tier = resolve_tier(profile_model)
                 if tier:
-                    resolved_model = _resolve_model(target, tier)
+                    resolved_model = resolve_model_for_tier(target, tier, project_dir)
                 else:
                     resolved_model = profile_model
             except Exception as e:
@@ -1047,9 +1047,9 @@ def delegate(
     # 5. Hardcoded fallback
     if not resolved_model:
         try:
-            from superharness.engine.model_router import resolve_model as _resolve_model
+            from superharness.engine.model_router import resolve_model_for_tier
 
-            resolved_model = _resolve_model(target, "standard")
+            resolved_model = resolve_model_for_tier(target, "standard", project_dir)
         except Exception as e:
             logger.warning("delegate.py unexpected error: %s", e, exc_info=True)
             resolved_model = "sonnet"
@@ -1061,12 +1061,12 @@ def delegate(
     try:
         from superharness.engine.model_router import (
             resolve_tier,
-            resolve_model as _resolve_model,
+            resolve_model_for_tier,
         )
 
         tier = resolve_tier(resolved_model)
         if tier:
-            resolved_model = _resolve_model(target, tier)
+            resolved_model = resolve_model_for_tier(target, tier, project_dir)
     except Exception as e:
         logger.warning("delegate.py unexpected error: %s", e, exc_info=True)
         pass
@@ -1134,7 +1134,9 @@ def delegate(
                 # Override target/model/effort from routing plan
                 target = routing.owner
                 if not resolved_model:
-                    resolved_model = _resolve_model(target, routing.tier)
+                    resolved_model = resolve_model_for_tier(
+                        target, routing.tier, project_dir
+                    )
                 if not resolved_effort:
                     resolved_effort = routing.effort
                 model_source = "orchestrator"
@@ -1142,7 +1144,9 @@ def delegate(
                 print("  Plan:     direct dispatch (no decomposition)")
                 # Apply routing: override target/model/effort
                 target = routing.owner
-                resolved_model = _resolve_model(target, routing.tier)
+                resolved_model = resolve_model_for_tier(
+                    target, routing.tier, project_dir
+                )
                 resolved_effort = routing.effort
                 model_source = "orchestrator"
         except Exception as e:

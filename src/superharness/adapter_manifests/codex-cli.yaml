@@ -11,16 +11,36 @@ capabilities:
 supports_effort: true  # maps to -c model_reasoning_effort= (max→xhigh)
 # Each tier carries the concrete model id and a human-facing label. Update
 # both together when bumping a model.
+#
+# auth_compat (PLAN-dynamic-model-selection.md iter 4/6): per-auth-mode
+# accept chains, measured live on this host 2026-08-07:
+#   - chatgpt (ChatGPT-account login): ONLY gpt-5.5 / gpt-5.4 work; every
+#     mini/standard codex model (gpt-5.1-codex-mini, gpt-5.3-codex,
+#     gpt-5-codex) is rejected with HTTP 400 "not supported".
+#   - apikey: the full model set is available.
+# The probe walks the chain in order and picks the first that answers.
 model_tiers:
   mini:
-    versions:
-      "*": { id: gpt-5.1-codex-mini, label: "GPT-5.1 Codex mini" }
+    preferred: gpt-5.1-codex-mini
+    accept: [gpt-5.1-codex-mini, gpt-5.4]
+    auth_compat:
+      chatgpt: [gpt-5.4]
+      apikey: [gpt-5.1-codex-mini, gpt-5-codex-mini]
+    capability_tags: [cost_optimised, low_latency]
   standard:
-    versions:
-      "*": { id: gpt-5.3-codex,      label: "GPT-5.3 Codex"      }
+    preferred: gpt-5.3-codex
+    accept: [gpt-5.3-codex, gpt-5.4]
+    auth_compat:
+      chatgpt: [gpt-5.4]
+      apikey: [gpt-5.3-codex, gpt-5-codex]
+    capability_tags: [balanced, multi_file_refactor, test_execution]
   max:
-    versions:
-      "*": { id: gpt-5.5,            label: "GPT-5.5"            }
+    preferred: gpt-5.5
+    accept: [gpt-5.5, gpt-5.4]
+    auth_compat:
+      chatgpt: [gpt-5.5, gpt-5.4]
+      apikey: [gpt-5.5, gpt-5.4]
+    capability_tags: [best_effort, architecture, deep_reasoning]
 requires:
   bin: codex
   env: []

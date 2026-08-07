@@ -1938,6 +1938,51 @@ def project_label(project_dir: Path) -> str:
 # ── Behavioral profile data (Iteration 7) ────────────────────────────────────
 
 
+def _adapter_models_data(project_dir: Path) -> dict:
+    """Return per-adapter model availability for the dashboard adapters panel.
+
+    Reads the model-discovery cache only (never probes from the dashboard —
+    probing is a CLI-time concern).  Falls back to empty lists when the
+    cache is unavailable, so the panel renders regardless.
+    """
+    try:
+        from superharness.engine.model_router import (
+            _model_discovery_cache_path,
+            detect_auth_mode_for_agent,
+        )
+
+        db_path = _model_discovery_cache_path(str(project_dir))
+        if db_path:
+            import sqlite3
+
+            from superharness.engine.model_discovery import ModelDiscoveryCache
+
+            cache = ModelDiscoveryCache(db_path)
+            rows = []
+            for name in ("claude-code", "codex-cli", "gemini-cli", "opencode"):
+                auth_mode = detect_auth_mode_for_agent(name)
+                cached = cache.get(str(project_dir), name, auth_mode)
+                rows.append(
+                    {
+                        "name": name,
+                        "auth_mode": auth_mode,
+                        "available_models": [cached.id] if cached else [],
+                        "last_probed_at": (
+                            cached.probed_at.isoformat() if cached else None
+                        ),
+                    }
+                )
+            return {"adapters": rows}
+    except (sqlite3.Error, OSError, ValueError, ImportError, KeyError, TypeError):
+        logger.warning(
+            "_adapter_models_data: unexpected error: %s",
+            sys.exc_info()[1],
+            exc_info=True,
+        )
+        pass
+    return {"adapters": []}
+
+
 def _profile_data(project_dir: Path) -> dict:
     """Return behavioral profile + recent trials for the dashboard card."""
     import json as _json
@@ -3506,6 +3551,11 @@ class Handler(BaseHTTPRequestHandler):
                 )
                 pass
             self._json({"agents": agents, "now_utc": now_utc})
+            return
+
+        # ── Adapter model discovery endpoint (PLAN-dynamic-model-selection iter 6)
+        if p == "/api/adapters":
+            self._json(_adapter_models_data(self.project_dir))
             return
 
         # ── Behavioral profile endpoint (Iteration 7) ──────────────────

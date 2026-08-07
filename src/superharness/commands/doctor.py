@@ -176,6 +176,39 @@ def main(argv: list[str] | None = None) -> None:
     check_dep("claude")
     check_dep("codex")
 
+    # Iteration 6 (PLAN-dynamic-model-selection.md): report model-discovery
+    # health — how many adapters have a discovered/working model available.
+    try:
+        from superharness.engine.model_discovery import ModelDiscoveryCache
+        from superharness.engine.model_router import (
+            _model_discovery_cache_path,
+            detect_auth_mode_for_agent,
+        )
+
+        db_path = _model_discovery_cache_path(project_dir)
+        working = 0
+        total = 0
+        if db_path:
+            import sqlite3
+
+            try:
+                cache = ModelDiscoveryCache(db_path)
+                for name in ("claude-code", "codex-cli", "gemini-cli", "opencode"):
+                    total += 1
+                    auth_mode = detect_auth_mode_for_agent(name)
+                    cached = cache.get(project_dir, name, auth_mode)
+                    if cached:
+                        working += 1
+            except (sqlite3.Error, OSError, ValueError):
+                working = 0
+                total = 0
+        if total:
+            print(f"PASS models:{working}/{total} adapters have a working model")
+        else:
+            print("WARN models:no discovered models (run 'shux adapters --probe')")
+    except (ImportError, KeyError, TypeError, ValueError):
+        print("WARN models:discovery unavailable")
+
     langfuse_line, langfuse_warn = _langfuse_status(opts.langfuse_auth)
     print(langfuse_line)
     if langfuse_warn:

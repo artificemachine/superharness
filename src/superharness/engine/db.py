@@ -17,7 +17,7 @@ from superharness.utils.paths import (
 
 logger = logging.getLogger(__name__)
 
-CURRENT_SCHEMA_VERSION = 36
+CURRENT_SCHEMA_VERSION = 37
 
 # Journal modes SQLite accepts; used to validate the SUPERHARNESS_JOURNAL_MODE
 # override before it is interpolated into a PRAGMA (guards against injection/typos).
@@ -1768,6 +1768,32 @@ def _migration_v36(conn: sqlite3.Connection) -> None:
     """)
 
 
+def _migration_v37(conn: sqlite3.Connection) -> None:
+    """model_discovery: per-(project, agent, auth_mode) dynamic model cache.
+
+    Iteration 1 of PLAN-dynamic-model-selection.md.  Storage for
+    discovered models so dispatch can pick a working model per host/auth
+    without re-probing every time.  Keyed by auth_mode so a ChatGPT-account
+    login and an API-key login on the same host get separate entries.
+    """
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS model_discovery (
+            project_id  TEXT NOT NULL,
+            agent       TEXT NOT NULL,
+            model_id    TEXT NOT NULL,
+            label       TEXT,
+            source      TEXT NOT NULL DEFAULT 'probe',
+            auth_mode   TEXT NOT NULL DEFAULT 'unknown',
+            probed_at   TEXT NOT NULL,
+            ttl_seconds INTEGER NOT NULL DEFAULT 86400,
+            created_at  TEXT NOT NULL,
+            PRIMARY KEY (project_id, agent, auth_mode)
+        )
+        """
+    )
+
+
 _MIGRATIONS: list[Callable[[sqlite3.Connection], None]] = [
     _migration_v1,
     _migration_v2,
@@ -1805,4 +1831,5 @@ _MIGRATIONS: list[Callable[[sqlite3.Connection], None]] = [
     _migration_v34,
     _migration_v35,
     _migration_v36,
+    _migration_v37,
 ]
