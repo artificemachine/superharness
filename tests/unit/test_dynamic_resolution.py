@@ -11,6 +11,7 @@ Covers:
 from __future__ import annotations
 
 import sqlite3
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -254,6 +255,7 @@ def test_chaos_corrupt_cache_skipped(
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="fake-codex shim requires bash")
 def test_e2e_fake_codex_dispatch_lands_on_working_model(tmp_path: Path) -> None:
     """E2E: full resolution with a fake codex that rejects the hardcoded
     mini model and accepts the fallback — the working model must be picked.

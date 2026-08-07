@@ -10,6 +10,7 @@ Covers:
 from __future__ import annotations
 
 import subprocess
+import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -227,6 +228,7 @@ def test_binary_missing_returns_empty(monkeypatch: pytest.MonkeyPatch) -> None:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="fake-codex shim requires bash")
 def test_e2e_fake_codex_rejects_mini_accepts_fallback(tmp_path: Path) -> None:
     """E2E: fake codex rejects gpt-5.1-codex-mini, accepts gpt-5-codex-mini.
 
