@@ -10,7 +10,7 @@
 |-----|------|
 | [`README.md`](../README.md) | Project overview, quickstart |
 | [`INSTALL-AGENT.md`](INSTALL-AGENT.md) | Installation guide for agents |
-| [`GUIDE.md`](GUIDE.md) | Full command reference (792 lines) |
+| [`GUIDE.md`](GUIDE.md) | Full command and dashboard appearance reference |
 | [`CONTRIBUTING.md`](CONTRIBUTING.md) | Contributing guide, test instructions |
 | [`DISCUSS.md`](DISCUSS.md) | Multi-agent discussion protocol |
 | [`WHY-TUI.md`](WHY-TUI.md) | Why a TUI for superharness |
@@ -31,7 +31,7 @@
 | [`brain-scan-2026-07-12.md`](brain-scan-2026-07-12.md) | Brain-level scan of superharness (2026-07-12) |
 | [`fleet-vllm-enablement.md`](fleet-vllm-enablement.md) | vLLM per-tier fleet endpoints — enablement guide |
 | [`observability-spec-d2.md`](observability-spec-d2.md) | Observability specification (D2) |
-| [`langfuse-observability.md`](langfuse-observability.md) | Optional privacy-first Langfuse dispatch telemetry |
+| [`langfuse-observability.md`](langfuse-observability.md) | Optional privacy-first Langfuse telemetry and dashboard link behavior |
 | [`TEST_STRATEGY.md`](TEST_STRATEGY.md) | Test strategy overlay for superharness |
 
 ## 📐 Concepts & Designs

@@ -86,6 +86,11 @@ shux operator start --dashboard
 shux dashboard
 ```
 
+The dashboard offers Dark, Light, and Monokai themes. Monokai is the default
+unless the browser has a valid saved selection; changes persist in
+`localStorage`. When Langfuse is configured, its compact orange header button
+uses a slow three-second pulse that is disabled for reduced-motion users.
+
 ### 5. Check health
 ```bash
 shux status          # Full health dashboard

@@ -48,19 +48,28 @@ def _seed_handoff_yaml(project: Path, task_id: str, phase: str = "report") -> Pa
     return path
 
 
-def _seed_handoff_sqlite(project: Path, task_id: str, phase: str = "report") -> None:
+def _seed_handoff_sqlite(
+    project: Path,
+    task_id: str,
+    phase: str = "report",
+    *,
+    metadata_date: str | None = None,
+    created_at: str | None = None,
+) -> None:
     """Write the same handoff into SQLite via handoffs_dao."""
     from superharness.engine import handoffs_dao
     from superharness.engine.db import managed_connection
     import yaml
 
+    metadata_date = metadata_date or now_iso()
+    created_at = created_at or metadata_date
     content_dict = {
         "task": task_id,
         "phase": phase,
         "status": "pending_user_approval",
         "from": "claude-code",
         "to": "owner",
-        "date": now_iso(),
+        "date": metadata_date,
         "approval_gate": {"required": True, "approved_by_user": False},
     }
     body = yaml.dump(content_dict, default_flow_style=False, allow_unicode=True)
@@ -74,7 +83,7 @@ def _seed_handoff_sqlite(project: Path, task_id: str, phase: str = "report") -> 
             to_agent="owner",
             content=body,
             metadata=content_dict,
-            now=now_iso(),
+            now=created_at,
         )
 
 
@@ -135,6 +144,34 @@ def test_approve_writes_approval_gate_to_sqlite(project: Path) -> None:
         "discuss._do_approve wrote approval_gate to YAML only — SQLite is stale. "
         "Fix: call write_handoff_to_db() after updating the handoff dict."
     )
+
+
+def test_approve_is_latest_when_metadata_date_is_older_than_sqlite_row(
+    project: Path,
+) -> None:
+    """Approval must sort after its source row despite stale embedded metadata."""
+    task_id = "t-approve-stale-date"
+    _seed_task_sqlite(project, task_id)
+    _seed_handoff_sqlite(
+        project,
+        task_id,
+        metadata_date="2026-01-01T00:00:00Z",
+        created_at="2026-01-02T00:00:00Z",
+    )
+
+    from superharness.engine import discuss
+
+    result = discuss.cmd_approve(
+        handoff_dir=str(project / ".superharness" / "handoffs"),
+        task_id=task_id,
+        actor="owner",
+        project_dir=str(project),
+    )
+
+    assert result == 0
+    gate_after = _get_handoff_approval_gate(project, task_id)
+    assert gate_after is not None
+    assert gate_after.get("approved_by_user") is True
 
 
 def test_cmd_status_reads_pending_from_sqlite(project: Path) -> None:

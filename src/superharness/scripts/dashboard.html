@@ -4,14 +4,34 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>superharness dashboard</title>
+  <script>
+    (() => {
+      let theme = 'monokai';
+      try {
+        const savedTheme = localStorage.getItem('superharness-theme');
+        if (['dark', 'light', 'monokai'].includes(savedTheme)) theme = savedTheme;
+      } catch (_) {}
+      document.documentElement.dataset.theme = theme;
+    })();
+  </script>
   <style>
-    :root { --bg:#0b1220; --panel:#131c2e; --text:#e7ecf6; --muted:#9fb0d0; --ok:#22c55e; --warn:#f59e0b; --bad:#ef4444; --line:#23314d; --btn:#1b2a46; --btn2:#334e7d; }
+    :root { color-scheme:dark; --bg:#0b1220; --panel:#131c2e; --text:#e7ecf6; --muted:#9fb0d0; --ok:#22c55e; --warn:#f59e0b; --bad:#ef4444; --line:#23314d; --btn:#1b2a46; --btn2:#334e7d; }
+    :root[data-theme="light"] { color-scheme:light; --bg:#f4f7fb; --panel:#ffffff; --text:#172033; --muted:#586b8a; --ok:#15803d; --warn:#b45309; --bad:#b91c1c; --line:#c7d2e4; --btn:#e1e8f2; --btn2:#c7d4e7; }
+    :root[data-theme="monokai"] { color-scheme:dark; --bg:#272822; --panel:#32342d; --text:#f8f8f2; --muted:#a9a99f; --ok:#a6e22e; --warn:#e6db74; --bad:#f92672; --line:#49483e; --btn:#3e3d32; --btn2:#57564a; }
     body { margin:0; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; background:var(--bg); color:var(--text); }
     .wrap { max-width:100%; margin:12px 0; padding:0 8px; }
     .dashboard-header { display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; margin-bottom:12px; }
     .dashboard-header h1 { margin:0; }
-    .external-link { display:inline-flex; align-items:center; background:var(--btn); color:var(--text); border:1px solid var(--line); border-radius:6px; padding:4px 12px; font-size:12px; text-decoration:none; }
-    .external-link:hover { background:var(--btn2); }
+    .header-actions { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+    .theme-control { display:inline-flex; align-items:center; gap:6px; color:var(--muted); font-size:12px; }
+    .theme-control select { background:var(--btn); color:var(--text); border:1px solid var(--line); border-radius:6px; padding:7px 10px; font:inherit; cursor:pointer; }
+    .external-link { display:inline-flex; align-items:center; background:#f97316; color:#1c1917; border:1px solid #ea580c; border-radius:6px; padding:4px 12px; font-size:12px; font-weight:700; text-decoration:none; animation:langfuse-pulse 3s ease-in-out infinite; will-change:opacity,box-shadow; }
+    .external-link:hover { background:#fb923c; border-color:#f97316; }
+    @keyframes langfuse-pulse {
+      0%, 100% { opacity:1; box-shadow:0 0 0 rgba(249,115,22,0); }
+      50% { opacity:.58; box-shadow:0 0 14px rgba(249,115,22,.42); }
+    }
+    @media (prefers-reduced-motion: reduce) { .external-link { animation:none; } }
     .grid { display:grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap:10px; }
     .card { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:12px; }
     .k { color:var(--muted); font-size:12px; }
@@ -119,7 +139,16 @@
   <div class="wrap">
     <div class="dashboard-header">
       <h1>superharness dashboard <span id="version" style="font-size:11px;color:var(--muted);font-weight:normal;margin-left:8px">...</span></h1>
-      __LANGFUSE_LINK__
+      <div class="header-actions">
+        <label class="theme-control" for="themeSelect">Theme
+          <select id="themeSelect" aria-label="Dashboard theme">
+            <option value="dark">Dark</option>
+            <option value="light">Light</option>
+            <option value="monokai">Monokai</option>
+          </select>
+        </label>
+        __LANGFUSE_LINK__
+      </div>
     </div>
     <div class="meta" id="meta">loading...</div>
     <div class="banner" id="approvalBanner" style="display:none">User approval required.</div>
@@ -506,6 +535,15 @@
     </div>
 
 <script>
+const themeSelect = document.getElementById('themeSelect');
+themeSelect.value = document.documentElement.dataset.theme || 'monokai';
+themeSelect.addEventListener('change', () => {
+  const theme = themeSelect.value;
+  if (!['dark', 'light', 'monokai'].includes(theme)) return;
+  document.documentElement.dataset.theme = theme;
+  try { localStorage.setItem('superharness-theme', theme); } catch (_) {}
+});
+
 // Single source of truth for known agents — extended from API data on first refresh.
 let KNOWN_AGENTS = ['claude-code', 'codex-cli', 'gemini-cli', 'opencode'];
 

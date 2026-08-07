@@ -368,6 +368,7 @@ def write_handoff_to_db(
     *,
     task_id: str | None = None,
     phase: str | None = None,
+    created_at: str | None = None,
 ) -> bool:
     """Persist a handoff to the SQLite handoffs table (source of truth).
 
@@ -387,7 +388,7 @@ def write_handoff_to_db(
         status = content.get("status") or "report_ready"
         frm = content.get("from") or content.get("from_agent")
         to = content.get("to") or content.get("to_agent")
-        created = (
+        created = created_at or (
             content.get("date")
             or content.get("closed_at")
             or content.get("created_at")

@@ -24,9 +24,11 @@ Run `chmod 600 $HOME/.config/superharness/credentials.env`. Environment
 variables are fallback values; an entry in this file takes precedence. See
 [gateway security](gateway-security.md) for the machine credential model.
 
-When observability is enabled with a valid HTTP(S) `LANGFUSE_BASE_URL`, the
-dashboard header shows a **Langfuse ↗** button to that configured instance. The
-button is hidden when observability is disabled or the URL is missing or invalid.
+With a valid enabled `LANGFUSE_BASE_URL`, the dashboard shows a configured
+**Langfuse ↗** link; otherwise it stays hidden. Its original compact dimensions
+(4px by 12px padding, 12px text, 6px radius) use an orange three-second pulse,
+disabled by `prefers-reduced-motion`. Themes are Dark, Light, and Monokai;
+Monokai is the default unless browser `localStorage` contains a valid selection.
 
 ## Privacy boundary
 
