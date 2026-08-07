@@ -2173,12 +2173,12 @@ def _prepare_launch_context(ctx: DispatchContext) -> None:
         # at standard for cost efficiency on max-tier topics.
         try:
             from superharness.engine.model_router import (
-                resolve_model,
+                resolve_model_for_tier,
                 route_discussion_tier,
             )
 
             agent_tier = route_discussion_tier(tier, ctx.item_to)
-            model = resolve_model(ctx.item_to, agent_tier)
+            model = resolve_model_for_tier(ctx.item_to, agent_tier, ctx.project_dir)
         except Exception as e:
             _log.warning("inbox_dispatch.py unexpected error: %s", e, exc_info=True)
             model = "claude-sonnet-4-6"  # absolute last-resort fallback
