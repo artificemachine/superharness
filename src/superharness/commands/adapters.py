@@ -1,4 +1,9 @@
-"""shux adapters — list, inspect, and validate agent runtime adapters."""
+"""shux adapters — list, inspect, and validate agent runtime adapters.
+
+Iteration 6 of PLAN-dynamic-model-selection.md adds ``--probe``: run model
+discovery across every adapter and report which models are available per
+agent (from the model-discovery cache or a fresh probe).
+"""
 
 from __future__ import annotations
 
@@ -15,12 +20,121 @@ from superharness.engine.adapter_registry import (
 )
 
 
+def _probe_available_models(project_dir: str | None) -> dict[str, list[str]]:
+    """Return {adapter_name: [model ids]} for every adapter.
+
+    Reads the model-discovery cache first; on a miss, runs harness
+    discovery and persists the result (so a second call is cache-only).
+    Never raises — failures surface as empty lists per adapter.
+    """
+    import sqlite3
+
+    from superharness.engine.model_discovery import ModelDiscoveryCache
+    from superharness.engine.model_router import (
+        _discover_for_agent,
+        _model_discovery_cache_path,
+        detect_auth_mode_for_agent,
+    )
+
+    db_path = _model_discovery_cache_path(project_dir)
+    result: dict[str, list[str]] = {}
+    for name in list_adapters():
+        auth_mode = detect_auth_mode_for_agent(name)
+        cached = None
+        if db_path:
+            try:
+                cache = ModelDiscoveryCache(db_path)
+                cached = cache.get(project_dir, name, auth_mode)
+            except (sqlite3.Error, OSError, ValueError):
+                cached = None
+        if cached:
+            result[name] = [cached.id]
+            continue
+        try:
+            discovered = _discover_for_agent(name, auth_mode)
+        except (RuntimeError, OSError, KeyError, TypeError):
+            result[name] = []
+            continue
+        if discovered:
+            result[name] = [m.id for m in discovered]
+            if db_path:
+                try:
+                    cache = ModelDiscoveryCache(db_path)
+                    for m in discovered:
+                        cache.set(project_dir, name, m)
+                except (sqlite3.Error, OSError, ValueError):
+                    pass
+        else:
+            result[name] = []
+    return result
+
+
 @click.group(invoke_without_command=True)
+@click.option("--project", "-p", type=str, default=None, help="Project directory for cache lookup")
+@click.option("--probe", "probe_flag", is_flag=True, default=False, help="Run model discovery across adapters")
+@click.option("--json", "as_json", is_flag=True, default=False, help="Output as JSON")
 @click.pass_context
-def main(ctx):
+def main(ctx, project, probe_flag, as_json):
     """List, inspect, and validate agent runtime adapters."""
     if ctx.invoked_subcommand is None:
-        ctx.invoke(list_cmd)
+        if probe_flag:
+            _probe_cmd(project, as_json)
+        else:
+            ctx.invoke(list_cmd)
+
+
+def _probe_cmd(project: str | None, as_json: bool) -> None:
+    """Run discovery across all adapters and report available models."""
+    models = _probe_available_models(project)
+    names = list_adapters()
+
+    if as_json:
+        rows = []
+        for name in names:
+            try:
+                info = adapter_info(name)
+                rows.append(
+                    {
+                        "name": name,
+                        "valid": info["valid"],
+                        "issues": info["issues"],
+                        "available_models": models.get(name, []),
+                    }
+                )
+            except AdapterValidationError as e:
+                rows.append(
+                    {
+                        "name": name,
+                        "valid": False,
+                        "issues": [str(e)],
+                        "available_models": [],
+                        "failed": str(e),
+                    }
+                )
+        click.echo(json.dumps(rows, indent=2))
+        return
+
+    click.echo("superharness — adapters --probe")
+    click.echo("=" * 40)
+    click.echo()
+    for name in names:
+        try:
+            info = adapter_info(name)
+            status = click.style("✓", fg="green") if info["valid"] else click.style("✗", fg="red")
+        except AdapterValidationError as e:
+            status = click.style("✗", fg="red")
+            click.echo(f"  {status} {name}  — {e}")
+            continue
+        avail = models.get(name, [])
+        if avail:
+            models_str = ", ".join(avail[:3])
+            if len(avail) > 3:
+                models_str += f" (+{len(avail) - 3} more)"
+        else:
+            models_str = click.style("none discovered", fg="yellow")
+        click.echo(f"  {status} {name}  — {info['description']}")
+        click.echo(f"      models: {models_str}")
+    click.echo()
 
 
 @main.command("list")
