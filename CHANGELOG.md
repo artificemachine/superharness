@@ -829,3 +829,5 @@ chore: submitted gemini-cli round 1 position for gap analysis discussion
 - 2026-08-06: docs(observability): add Langfuse operator runbook
 - 2026-08-06: security(credentials): replace credential files atomically with owner-only permissions and reject symlink targets
 - 2026-08-06: feat(dashboard): add a safe external link to the Langfuse observability dashboard
+- 2026-08-07: feat(dashboard): add persistent dark, light, and Monokai themes and enlarge the reduced-motion-safe Langfuse pulse
+- 2026-08-07: correction(dashboard): retain the original Langfuse button dimensions while using an orange reduced-motion-safe pulse
