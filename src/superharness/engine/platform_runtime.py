@@ -209,6 +209,8 @@ def launch_agent(cmd: list[str], *, cwd: str) -> int:
     - The function works correctly on Windows (``os.execvp`` on Windows does
       not replace the current process — it spawns a child *and* continues the
       parent, which breaks the single-dispatch guarantee).
+    - A non-zero exit persists a redacted stderr excerpt to the audit log
+      so the next session can diagnose dispatch failures (HANDOFF 2026-08-07).
 
     Args:
         cmd: Command and arguments, e.g. ``["claude", "-p", "--...", prompt]``.
@@ -229,5 +231,26 @@ def launch_agent(cmd: list[str], *, cwd: str) -> int:
                 cmd = ["cmd", "/c", resolved] + list(cmd[1:])
             else:
                 cmd = [resolved] + list(cmd[1:])
-    result = subprocess.run(cmd, cwd=cwd, check=False)
+    # Capture stderr (and stdout, cheap to keep) so a non-zero exit can be
+    # diagnosed from the audit log instead of disappearing silently.
+    # 4000 chars keeps the audit channel usable even on verbose failures.
+    result = subprocess.run(
+        cmd,
+        cwd=cwd,
+        check=False,
+        capture_output=True,
+        text=True,
+        errors="replace",
+    )
+    if result.returncode != 0:
+        from superharness.logging_utils import get_audit_logger, redact
+
+        audit = get_audit_logger()
+        stderr_excerpt = (result.stderr or "").strip()[:4000]
+        audit.warning(
+            "launch_agent: cmd=%s exit=%d stderr=%s",
+            cmd[0],
+            result.returncode,
+            redact(stderr_excerpt) if stderr_excerpt else "<empty>",
+        )
     return result.returncode

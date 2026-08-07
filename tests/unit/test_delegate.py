@@ -185,7 +185,11 @@ def test_delegate_codex_non_interactive_adds_skip_git_repo_check(
 
     assert result.returncode == 0, result.stderr
     assert "--skip-git-repo-check" in result.stdout
-    assert "--full-auto" in result.stdout
+    # Codex CLI deprecated --full-auto; replaced with --sandbox workspace-write.
+    # See tests/unit/test_codex_launcher_modernize.py for the live pin.
+    assert "--sandbox" in result.stdout
+    assert "workspace-write" in result.stdout
+    assert "--full-auto" not in result.stdout
 
 
 # ---------------------------------------------------------------------------
