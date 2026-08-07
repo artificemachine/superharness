@@ -40,7 +40,10 @@ class AdapterValidationError(Exception):
 def _normalize_tier_value(value: Any, version: str = "*") -> dict[str, str]:
     """Normalize a manifest model_tier value to the canonical {id, label} form.
 
-    Accepts three forms:
+    Accepts four forms:
+    - new-schema: `{preferred: <id>, accept: [...], auth_compat: {...}}` — the
+      `id`/`label` returned come from `preferred`; the accept chain and
+      auth_compat map are extracted separately by the manifest parser.
     - versioned: `{versions: {"*": {id, label}, "4.6": {id, label}, ...}}`
     - mapping:   `{id: <model-id>, label: <human-name>}`
     - legacy:    `<model-id>` string (label defaults to the same string)
@@ -49,6 +52,13 @@ def _normalize_tier_value(value: Any, version: str = "*") -> dict[str, str]:
     Always returns a `{id, label}` dict.
     """
     if isinstance(value, dict):
+        if "preferred" in value:
+            # New schema (iteration 4 of PLAN-dynamic-model-selection.md):
+            # preferred is the canonical id; accept/auth_compat handled by
+            # AdapterManifest.from_dict via _extract_new_schema_fields.
+            tier_id = str(value.get("preferred") or "").strip()
+            label = str(value.get("label") or "").strip() or tier_id
+            return {"id": tier_id, "label": label}
         if "versions" in value:
             versions = value["versions"]
             entry = versions.get(version) or versions.get("*") or {}
@@ -60,6 +70,34 @@ def _normalize_tier_value(value: Any, version: str = "*") -> dict[str, str]:
         return {"id": tier_id, "label": label}
     text = str(value or "").strip()
     return {"id": text, "label": text}
+
+
+def _extract_new_schema_fields(value: Any) -> tuple[list[str], dict[str, list[str]]]:
+    """Extract (accept_chain, auth_compat) from a new-schema tier value.
+
+    Legacy/versioned/mapping forms return ([], {}).  Malformed new-schema
+    values degrade to the preferred id rather than raising.
+    """
+    if not isinstance(value, dict) or "preferred" not in value:
+        return [], {}
+    preferred = str(value.get("preferred") or "").strip()
+    accept_raw = value.get("accept")
+    if isinstance(accept_raw, list):
+        accept = [str(m).strip() for m in accept_raw if str(m).strip()]
+    else:
+        accept = []
+    if not accept:
+        accept = [preferred] if preferred else []
+
+    auth_compat: dict[str, list[str]] = {}
+    compat_raw = value.get("auth_compat")
+    if isinstance(compat_raw, dict):
+        for mode, chain in compat_raw.items():
+            if isinstance(chain, list):
+                cleaned = [str(m).strip() for m in chain if str(m).strip()]
+                if cleaned:
+                    auth_compat[str(mode)] = cleaned
+    return accept, auth_compat
 
 
 @dataclass
@@ -80,10 +118,31 @@ class AdapterManifest:
     capabilities: list[str] = field(default_factory=list)
     # tier_name -> {"id": str, "label": str}  (default/"*" version resolved)
     model_tiers: dict[str, dict[str, str]] = field(default_factory=dict)
+    # tier_name -> ordered list of model ids accepted (new schema, iteration 4)
+    accept_chain: dict[str, list[str]] = field(default_factory=dict)
+    # tier_name -> {auth_mode: [model ids]} (new schema, iteration 4)
+    auth_compat: dict[str, dict[str, list[str]]] = field(default_factory=dict)
     requires: dict[str, Any] = field(default_factory=dict)
     validation: dict[str, Any] = field(default_factory=dict)
     # raw tier data preserved for resolve_tier_version()
     _raw_tier_data: dict[str, Any] = field(default_factory=dict, repr=False)
+
+    def resolve_accept_chain(self, tier: str, auth_mode: str = "unknown") -> list[str]:
+        """Ordered probe candidates for a tier, auth-mode aware.
+
+        Priority (state machine of PLAN-dynamic-model-selection.md iter 4):
+          1. auth_compat[tier][auth_mode] — when the auth mode is known
+          2. accept_chain[tier] — the generic ordered chain
+          3. the legacy single model id for the tier
+        """
+        compat = self.auth_compat.get(tier, {}).get(auth_mode)
+        if compat:
+            return compat
+        chain = self.accept_chain.get(tier)
+        if chain:
+            return chain
+        legacy = self.model_tiers.get(tier, {}).get("id", "")
+        return [legacy if legacy else tier]
 
     def resolve_tier_version(self, tier: str, version: str = "*") -> dict[str, str]:
         """Resolve a tier + version to {id, label}.
@@ -104,6 +163,14 @@ class AdapterManifest:
         normalized_tiers = {
             str(name): _normalize_tier_value(val) for name, val in raw_tiers.items()
         }
+        accept_chain: dict[str, list[str]] = {}
+        auth_compat: dict[str, dict[str, list[str]]] = {}
+        for name, val in raw_tiers.items():
+            accept, compat = _extract_new_schema_fields(val)
+            if accept:
+                accept_chain[str(name)] = accept
+            if compat:
+                auth_compat[str(name)] = compat
         return cls(
             name=str(data.get("name", "")),
             version=str(data.get("version", "1")),
@@ -112,6 +179,8 @@ class AdapterManifest:
             launcher_script=str(data.get("launcher_script", "")),
             capabilities=list(data.get("capabilities") or []),
             model_tiers=normalized_tiers,
+            accept_chain=accept_chain,
+            auth_compat=auth_compat,
             requires=dict(data.get("requires") or {}),
             validation=dict(data.get("validation") or {}),
             _raw_tier_data=raw_tiers,

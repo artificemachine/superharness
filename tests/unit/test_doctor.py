@@ -151,6 +151,19 @@ def test_doctor_passes_healthy_project(repo_root, tmp_path) -> None:
     assert "PASS dir:handoffs" in result.stdout
 
 
+def test_doctor_models_line_reports_discovery_state(tmp_path) -> None:
+    """Iteration 6: doctor prints a models: health line (PASS or WARN)."""
+    project = _write_project(tmp_path)
+    result = _run_python(["--project", str(project)])
+    assert result.returncode == 0
+    models_lines = [l for l in result.stdout.splitlines() if "models:" in l]
+    assert models_lines, f"expected models: line in doctor output:\n{result.stdout}"
+    assert any(
+        l.startswith("PASS models:") or l.startswith("WARN models:")
+        for l in models_lines
+    )
+
+
 def test_protected_project_path_uses_path_containment(tmp_path) -> None:
     """Protected-folder detection must use resolved path containment."""
     from superharness.commands.doctor import _is_protected_project_path
