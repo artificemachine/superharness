@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import stat
 
 import pytest
@@ -68,7 +69,8 @@ def test_write_credentials_file_preserves_unmanaged_content_and_sets_0600(tmp_pa
     assert path.read_text(encoding="utf-8") == (
         "# retained\nUNMANAGED=keep\nMANAGED=new\nADDED=value\n"
     )
-    assert stat.S_IMODE(path.stat().st_mode) == 0o600
+    if os.name != "nt":
+        assert stat.S_IMODE(path.stat().st_mode) == 0o600
 
 
 def test_write_credentials_file_creates_parent_directory(tmp_path):
@@ -77,9 +79,11 @@ def test_write_credentials_file_creates_parent_directory(tmp_path):
     path = tmp_path / "new" / "credentials.env"
     write_credentials_file({"KEY": "value"}, path)
     assert path.read_text(encoding="utf-8") == "KEY=value\n"
-    assert stat.S_IMODE(path.stat().st_mode) == 0o600
+    if os.name != "nt":
+        assert stat.S_IMODE(path.stat().st_mode) == 0o600
 
 
+@pytest.mark.skipif(os.name == "nt", reason="POSIX mode bits are not enforced on NTFS")
 def test_write_credentials_file_replaces_from_owner_only_temporary_file(
     tmp_path, monkeypatch
 ):
@@ -109,7 +113,8 @@ def test_write_credentials_file_works_without_os_fchmod(tmp_path, monkeypatch):
     credentials.write_credentials_file({"KEY": "value"}, path)
 
     assert path.read_text(encoding="utf-8") == "KEY=value\n"
-    assert stat.S_IMODE(path.stat().st_mode) == 0o600
+    if os.name != "nt":
+        assert stat.S_IMODE(path.stat().st_mode) == 0o600
 
 
 def test_write_credentials_file_rejects_symlink_target(tmp_path):
