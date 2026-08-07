@@ -12,4 +12,5 @@ useDefault = true
 paths = [
   '''tests/unit/test_paperclip_export_scrub.py''',
   '''tests/unit/test_redact.py''',
+  '''tests/unit/test_codex_launcher_modernize.py''',
 ]

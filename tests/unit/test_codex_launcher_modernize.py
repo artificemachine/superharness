@@ -11,11 +11,21 @@ from __future__ import annotations
 import logging
 import os
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
 
 from superharness.harnesses.codex import CodexHarness
+
+
+# The launcher script is bash-only (POSIX ``set -u`` + arrays + ``exec``);
+# the fake-codex shim in the diagnostic tests also relies on bash. Windows
+# CI doesn't have a bash interpreter in the unit-test job, so skip the
+# whole module rather than half-run it.
+pytestmark = pytest.mark.skipif(
+    sys.platform == "win32", reason="requires bash"
+)
 
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
