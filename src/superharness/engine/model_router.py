@@ -695,6 +695,80 @@ def resolve_model(target: str, tier: str, project_dir: str | None = None) -> str
     return _apply_chatgpt_auth_override(target, model_id, project_dir)
 
 
+# ---------------------------------------------------------------------------
+# Dynamic model discovery (PLAN-dynamic-model-selection.md, iterations 2-5)
+# ---------------------------------------------------------------------------
+
+
+def _model_discovery_cache_path(project_dir: str | None) -> str | None:
+    """Resolve the model-discovery cache DB path for a project.
+
+    Iteration 2: reuse the project's active state db so the cache survives
+    across processes without a second file. Returns None when the project
+    state path cannot be resolved (falls back to manifest resolution).
+    """
+    if not project_dir:
+        return None
+    try:
+        from superharness.utils.paths import resolve_active_state_db_path
+
+        return resolve_active_state_db_path(project_dir)
+    except (OSError, ValueError, TypeError):
+        return None
+
+
+def _discover_for_agent(
+    agent: str, auth_mode: str = "unknown"
+) -> list["DiscoveredModel"]:
+    """Run the harness's discovery for one agent. Never raises."""
+    try:
+        from superharness.harnesses import get_harness
+
+        harness = get_harness(agent)
+        return list(harness.discover_models(auth_mode))
+    except (KeyError, TypeError):
+        return []
+
+
+def resolve_model_for_tier(
+    target: str, tier: str, project_dir: str | None = None
+) -> str:
+    """Resolve a tier to a concrete model, cache-first.
+
+    Iteration 2 of PLAN-dynamic-model-selection.md:
+      1. Cache hit → return the cached (discovered) model.
+      2. Cache miss → run harness discovery, persist the first hit, return it.
+      3. Discovery fails → fall back to the manifest (existing behaviour).
+
+    Full auth-mode-aware resolution and caller migration land in iteration 5.
+    """
+    import sqlite3
+
+    from superharness.engine.model_discovery import ModelDiscoveryCache
+
+    db_path = _model_discovery_cache_path(project_dir)
+    if db_path:
+        try:
+            cache = ModelDiscoveryCache(db_path)
+            cached = cache.get(project_dir, target, "unknown")
+            if cached:
+                return cached.id
+        except (sqlite3.Error, OSError, ValueError):
+            pass
+
+    discovered = _discover_for_agent(target)
+    if discovered:
+        if db_path:
+            try:
+                cache = ModelDiscoveryCache(db_path)
+                cache.set(project_dir, target, discovered[0])
+            except (sqlite3.Error, OSError, ValueError):
+                pass
+        return discovered[0].id
+
+    return resolve_model(target, tier, project_dir)
+
+
 def resolve_tier(model_name: str) -> str | None:
     """If model_name is a tier name (mini/standard/max), return it. Otherwise None."""
     if model_name in VALID_TIERS:
