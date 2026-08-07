@@ -61,6 +61,35 @@ def _base_env(overrides: dict[str, str] | None = None) -> dict[str, str]:
     return dict(overrides or {})
 
 
+def discover_via_probe(
+    agent: str, auth_mode: str = "unknown", budget_seconds: float = 5.0
+) -> list["DiscoveredModel"]:
+    """Probe-based discovery for agents without a native model-list command.
+
+    Iteration 6 of PLAN-dynamic-model-selection.md: builds the accept chain
+    from the agent's adapter manifest (auth-compat-aware) and runs one
+    ProbeDiscovery pass over it.  Returns [] when the manifest can't be
+    loaded or the chain is empty — never raises.
+    """
+    from superharness.engine.adapter_registry import AdapterValidationError, load_manifest
+    from superharness.engine.probe_discovery import ProbeDiscovery
+
+    try:
+        manifest = load_manifest(agent)
+    except (AdapterValidationError, KeyError, TypeError, ValueError, OSError):
+        return []
+    chain = manifest.resolve_accept_chain("mini", auth_mode)
+    if not chain:
+        return []
+    probe = ProbeDiscovery(
+        agent=agent,
+        accept_chain=chain,
+        auth_mode=auth_mode,
+        budget_seconds=budget_seconds,
+    )
+    return probe.run()
+
+
 def build_generic_invocation(
     name: str, task: dict, project_dir: str, non_interactive: bool
 ) -> Invocation:

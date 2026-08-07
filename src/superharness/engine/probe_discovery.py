@@ -29,10 +29,10 @@ PROBE_COMMANDS: dict[str, list[str]] = {
     "gemini-cli": ["gemini", "-p", "-m", "{model}", "reply with the single word ok"],
 }
 
-_PROBE_TIMEOUT_MIN_SECONDS = 1.0
+_PROBE_TIMEOUT_MIN_SECONDS = 15.0
 
-# Stderr substrings that identify an auth/model-mismatch rejection as
-# opposed to a transient failure.  Model name is interpolated in.
+# Reject patterns: stderr substrings identifying an auth/model mismatch as
+# opposed to a transient failure.
 _REJECT_PATTERNS = (
     "not supported",
     "invalid model",
@@ -44,12 +44,21 @@ _REJECT_PATTERNS = (
 
 @dataclass
 class ProbeDiscovery:
-    """Probe an accept chain until a working model is found."""
+    """Probe an accept chain until a working model is found.
+
+    ``budget_seconds`` is the total wall-clock budget for the whole chain;
+    each candidate gets ``min(remaining, max(_PROBE_TIMEOUT_MIN_SECONDS,
+    remaining / len(chain)))`` so a real agent CLI (which can take ~10s
+    just to boot) is never killed before it can answer.  Measured 2026-08-07:
+    ``codex exec --model gpt-5.5`` on this host takes ~9.6s to respond, so
+    the old ``budget / len(chain)`` per-candidate timeout (~4s) silently
+    rejected working models.
+    """
 
     agent: str
     accept_chain: list[str]
     auth_mode: str = "unknown"
-    budget_seconds: float = 5.0
+    budget_seconds: float = 30.0
     bin_path: str | None = None
 
     def run(self) -> list[DiscoveredModel]:
@@ -68,7 +77,12 @@ class ProbeDiscovery:
             remaining = self.budget_seconds - (time.monotonic() - start)
             if remaining <= 0:
                 break
-            timeout = max(_PROBE_TIMEOUT_MIN_SECONDS, remaining / len(self.accept_chain))
+            # Give each candidate at least the boot floor, but never exceed
+            # the remaining budget.
+            timeout = max(
+                _PROBE_TIMEOUT_MIN_SECONDS,
+                min(remaining, remaining / len(self.accept_chain)),
+            )
             verdict, stdout, stderr = self._probe(model, timeout)
             if verdict == "discovered":
                 found.append(

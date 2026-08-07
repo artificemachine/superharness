@@ -27,6 +27,7 @@ def _probe_available_models(project_dir: str | None) -> dict[str, list[str]]:
     discovery and persists the result (so a second call is cache-only).
     Never raises — failures surface as empty lists per adapter.
     """
+    import os
     import sqlite3
 
     from superharness.engine.model_discovery import ModelDiscoveryCache
@@ -36,6 +37,10 @@ def _probe_available_models(project_dir: str | None) -> dict[str, list[str]]:
         detect_auth_mode_for_agent,
     )
 
+    # Normalize the project key to its realpath so the cache entry matches
+    # whatever path shape other consumers (doctor, dispatch) pass in.
+    if project_dir:
+        project_dir = os.path.realpath(project_dir)
     db_path = _model_discovery_cache_path(project_dir)
     result: dict[str, list[str]] = {}
     for name in list_adapters():
@@ -60,8 +65,10 @@ def _probe_available_models(project_dir: str | None) -> dict[str, list[str]]:
             if db_path:
                 try:
                     cache = ModelDiscoveryCache(db_path)
-                    for m in discovered:
-                        cache.set(project_dir, name, m)
+                    # Cache only the chosen (first) model — the cache holds
+                    # one entry per (project, agent, auth), the dispatch-time
+                    # pick, not the full discovered list.
+                    cache.set(project_dir, name, discovered[0])
                 except (sqlite3.Error, OSError, ValueError):
                     pass
         else:

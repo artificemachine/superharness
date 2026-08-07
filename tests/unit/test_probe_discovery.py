@@ -138,7 +138,10 @@ def test_signature_and_defaults() -> None:
     sig = inspect.signature(ProbeDiscovery.__init__)
     params = list(sig.parameters)
     assert params[:4] == ["self", "agent", "accept_chain", "auth_mode"]
-    assert sig.parameters["budget_seconds"].default == 5.0
+    # Default budget is 30s: real agent CLIs take ~10s to boot (measured:
+    # codex exec gpt-5.5 ≈ 9.6s), so the old 5s default killed working
+    # models as timeouts.
+    assert sig.parameters["budget_seconds"].default == 30.0
     assert sig.parameters["auth_mode"].default == "unknown"
 
 

@@ -15,15 +15,15 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from superharness.harnesses.base import Invocation
+from superharness.harnesses.base import Invocation, discover_via_probe
 
 
 class ClaudeHarness:
     name = "claude-code"
 
     def discover_models(self, auth_mode: str = "unknown") -> list:
-        """Iteration 1: no-op — probe-based discovery lands in iteration 3."""
-        return []
+        """Iteration 6: probe-based discovery via the manifest accept chain."""
+        return discover_via_probe(self.name, auth_mode)
 
     def build_invocation(
         self, task: dict, project_dir: str, non_interactive: bool

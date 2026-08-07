@@ -2,15 +2,19 @@
 
 from __future__ import annotations
 
-from superharness.harnesses.base import Invocation, build_generic_invocation
+from superharness.harnesses.base import (
+    Invocation,
+    build_generic_invocation,
+    discover_via_probe,
+)
 
 
 class GeminiHarness:
     name = "gemini-cli"
 
     def discover_models(self, auth_mode: str = "unknown") -> list:
-        """Iteration 1: no-op — probe-based discovery lands in iteration 3."""
-        return []
+        """Iteration 6: probe-based discovery via the manifest accept chain."""
+        return discover_via_probe(self.name, auth_mode)
 
     def build_invocation(
         self, task: dict, project_dir: str, non_interactive: bool
