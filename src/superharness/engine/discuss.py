@@ -248,7 +248,7 @@ def cmd_approve(
         try:
             from superharness.engine.state_writer import write_handoff_to_db
 
-            write_handoff_to_db(project_dir, handoff_doc)
+            write_handoff_to_db(project_dir, handoff_doc, created_at=now)
         except Exception as _e:
             logger.warning(
                 "_do_approve: failed to sync approval_gate to SQLite: %s", _e

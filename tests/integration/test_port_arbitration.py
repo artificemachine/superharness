@@ -24,14 +24,15 @@ def test_operator_arbitrates_conflicting_port(tmp_path):
 
         # 3. Start the Operator stack pointing at the blocked port
         op = Operator(project_dir)
-        op.start_stack(dashboard_port=base_port, use_dashboard=True)
+        try:
+            op.start_stack(dashboard_port=base_port, use_dashboard=True)
 
-        # 4. Verify it chose base_port + 1 instead
-        op_file = sh_dir / "operator-state.json"
-        assert op_file.exists()
+            # 4. Verify it chose another port in the documented scan window.
+            # An unrelated process may legitimately occupy base_port + 1.
+            op_file = sh_dir / "operator-state.json"
+            assert op_file.exists()
 
-        info = json.loads(op_file.read_text())
-        assert info["dashboard_port"] == base_port + 1
-
-        # Cleanup
-        op.stop_all()
+            info = json.loads(op_file.read_text())
+            assert base_port < info["dashboard_port"] < base_port + 100
+        finally:
+            op.stop_all()

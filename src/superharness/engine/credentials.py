@@ -72,7 +72,9 @@ def write_credentials_file(
     temporary = Path(temporary_name)
     replaced = False
     try:
-        os.fchmod(fd, stat.S_IRUSR | stat.S_IWUSR)
+        fchmod = getattr(os, "fchmod", None)
+        if fchmod is not None:
+            fchmod(fd, stat.S_IRUSR | stat.S_IWUSR)
         handle = os.fdopen(fd, "w", encoding="utf-8")
         fd = -1
         with handle:

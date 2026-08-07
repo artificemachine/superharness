@@ -557,6 +557,8 @@ Notes:
 - Multiple dashboard processes can run at once for different projects.
 - Without an explicit `--port`, the dashboard tries `8787` first and then the next free ports in the local scan range.
 - Use `shux dashboard-list` to see which project is on which port.
+- The theme selector offers Dark, Light, and Monokai. Monokai is the default unless a valid saved choice exists, and changes persist in browser `localStorage`.
+- When Langfuse is enabled with a valid configured base URL, the header shows the original compact button dimensions with an orange background and a slow three-second pulse. `prefers-reduced-motion` disables the animation; see [Langfuse observability](langfuse-observability.md).
 
 **Dashboard panels:**
 - **Git context** — current branch, dirty file count, and last commit in the header
