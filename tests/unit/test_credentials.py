@@ -100,6 +100,18 @@ def test_write_credentials_file_replaces_from_owner_only_temporary_file(
     assert stat.S_IMODE(path.stat().st_mode) == 0o600
 
 
+def test_write_credentials_file_works_without_os_fchmod(tmp_path, monkeypatch):
+    from superharness.engine import credentials
+
+    path = tmp_path / "credentials.env"
+    monkeypatch.delattr(credentials.os, "fchmod", raising=False)
+
+    credentials.write_credentials_file({"KEY": "value"}, path)
+
+    assert path.read_text(encoding="utf-8") == "KEY=value\n"
+    assert stat.S_IMODE(path.stat().st_mode) == 0o600
+
+
 def test_write_credentials_file_rejects_symlink_target(tmp_path):
     from superharness.engine.credentials import write_credentials_file
 
