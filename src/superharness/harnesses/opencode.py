@@ -8,6 +8,10 @@ from superharness.harnesses.base import Invocation, build_generic_invocation
 class OpencodeHarness:
     name = "opencode"
 
+    def discover_models(self, auth_mode: str = "unknown") -> list:
+        """Iteration 1: no-op — native discovery lands in iteration 2."""
+        return []
+
     def build_invocation(
         self, task: dict, project_dir: str, non_interactive: bool
     ) -> Invocation:

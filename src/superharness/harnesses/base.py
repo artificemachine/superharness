@@ -7,7 +7,10 @@ will spawn to run that agent. See docs/PLAN-steal-omnigent.md iterations 5-6.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
+
+if TYPE_CHECKING:
+    from superharness.engine.model_discovery import DiscoveredModel
 
 
 @dataclass(frozen=True)
@@ -34,6 +37,18 @@ class Harness(Protocol):
     def build_invocation(
         self, task: dict, project_dir: str, non_interactive: bool
     ) -> Invocation: ...
+
+    def discover_models(
+        self, auth_mode: str = "unknown"
+    ) -> list["DiscoveredModel"]:
+        """Return models available on this host for the given auth mode.
+
+        Iteration 1 of PLAN-dynamic-model-selection.md: the default is a
+        no-op (``[]``).  Adapters that expose a native model-list command
+        (opencode) or a probe (codex/claude/gemini) override this in
+        iterations 2-3.
+        """
+        return []
 
 
 def _base_env(overrides: dict[str, str] | None = None) -> dict[str, str]:

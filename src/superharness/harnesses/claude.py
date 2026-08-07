@@ -21,6 +21,10 @@ from superharness.harnesses.base import Invocation
 class ClaudeHarness:
     name = "claude-code"
 
+    def discover_models(self, auth_mode: str = "unknown") -> list:
+        """Iteration 1: no-op — probe-based discovery lands in iteration 3."""
+        return []
+
     def build_invocation(
         self, task: dict, project_dir: str, non_interactive: bool
     ) -> Invocation:
