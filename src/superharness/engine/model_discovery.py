@@ -87,6 +87,10 @@ class ModelDiscoveryCache:
 
     def __init__(self, db_path: str | Path) -> None:
         self._db_path = str(db_path)
+        # The resolved state path may live under a not-yet-existing XDG dir
+        # (e.g. ~/.local/state/superharness/<hash>/); create parents so the
+        # connect below doesn't fail with "unable to open database file".
+        Path(self._db_path).parent.mkdir(parents=True, exist_ok=True)
         # Each call opens its own connection so the cache survives across
         # processes (SQLite handles concurrent access with busy timeout).
         self._conn = sqlite3.connect(self._db_path, timeout=5)
