@@ -749,14 +749,22 @@ def _model_discovery_cache_path(project_dir: str | None) -> str | None:
     Iteration 2: reuse the project's active state db so the cache survives
     across processes without a second file. Returns None when the project
     state path cannot be resolved (falls back to manifest resolution).
+
+    The state-path resolver fails closed with StateDatabaseConflictError on
+    split-brain (explicit STATE_DIR vs pre-existing legacy db).  The cache is
+    a best-effort optimization, so a conflict degrades to None rather than
+    crashing the caller (doctor's two-DB warning must still print).
     """
     if not project_dir:
         return None
     try:
-        from superharness.utils.paths import resolve_active_state_db_path
+        from superharness.utils.paths import (
+            StateDatabaseConflictError,
+            resolve_active_state_db_path,
+        )
 
         return resolve_active_state_db_path(project_dir)
-    except (OSError, ValueError, TypeError):
+    except (OSError, ValueError, TypeError, StateDatabaseConflictError):
         return None
 
 
