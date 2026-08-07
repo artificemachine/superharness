@@ -1,4 +1,208 @@
+# Session Handoff — 2026-08-07 (handoff-update verification, no new work)
+Agent: OpenCode | Branch: `main` at `6e8bf8e1` | Tests: not re-run (no code changes; prior handoff shows 5,304 pass / 584 skip / 2 xfail) | UNCOMMITTED
+
+## What happened this session
+
+- Loaded the `handoff-update` skill and ran context gathering only.
+- No new commits since the prior 2026-08-07 Codex handoff (HEAD still `6e8bf8e1`; recent log: #108 dashboard themes + Langfuse link, #107 merge, configurable Langfuse link).
+- Working tree unchanged from prior session: `HANDOFF.md` modified (carries that handoff), `.superharness/agent-auth-state.json` untracked.
+- No code, tests, or infrastructure changes were performed this session — this entry exists solely to record the skill invocation and confirm the existing top handoff remains valid.
+
+## Next session — first moves
+
+1. Follow the next-moves list from the prior 2026-08-07 Codex handoff: create a feature branch (do not patch released `main` directly); TDD-replace the deprecated Codex `--full-auto` flag with `--sandbox workspace-write`; ensure failed Codex launches persist a redacted exit diagnostic; then re-run a one-round Claude/Codex discussion to verify both submissions appear.
+2. Decide what to do with the lingering working-tree state (modified `HANDOFF.md` + untracked `agent-auth-state.json`) before starting any new work — neither is approved for staging or commit.
+
+### Operational notes
+
+- Langfuse credentials remain in `$HOME/.config/superharness/credentials.env`; never print or commit them. The server's v4 observations-read endpoint is unavailable, but its compatible trace endpoint verifies ingestion.
+- Release v1.82.0 is live on PyPI; the dashboard was started at `http://127.0.0.1:8787` (Monokai default, orange Langfuse link to `https://langfuse-ops.<lan>`) — verify it is still running before relying on it.
+- Full operational context (Codex failure boundary, retention state, release link) lives in the prior 2026-08-07 handoff block directly below.
+
+---
+# Session Handoff — 2026-08-07 (v1.82.0 release, Langfuse validation, Codex discussion dispatch)
+Agent: Codex | Branch: `main` at `6e8bf8e1` | Tests: 5,304 passed / 584 skipped / 2 xfailed | UNCOMMITTED (`HANDOFF.md` and `.superharness/agent-auth-state.json`)
+
+## What happened this session
+
+- Released Superharness `v1.82.0`: PR #108 merged; all required GitHub checks passed; the signed tag, GitHub Release, TestPyPI, and PyPI publication completed successfully.
+- Installed the released wheel non-editably in the global pipx environment and started the dashboard at `http://127.0.0.1:8787`. The dashboard defaults to Monokai and its orange Langfuse link targets `https://langfuse-ops.<lan>`.
+- Verified Langfuse end-to-end without printing credentials: authentication passed, a zero-cost benchmark dispatch was emitted, and the compatible trace API returned one production trace with one observation for release `1.82.0`.
+- Created discussion `discuss-20260807T111546Z-34321-884124153` for `claude-code` and `codex-cli`. Claude submitted `agree`; Codex exited before submitting, so the one-round discussion was cancelled with no consensus.
+- Diagnosed the Codex failure boundary: the Codex adapter and binary are valid, but its non-interactive launch exited after about 23 seconds. The stored output contains only startup text and the non-fatal `--full-auto` deprecation warning, not the root error. `shux status --fix` made no changes; the 46 retry-exhausted inbox entries are retained historical failures.
+
+## Next session — first moves
+
+1. Create a dedicated feature branch; do not patch the released `main` directly.
+2. Use TDD to replace the deprecated Codex `--full-auto` flag with `--sandbox workspace-write` and ensure failed Codex launches persist a redacted exit diagnostic.
+3. Re-run a one-round Claude/Codex discussion and verify both submissions appear before treating the discussion workflow as healthy.
+
+### Operational notes
+
+- Langfuse credentials remain in `$HOME/.config/superharness/credentials.env`; never print or commit them. The server's v4 observations-read endpoint is unavailable, but its compatible trace endpoint verifies ingestion.
+- Preserve the current local `HANDOFF.md` modification and untracked `.superharness/agent-auth-state.json`; neither is approved for staging or commit.
+- Release retention is still above the ten-release target (22 releases). Do not delete release pages or tags without fresh explicit approval for each target.
+
+---
+
 # Handoff — superharness
+
+# Session Handoff — 2026-08-06 (v1.81.9 released, installed, and validated)
+Agent: Codex | Branch: `chore/public-repo-audit-remediation` at `cc8b6c3a` (merged remotely via PR #105) | Tests: 5,262 passed / 584 skipped / 2 xfailed | UNCOMMITTED (HANDOFF.md only)
+
+## What happened this session
+
+- Completed the public-repo remediation release: PR #105 is merged on `origin/main` at `b331d40d`; tag `v1.81.9`, the GitHub Release, TestPyPI, and PyPI publication all completed successfully.
+- Verified the release gate’s required checks on the tagged commit: QA Gate, Windows-Native Release Gate, ShipGuard Scan, and Gitleaks all passed.
+- Independently installed `superharness==1.81.9` twice into a clean temporary virtual environment; both `shux` and `superharness` reported the correct version and `init` exposes non-interactive, dry-run, and `--skip-hooks` paths.
+- Upgraded the machine-wide non-editable `pipx` installation from 1.81.7 to 1.81.9. Both global entry points were validated from outside this checkout.
+- Re-ran the full suite from this checkout: 5,262 passed, 584 skipped, 2 expected failures in 7m02s. No source code changed in this final validation session.
+
+## Next session — first moves
+
+1. Fetch `origin` and inspect the merged `main` state before starting new work; preserve this local handoff change until the owner explicitly decides how to record it.
+2. Start the next change on a fresh feature branch and add the version/changelog update before requesting any future release.
+3. Stage only deliberate files; `HANDOFF.md` remains user-owned and must not be committed without explicit approval.
+
+### Operational notes
+
+- Live release: https://github.com/artificemachine/superharness/releases/tag/v1.81.9 ; PyPI: https://pypi.org/project/superharness/1.81.9/.
+- The global `pipx` commands are now 1.81.9. Validate installed binaries from outside the source checkout, because the checkout’s local wrapper can shadow a PATH lookup.
+- Do not repeat tag/release/publication steps for 1.81.9. No release-retention deletion was performed.
+
+---
+
+# Session Handoff — 2026-08-05 (live GitHub security policy hardened)
+Agent: Codex | Branch: `chore/public-repo-audit-remediation` at `f0c8ba3` | Tests: 5,262 passed / 584 skipped / 2 xfailed | UNCOMMITTED
+
+## What happened this session
+
+- Enabled Dependabot security updates for the public `artificemachine/superharness` repository.
+- Hardened `main` branch protection: admins are now subject to protection, required checks must be up to date, and one approving pull-request review is required.
+- Verified the live GitHub API state after mutation; secret scanning and push protection remain enabled, and force-push/deletion protections remain disabled.
+
+## Next session — first moves
+
+1. Scope the remaining architecture-documentation rewrite and legacy lint cleanup separately; do not mass-edit the dashboard module without focused acceptance criteria.
+2. Stage only deliberate remediation files (exclude `HANDOFF.md`) and request fresh explicit commit/push confirmation before shipping.
+
+### Operational notes
+
+- A PR to `main` now requires another approval. Keep the feature branch workflow; do not push directly to `main`.
+- `origin/main` has sanitized rewritten history and is protected. Local `main` remains intentionally stale; continue only on `chore/public-repo-audit-remediation`.
+
+---
+
+# Session Handoff — 2026-08-05 (public remediation and runtime reliability)
+Agent: Codex | Branch: `chore/public-repo-audit-remediation` at `f0c8ba3` | Tests: 5,262 passed / 584 skipped / 2 xfailed | UNCOMMITTED
+
+## What happened this session
+
+- Fixed a pytest child-process crash by exercising `operator start` in foreground mode (`--no-daemon`) and added a contract guard against daemonizing CLI tests.
+- Isolated dashboard timeout tests from the live repository, so a running user dashboard cannot produce false test failures; narrowed their request exception handling.
+- Fixed dashboard autohealth to read the per-project auth token and send it to the protected `/api/status` route; added direct and watchdog-loop regression tests.
+- Corrected the remote installer and PyPI setup guide to use `artificemachine/superharness`; marked the unshipped `shux state` interface in the notifications document as a proposal.
+- Reverified the complete remediation tree: full offline suite passed; `uv lock --check`, `pip-audit`, `git diff --check`, and ShipGuard (1,004 files) all passed with zero security findings.
+
+## Next session — first moves
+
+1. Obtain owner approval before changing live GitHub policy: enable Dependabot security updates, enforce protections for admins, and require strict status checks; decide whether a pull-request review requirement is appropriate.
+2. Scope the remaining documentation architecture rewrite and legacy dashboard lint cleanup separately; do not mass-edit the 3k-line dashboard module without focused acceptance criteria.
+3. Stage only deliberate remediation files (exclude `HANDOFF.md`) and request fresh explicit commit/push confirmation before shipping.
+
+### Operational notes
+
+- `origin/main` has sanitized rewritten history and is protected. Local `main` remains intentionally stale; continue only on `chore/public-repo-audit-remediation`.
+- The dashboard that occupied port 8787 was stopped for verification and remains stopped; do not restart it unless the owner asks.
+- Preserve `backup/pre-history-rewrite-main-c11e0859` and `stash@{0}` until the remediation branch is independently committed.
+
+---
+
+# Session Handoff — 2026-08-05 (working tree replayed after public-history rewrite)
+Agent: Codex | Branch: `chore/public-repo-audit-remediation` at `f0c8ba3` (tracks rewritten `origin/main`) | Tests: unchanged; replay integrity checks pass | UNCOMMITTED
+
+## What happened this session
+
+- Fetched rewritten `origin/main`, preserved old local `main` at `c11e0859` as `backup/pre-history-rewrite-main-c11e0859`, and stashed the complete dirty tree (including untracked audit reports).
+- Created `chore/public-repo-audit-remediation` from rewritten `origin/main` and applied the stash without conflicts. All 19 modified/untracked paths are present; `git diff --check` and unmerged-index checks are clean.
+- Retained `stash@{0}` as a second recovery point. Do not drop it until the remediation branch is committed and independently verified.
+
+## Next session — first moves
+
+1. Review and split the uncommitted remediation into safe commits on this feature branch; do not commit the user’s earlier `HANDOFF.md` material without explicit review.
+2. Run focused and full verification before requesting a commit; the only known full-suite failures are the two dashboard tests when port 8787 is occupied.
+3. Continue the remaining public-readiness work from the audit reports.
+
+### Operational notes
+
+- `origin/main` is rewritten and protected again. Local `main` is deliberately stale; work only from `chore/public-repo-audit-remediation`.
+- Recovery points: branch `backup/pre-history-rewrite-main-c11e0859` and `stash@{0}`.
+
+---
+
+# Session Handoff — 2026-08-05 (public-repo audit, offline tests, dependency and history remediation)
+Agent: Codex | Branch: local `main` at `c11e0859`; remote `main` rewritten to `f0c8ba3` | Tests: 5,252 pass / 584 skip / 2 xfail / 2 known dashboard-environment failures; 97 focused pass | UNCOMMITTED
+
+## What happened this session
+
+- Audited public-release readiness; saved architecture and claim-audit reports under `docs/audits/`. The remaining release blockers are documented there.
+- Made pytest offline by default: provider routes are deterministic and external agent CLIs are inert unless an explicit live-test override is set. Updated contributor guidance and regression tests.
+- Removed maintainer-specific local paths and email-shaped account references from current source/docs; added generic-path and topology-leak contract coverage.
+- Raised eight direct dependency security floors, refreshed `uv.lock`, and verified the locked runtime export with `pip-audit`: no known vulnerabilities.
+- Rewrote reachable GitHub branch/tag history to remove four personal commit-email identities and all `.superharness/state.sqlite3` blobs. All branch/tag refs match the validated mirror; PR refs were deliberately untouched. `main` force-push protection was temporarily enabled only for the rewrite and restored immediately.
+
+## Next session — first moves
+
+1. Preserve the dirty working tree and replay it onto rewritten remote `main` before any further implementation. Local `main` is still pre-rewrite (`c11e0859`); do not run a normal pull from it.
+2. Review the remaining go-live findings and choose the next bounded remediation: CI/repository governance, architecture-doc drift, or dashboard test isolation.
+3. Before committing, run the relevant focused tests and the full suite; the two dashboard-timeout failures currently reproduce when the dashboard process owns port 8787.
+
+### Operational notes
+
+- Remote reachable branch/tag history is sanitized; GitHub forks, PR artifacts, and retention caches are outside this rewrite's control.
+- Dashboard currently occupies `127.0.0.1:8787` (pid 60706), causing `tests/test_dashboard_timeout.py::{test_dashboard_timeout_exit,test_dashboard_keep_alive}` to fail. No new test failures were observed.
+- Current remediation is uncommitted. Preserve the user’s prior handoff content below; do not stage or commit it without review.
+
+---
+
+# Session Handoff — 2026-08-05 (deferred backlog cleared via PR #104; stale-skip backlog measured, not guessed)
+Agent: Claude Code (Sonnet 5) | Branch: main at `c11e0859` | Tests: fast subset 897 pass / 6 skip ~29s; full local unit 3703 pass / 536 skip / 1 fail / 1 error in 12:44 (both known local-only flakes, green on all 3 CI platforms) | ALL MERGED, ZERO OPEN PRs
+
+## What happened this session
+
+Worked the 6 deferred items carried in the prior handoff's "Next session" list. Five closed, one measured and re-scoped.
+
+- **Hook-config divergence (was flagged CRITICAL): already fixed, stale entry.** `0eb3ea75` (closes #92) had made both hook trees byte-identical — verified same blob hash `b4e61a08` per file across `adapters/claude-code/hooks/` and `src/superharness/adapters/claude-code/hooks/`, and it is an ancestor of HEAD. Only residue is a local-filesystem perm drift (`ledger-append.sh` 711 vs 755); git records both as `100755`, so nothing to fix. The backlog entry was describing already-shipped work.
+
+- **CI release/publish gate gap closed (PR #104).** Two real holes: (1) `release.yml`'s `verify-ci` `REQUIRED` array listed only `QA Gate` + `Windows-Native Release Gate` while branch protection had grown to four contexts on 2026-08-03 — `ShipGuard Scan` and `Gitleaks` were never checked before release, despite an in-file comment claiming it "mirrors branch protection exactly". (2) `publish.yml` had no gate of its own: `release: published` and `workflow_dispatch` are trigger surfaces *independent* of `release.yml`, so a manually created GitHub Release or a direct dispatch reached PyPI with zero check-run verification. Added a mirrored `verify-ci` job to `publish.yml` with `build` declaring `needs: verify-ci`.
+
+- **Dead Ruby scaffolding removed, then partly reverted after CI caught me.** Deleted `Gemfile`, `.ruby-version`, `engine/profile.rb`. CI failed: `test_detect_and_profile.py::test_detect_finds_python_ruby_stack` asserts `engine/detect.py` classifies *this* repo as a Python+Ruby stack, and `Gemfile` is the marker it reads. Ruby is genuinely still live here (`engine/detect.rb`, `engine/recall.rb`, `cli/recall.sh` exec, `cli/status.sh` inline `ruby -e`), so `Gemfile` is a correct stack marker, not dead weight. Restored it (`8b4e49ad`). **The local pre-commit fast subset does not cover this test** — only the full matrix caught it.
+
+- **Git-history debt: 46 stale tags + 1 orphan (`v1.70.1`) deleted locally only, `origin` untouched.** Kept the 47 tags matching GitHub releases. Separately, on request, pruned GitHub releases 47 → 20 by deleting 27 release *pages* from a 2026-07-22 backfill burst (`v1.58.x`–`v1.69.x`, all created within ~90s); their tags remain. `.git` is 64M.
+
+- **Other local checkouts investigated, correctly left alone.** `Documents/OLD-REPOS/superharness` (clean, sits among a dozen archived repos — intentional archive), `.claude/plugins/marketplaces/superharness` (clean, Claude-Code-managed), and an archived alternative checkout (**different remote**, 10 uncommitted files, HEAD 2026-03-08 — do not touch or fetch).
+
+- **46 retry-exhausted inbox items: root-caused as test contamination, not a bug.** Failing IDs are pytest fixture names (`feat-x`, `approved-1`, `fail-t`) from `tests/unit/db/test_sqlite_only_cutover.py` that leaked into the real `.superharness/state.db` before the `isolated_state_dir` autouse fixture existed — same origin as the stray `test-contract`. Ran `shux status --fix`; verified before/after that it changed nothing (inbox 46 → 46, discussions 21 → 21), confirming these are terminal historical records with no orphans to clean. Left in place: deleting dispatch-failure history is audit-trail tampering for zero functional gain. Deliberately did **not** use `--fix` aggressively given the known P1 dedup bug in `commands/status.py:619-635` and 21 live `failed_participant` discussions.
+
+- **Stale-skip backlog MEASURED rather than assumed — and my first plan was wrong.** Wrote a probe harness (`scratchpad/probe_skips.py`) that, for each of the 89 files carrying `pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")`, writes an *untracked* copy with markers stripped, runs it under a 60s timeout, and always cleans up (verified `repo clean: YES`; never mutates a tracked file — editing one mid-run trips conftest's `_real_repo_untouched` guard and silently kills output). Results: **PASS 15 files / FAIL 69 / HANG 4 / COLLECT_ERROR 1**, from 330 markers.
+
+## Next session — first moves
+
+1. **Finish the stale-skip reconciliation before acting on it.** The probe reported 1,329 tests behind the markers (975 pass / 354 fail), but that **over-counts** and must not be quoted as-is: most of the 89 files carry *per-test* decorators rather than module-level `pytestmark`, so the probe counted already-running tests as "unlocked". A baseline run of the 89 files as-is was in flight at session end (`scratchpad/baseline89.txt`) to get the true currently-skipped count. Real free-win number = (probe pass) − (already passing at baseline). Compute that first.
+2. **Then ship the free wins.** Every test that passes the moment its marker is deleted is recovered coverage at zero risk. That is the bulk of the value and should be its own PR, separate from any fixture work.
+3. **Quarantine the 4 hangers — do NOT unskip them:** `test_delegate_logic.py`, `test_discussion_dispatch.py`, `test_dispatch_dequeue.py`, `test_profile_wiring.py` (they spawn real watcher subprocesses; `test_zombie_reconcile.py` additionally fails collection). Rewrite their skip *reason* to the truth (needs a timeout harness) instead of the stale PR #208 lie — a wrong skip reason is exactly what let this drift for ~10 weeks.
+4. **Fix the genuinely-failing remainder per-file under TDD.** This is where real bugs hide: `/gauntlet`'s Stage 5 found 9 real bugs the same way in PR #74.
+5. Task `port-remaining-ruby-callers` is still `todo` — repoint `init-project.sh`, `cli/recall.sh`, `cli/status.sh` off Ruby, then delete `engine/detect.rb` + `engine/recall.rb` (and only then `Gemfile`).
+
+### Operational notes
+- **`shux delegate` cannot run from an agent Bash tool** — it launches Codex interactively and dies with `Error: stdin is not a terminal`. Task stays `todo`, nothing is enqueued. Use the dashboard to dispatch.
+- Dashboard was left running: `http://127.0.0.1:8787` (`shux dashboard`, pid 60706 at session end; stop via `shux dashboard-kill`). Watcher healthy, foreground.
+- `reenable-stale-skip-tests` is at `plan_proposed` with a plan handoff written — **but that plan predates the probe data and is now partly wrong** (it assumed all 330 needed fixture rewrites). Revise it against the measured distribution before requesting approval.
+- **Never pipe a long background command through `tail -N`** — `tail` buffers to EOF, so the output file stays empty and any Monitor on it is blind for the whole run. Cost me the first 37 lines of the probe log (the JSON at `scratchpad/probe_results.json` has the full record).
+- Pre-commit fast subset (897 tests, ~29s) does **not** catch everything the CI matrix does; Windows Unit Tests ran 19m13s this session vs ~5m on ubuntu/macos.
+- Push still needs `ALLOW_PUSH=1`. PII guard `tests/unit/test_no_tracked_personal_data.py` + the topology ratchet both pass on current main.
+
+---
 
 # Session Handoff — 2026-08-03 (PR #77 triage → 6 PRs merged: #92 closed, talk landed, leak-detection stack shipped, NFS journal mode extracted, branches cleaned)
 Agent: Claude Code (Opus 5) | Branch: main at `3a755123` | Tests: fast subset 895 pass / 6 skip ~40s; targeted suites green (167 db/mcp/operator, 153 contract, 13 nfs-journal) | ALL MERGED, ZERO OPEN PRs
@@ -130,7 +334,7 @@ Agent: Claude Code (Sonnet 5) | Branch: main | Tests: 3637 pass / 537 skip / 2 x
 - **Reviewed and shipped an externally-authored patch onto PR #79** (`fix/state-authority-stage1-origin`, authored by collaborator `yjjoeathome-byte`/"Joe"): a cold-start `shux discuss pending --agent ... [--json]` command letting a recipient discover addressed discussions through the shared inbox without an out-of-band discussion ID, plus atomic inbox acknowledgment on submit. Verified the patch's SHA-256 checksum, hand-merged it (didn't apply via `git am` — it was built against the author's private local backport, not this branch's real state-authority code). **Found and fixed a real defect the patch's own "101 passed" acceptance evidence never caught**: `discussion_dispatch.py` added `--type discussion` to a subprocess enqueue call, but `engine/inbox.py`'s CLI never accepted that flag — applied as-authored it would have broken every discussion-round dispatch (argparse exit 2). Fixed with the missing `--type` argparse wiring, verified end-to-end against the real CLI. Also fixed one unrelated historical test (`test_bug_cf_runtime.py`) broken by the patch's new additive `acknowledged_inbox_ids` JSON field.
 - **PR #79 merged** (`cc5b9344`, main now at v1.81.5, untagged/unpublished by explicit choice — merge-only, tag/release/publish deferred to a future session). Hit a real merge conflict merging `main` into the PR branch (CHANGELOG.md append-only guard) — first resolution attempt got the append order backwards (CI's `check-changelog-append-only.sh` requires the new file's first N bytes to exact-byte-match the base ref; my first fix put the PR's own lines before main's line, which broke it), caught by CI, fixed with a follow-up commit verified locally against the exact script before repushing.
 - **PR #80 merged** (`8f8bdf15`): backfilled an uncommitted HANDOFF.md session block from 2026-07-22 (the `/golive` audit + PII history rewrite session) that had been sitting in the working tree since that session ended, plus a `.gitignore` addition for `.to-agents/`/`*.bak-to-agents-*`. Docs-only, no version bump (consistent with PR #72/#73 precedent). Reverted an unrelated `uv.lock` drift (111 insertions, no matching `pyproject.toml` change — classic `uv run`-mutates-the-lock pitfall) before committing rather than shipping it.
-- **Found and fixed a real repo-wide gap**: this repo's `core.hookspath` had a **local override** (`.git/hooks` instead of the documented global `~/.githooks`), pointing at a stale March-8 PII-guard script referencing a pre-rename path (`DevOpsCelstn`, before the repo moved to `DevOpsSec`). This silently bypassed the entire global pre-commit pipeline (secrets scan, CHANGELOG-required check, hardcoded-path check, binary check, ShipGuard SAST, and delegation to `.project-hooks/pre-commit`'s full pytest run) for an unknown number of past commits. **Fixed**: `git config --local --unset core.hookspath` restores the correct global resolution for all future commits.
+- **Found and fixed a real repo-wide gap**: this repo's `core.hookspath` had a **local override** (`.git/hooks` instead of the documented global `~/.githooks`), pointing at a stale March-8 PII-guard script referencing a pre-rename workspace path. This silently bypassed the entire global pre-commit pipeline (secrets scan, CHANGELOG-required check, hardcoded-path check, binary check, ShipGuard SAST, and delegation to `.project-hooks/pre-commit`'s full pytest run) for an unknown number of past commits. **Fixed**: `git config --local --unset core.hookspath` restores the correct global resolution for all future commits.
 - **Environment note, not a code bug**: running the full `pytest tests -q` pre-commit hook in throwaway scratch clones (used for the PR #79 review) reproducibly corrupted the git object database on `git worktree add`-based tests — identical missing blob SHAs across two independent fresh clones. Confirmed unrelated to the patch (those tests pass clean in isolation; recovered via re-clone each time). Used `--no-verify` for several commits this session with explicit per-commit operator authorization, after independently verifying the equivalent test coverage each time.
 - **Installed v1.81.5 locally (editable) and functionally validated the new cold-start feature** end-to-end in an isolated scratch project: `discuss pending` correctly discovers a round with zero prior discussion-ID knowledge, `discuss submit` atomically marks only the submitting agent's own inbox row done, `discuss rounds` displays the position text, and the fail-closed state-authority guard correctly refuses a conflicting `SUPERHARNESS_STATE_DIR` without creating any directory.
 
