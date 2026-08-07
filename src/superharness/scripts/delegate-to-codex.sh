@@ -62,16 +62,24 @@ fi
 if [[ $NON_INTERACTIVE -eq 1 ]]; then
   # Build execution command with automation flags
   CODEX_ARGS=("exec" "--skip-git-repo-check" "-C" "$PROJECT_DIR")
-  CODEX_ARGS+=("${MODEL_ARGS[@]}")
-  
+  # Bash 3.2 (Apple's /bin/bash) errors on `set -u` + empty array expansion;
+  # guard so a no-model dispatch doesn't trip the nounset check.
+  if [[ ${#MODEL_ARGS[@]} -gt 0 ]]; then
+    CODEX_ARGS+=("${MODEL_ARGS[@]}")
+  fi
+
   if [[ $BYPASS -eq 1 ]]; then
     CODEX_ARGS+=("--dangerously-bypass-approvals-and-sandbox")
   else
-    CODEX_ARGS+=("--full-auto")
+    CODEX_ARGS+=("--sandbox" "workspace-write")
   fi
-  
+
   exec codex "${CODEX_ARGS[@]}" "$PROMPT"
 else
   # Regular interactive session
-  exec codex -C "$PROJECT_DIR" "${MODEL_ARGS[@]}" "$PROMPT"
+  if [[ ${#MODEL_ARGS[@]} -gt 0 ]]; then
+    exec codex -C "$PROJECT_DIR" "${MODEL_ARGS[@]}" "$PROMPT"
+  else
+    exec codex -C "$PROJECT_DIR" "$PROMPT"
+  fi
 fi
