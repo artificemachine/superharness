@@ -1,6 +1,6 @@
 name: gemini-cli
 version: "1"
-description: "Gemini CLI — Google's AI coding agent (simulated via gemini command)"
+description: "Gemini CLI — Google's AI coding agent (simulated via gemini command). DEPRECATED upstream: Google killed standalone Gemini CLI support 2026-08 (IneligibleTierError: 'no longer supported for Gemini Code Assist for individuals' — migrate to Antigravity). Kept for hosts still on API-key auth; probes will report 'none discovered' on modern hosts."
 type: native
 launcher_script: delegate-to-gemini.sh
 capabilities:
