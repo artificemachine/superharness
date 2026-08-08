@@ -98,7 +98,7 @@ def test_adapters_probe_reads_cache_on_second_run(
 
     calls: list[str] = []
 
-    def _fake_discover(agent, auth_mode="unknown"):
+    def _fake_discover(agent, auth_mode="unknown", chain=None):
         calls.append(agent)
         return [
             DiscoveredModel(
@@ -163,7 +163,7 @@ def test_adapters_probe_partial_failure_still_json(
     """Chaos: discovery raising for one agent → others still reported, JSON valid."""
     from superharness.engine import model_router
 
-    def _flaky_discover(agent, auth_mode="unknown"):
+    def _flaky_discover(agent, auth_mode="unknown", chain=None):
         if agent == "codex-cli":
             raise RuntimeError("codex binary missing")
         return [
@@ -195,7 +195,7 @@ def test_adapters_probe_reports_seeded_cache(tmp_path: Path, monkeypatch: pytest
     monkeypatch.setattr(
         model_router, "_model_discovery_cache_path", lambda p: str(db)
     )
-    monkeypatch.setattr(model_router, "_discover_for_agent", lambda a, m="unknown": [])
+    monkeypatch.setattr(model_router, "_discover_for_agent", lambda a, m="unknown", c=None: [])
     # The suite's conftest stubs agent binaries with exit-127 shims, so real
     # auth detection returns 'unknown' here; pin it to match the seed.
     monkeypatch.setattr(
@@ -228,7 +228,7 @@ def test_adapters_probe_fast_with_cache(tmp_path: Path, monkeypatch: pytest.Monk
     monkeypatch.setattr(
         model_router, "_model_discovery_cache_path", lambda p: str(db)
     )
-    monkeypatch.setattr(model_router, "_discover_for_agent", lambda a, m="unknown": [])
+    monkeypatch.setattr(model_router, "_discover_for_agent", lambda a, m="unknown", c=None: [])
 
     runner = CliRunner()
     start = time.perf_counter()

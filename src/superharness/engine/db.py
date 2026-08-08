@@ -17,7 +17,7 @@ from superharness.utils.paths import (
 
 logger = logging.getLogger(__name__)
 
-CURRENT_SCHEMA_VERSION = 37
+CURRENT_SCHEMA_VERSION = 38
 
 # Journal modes SQLite accepts; used to validate the SUPERHARNESS_JOURNAL_MODE
 # override before it is interpolated into a PRAGMA (guards against injection/typos).
@@ -1794,6 +1794,48 @@ def _migration_v37(conn: sqlite3.Connection) -> None:
     )
 
 
+def _migration_v38(conn: sqlite3.Connection) -> None:
+    """model_discovery: per-tier cache keying.
+
+    Follow-up to PLAN-dynamic-model-selection.md: the cache was keyed
+    (project_id, agent, auth_mode) holding ONE model per agent — after a
+    mini-tier probe cached its model, a max-tier request also returned it.
+    Add a ``tier`` column (default 'any') and rebuild the PK to include it.
+
+    For a v37 table, SQLite can't add a column to the PK, so rebuild:
+    create the new table, copy existing rows (tier='any'), drop the old,
+    rename.  The table may not exist (fresh bootstrap creates it with the
+    new schema from ModelDiscoveryCache/_SCHEMA).
+    """
+    if not _table_exists(conn, "model_discovery"):
+        return
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS model_discovery_new (
+            project_id  TEXT NOT NULL,
+            agent       TEXT NOT NULL,
+            tier        TEXT NOT NULL DEFAULT 'any',
+            model_id    TEXT NOT NULL,
+            label       TEXT,
+            source      TEXT NOT NULL DEFAULT 'probe',
+            auth_mode   TEXT NOT NULL DEFAULT 'unknown',
+            probed_at   TEXT NOT NULL,
+            ttl_seconds INTEGER NOT NULL DEFAULT 86400,
+            created_at  TEXT NOT NULL,
+            PRIMARY KEY (project_id, agent, auth_mode, tier)
+        )
+    """)
+    conn.execute("""
+        INSERT OR IGNORE INTO model_discovery_new
+            (project_id, agent, tier, model_id, label, source, auth_mode,
+             probed_at, ttl_seconds, created_at)
+        SELECT project_id, agent, 'any', model_id, label, source, auth_mode,
+               probed_at, ttl_seconds, created_at
+        FROM model_discovery
+    """)
+    conn.execute("DROP TABLE model_discovery")
+    conn.execute("ALTER TABLE model_discovery_new RENAME TO model_discovery")
+
+
 _MIGRATIONS: list[Callable[[sqlite3.Connection], None]] = [
     _migration_v1,
     _migration_v2,
@@ -1832,4 +1874,5 @@ _MIGRATIONS: list[Callable[[sqlite3.Connection], None]] = [
     _migration_v35,
     _migration_v36,
     _migration_v37,
+    _migration_v38,
 ]

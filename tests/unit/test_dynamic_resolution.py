@@ -53,6 +53,7 @@ def test_cache_hit_wins(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None
         str(tmp_path),
         "codex-cli",
         DiscoveredModel("gpt-5-codex-mini", "gpt-5-codex-mini", "probe", "chatgpt", datetime.now(timezone.utc)),
+        tier="mini",
     )
 
     monkeypatch.setattr(model_router, "_model_discovery_cache_path", lambda p: str(db))
@@ -61,7 +62,7 @@ def test_cache_hit_wins(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None
     monkeypatch.setattr(
         model_router,
         "_discover_for_agent",
-        lambda a, m="unknown": calls.append(a) or [],
+        lambda a, m="unknown", c=None: calls.append(a) or [],
     )
     assert resolve_model_for_tier("codex-cli", "mini", str(tmp_path)) == "gpt-5-codex-mini"
     assert calls == []  # no discovery ran
@@ -77,7 +78,7 @@ def test_discovery_success_uses_accept_chain_match(
 
     # Discovery returns a model that is NOT the manifest preferred but IS in
     # the accept chain — the chain match must win.
-    def _fake_discover(agent, auth_mode="unknown"):
+    def _fake_discover(agent, auth_mode="unknown", chain=None):
         return [
             DiscoveredModel("gpt-5-codex-mini", "gpt-5-codex-mini", "probe", auth_mode, datetime.now(timezone.utc))
         ]
@@ -86,9 +87,9 @@ def test_discovery_success_uses_accept_chain_match(
     resolved = resolve_model_for_tier("codex-cli", "mini", str(tmp_path))
     assert resolved == "gpt-5-codex-mini"
 
-    # And it was cached for the next call.
+    # And it was cached for the next call, under the requested tier.
     cache = ModelDiscoveryCache(db)
-    cached = cache.get(str(tmp_path), "codex-cli", "chatgpt")
+    cached = cache.get(str(tmp_path), "codex-cli", "chatgpt", tier="mini")
     assert cached is not None and cached.id == "gpt-5-codex-mini"
 
 
@@ -99,7 +100,7 @@ def test_discovery_failure_falls_back_to_manifest(
     db = tmp_path / "state.sqlite3"
     monkeypatch.setattr(model_router, "_model_discovery_cache_path", lambda p: str(db))
     monkeypatch.setattr(model_router, "detect_auth_mode_for_agent", lambda a: "chatgpt")
-    monkeypatch.setattr(model_router, "_discover_for_agent", lambda a, m="unknown": [])
+    monkeypatch.setattr(model_router, "_discover_for_agent", lambda a, m="unknown", c=None: [])
 
     # Manifest preferred for codex-cli mini is gpt-5.1-codex-mini (legacy
     # schema still in the bundled manifest at this iteration).
@@ -151,13 +152,14 @@ def test_auth_flip_reprobes(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> 
         str(tmp_path),
         "codex-cli",
         DiscoveredModel("gpt-5-codex-mini", "gpt-5-codex-mini", "probe", "chatgpt", datetime.now(timezone.utc)),
+        tier="mini",
     )
 
     # Auth flips to apikey; discovery returns an apikey model.
     monkeypatch.setattr(model_router, "_model_discovery_cache_path", lambda p: str(db))
     monkeypatch.setattr(model_router, "detect_auth_mode_for_agent", lambda a: "apikey")
 
-    def _fake_discover(agent, auth_mode="unknown"):
+    def _fake_discover(agent, auth_mode="unknown", chain=None):
         return [
             DiscoveredModel("gpt-5.1-codex-mini", "gpt-5.1-codex-mini", "probe", auth_mode, datetime.now(timezone.utc))
         ]
@@ -167,11 +169,11 @@ def test_auth_flip_reprobes(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> 
     # apikey mode must NOT return the chatgpt cached model.
     assert resolved == "gpt-5.1-codex-mini"
 
-    # The apikey entry is now cached under its own auth key.
-    cached_apikey = cache.get(str(tmp_path), "codex-cli", "apikey")
+    # The apikey entry is now cached under its own auth key + tier.
+    cached_apikey = cache.get(str(tmp_path), "codex-cli", "apikey", tier="mini")
     assert cached_apikey is not None and cached_apikey.id == "gpt-5.1-codex-mini"
-    # The chatgpt entry is untouched (invalidation is per-agent+mode).
-    cached_chatgpt = cache.get(str(tmp_path), "codex-cli", "chatgpt")
+    # The chatgpt entry is untouched (invalidation is per-agent+mode+tier).
+    cached_chatgpt = cache.get(str(tmp_path), "codex-cli", "chatgpt", tier="mini")
     assert cached_chatgpt is not None and cached_chatgpt.id == "gpt-5-codex-mini"
 
 
@@ -204,7 +206,7 @@ def test_chaos_cache_read_failure_falls_through(
     monkeypatch.setattr(
         model_router,
         "_discover_for_agent",
-        lambda agent, auth_mode="unknown": [
+        lambda agent, auth_mode="unknown", chain=None: [
             DiscoveredModel("m1", "m1", "probe", auth_mode, datetime.now(timezone.utc))
         ],
     )
@@ -235,8 +237,8 @@ def test_chaos_corrupt_cache_skipped(
     conn = sqlite3.connect(db)
     conn.execute(
         "INSERT OR REPLACE INTO model_discovery "
-        "(project_id, agent, model_id, label, source, auth_mode, probed_at, ttl_seconds, created_at) "
-        "VALUES (?, ?, 'bad', 'bad', 'probe', 'chatgpt', 'not-a-date', 3600, ?)",
+        "(project_id, agent, tier, model_id, label, source, auth_mode, probed_at, ttl_seconds, created_at) "
+        "VALUES (?, ?, 'any', 'bad', 'bad', 'probe', 'chatgpt', 'not-a-date', 3600, ?)",
         (str(tmp_path), "codex-cli", datetime.now(timezone.utc).isoformat()),
     )
     conn.commit()
@@ -244,7 +246,7 @@ def test_chaos_corrupt_cache_skipped(
 
     monkeypatch.setattr(model_router, "_model_discovery_cache_path", lambda p: str(db))
     monkeypatch.setattr(model_router, "detect_auth_mode_for_agent", lambda a: "chatgpt")
-    monkeypatch.setattr(model_router, "_discover_for_agent", lambda a, m="unknown": [])
+    monkeypatch.setattr(model_router, "_discover_for_agent", lambda a, m="unknown", c=None: [])
     # Must not raise; falls through to manifest.
     resolved = resolve_model_for_tier("codex-cli", "mini", str(tmp_path))
     assert resolved == "gpt-5.1-codex-mini"

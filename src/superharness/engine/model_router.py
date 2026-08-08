@@ -769,10 +769,23 @@ def _model_discovery_cache_path(project_dir: str | None) -> str | None:
 
 
 def _discover_for_agent(
-    agent: str, auth_mode: str = "unknown"
+    agent: str,
+    auth_mode: str = "unknown",
+    chain: list[str] | None = None,
 ) -> list["DiscoveredModel"]:
-    """Run the harness's discovery for one agent. Never raises."""
+    """Run the harness's discovery for one agent. Never raises.
+
+    When ``chain`` is provided and the agent is probe-based, probe exactly
+    that chain (per-tier discovery — the harness default only probes the
+    mini chain).  Otherwise delegate to the harness's own discovery
+    (native for opencode; mini-chain probe for tier-less callers).
+    """
     try:
+        if chain:
+            from superharness.engine.probe_discovery import PROBE_COMMANDS, ProbeDiscovery
+
+            if agent in PROBE_COMMANDS:
+                return ProbeDiscovery(agent, chain, auth_mode).run()
         from superharness.harnesses import get_harness
 
         harness = get_harness(agent)
@@ -808,16 +821,17 @@ def resolve_model_for_tier(
     if db_path:
         try:
             cache = ModelDiscoveryCache(db_path)
-            cached = cache.get(project_dir, target, auth_mode)
+            cached = cache.get(project_dir, target, auth_mode, tier=tier)
             if cached:
                 return cached.id
         except (sqlite3.Error, OSError, ValueError):
             pass
 
-    # 2. Discovery, accept-chain matched
-    discovered = _discover_for_agent(target, auth_mode)
+    # 2. Discovery, accept-chain matched — probe the TIER's own chain so a
+    #    max request doesn't inherit the mini-tier's cached/probed model.
+    chain = _tier_accept_chain(target, tier, auth_mode)
+    discovered = _discover_for_agent(target, auth_mode, chain)
     if discovered:
-        chain = _tier_accept_chain(target, tier, auth_mode)
         chosen = next(
             (d for d in discovered if d.id in chain),
             None,
@@ -828,7 +842,7 @@ def resolve_model_for_tier(
             if db_path:
                 try:
                     cache = ModelDiscoveryCache(db_path)
-                    cache.set(project_dir, target, chosen)
+                    cache.set(project_dir, target, chosen, tier=tier)
                 except (sqlite3.Error, OSError, ValueError):
                     pass
             return chosen.id
