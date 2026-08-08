@@ -163,7 +163,7 @@ def test_cache_miss_triggers_discovery_then_hit(
     monkeypatch.setattr(
         model_router,
         "_discover_for_agent",
-        lambda agent, auth_mode="unknown": h.discover_models(auth_mode),
+        lambda agent, auth_mode="unknown", chain=None: h.discover_models(auth_mode),
     )
     monkeypatch.setattr(
         model_router, "_model_discovery_cache_path", lambda p: str(tmp_path / "state.sqlite3")
