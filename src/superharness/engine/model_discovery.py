@@ -27,6 +27,7 @@ _SCHEMA = """
 CREATE TABLE IF NOT EXISTS model_discovery (
     project_id  TEXT NOT NULL,
     agent       TEXT NOT NULL,
+    tier        TEXT NOT NULL DEFAULT 'any',
     model_id    TEXT NOT NULL,
     label       TEXT,
     source      TEXT NOT NULL DEFAULT 'probe',
@@ -34,20 +35,20 @@ CREATE TABLE IF NOT EXISTS model_discovery (
     probed_at   TEXT NOT NULL,
     ttl_seconds INTEGER NOT NULL DEFAULT 86400,
     created_at  TEXT NOT NULL,
-    PRIMARY KEY (project_id, agent, auth_mode)
+    PRIMARY KEY (project_id, agent, auth_mode, tier)
 )
 """
 
 _INSERT = """
 INSERT OR REPLACE INTO model_discovery
-    (project_id, agent, model_id, label, source, auth_mode, probed_at, ttl_seconds, created_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    (project_id, agent, tier, model_id, label, source, auth_mode, probed_at, ttl_seconds, created_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 """
 
 _SELECT = """
 SELECT model_id, label, source, auth_mode, probed_at, ttl_seconds
 FROM model_discovery
-WHERE project_id = ? AND agent = ? AND auth_mode = ?
+WHERE project_id = ? AND agent = ? AND auth_mode = ? AND tier = ?
 """
 
 _DELETE = """
@@ -108,10 +109,13 @@ class ModelDiscoveryCache:
         agent: str,
         model: DiscoveredModel,
         ttl_seconds: int = _DEFAULT_TTL_SECONDS,
+        tier: str = "any",
     ) -> None:
-        """Persist a discovered model for (project, agent, auth_mode).
+        """Persist a discovered model for (project, agent, auth_mode, tier).
 
         Upsert — a newer probe for the same key replaces the older entry.
+        ``tier`` defaults to "any" for tier-less callers (adapters --probe,
+        dashboard) and is explicit ("mini"/"standard"/"max") for dispatch.
         """
         now = datetime.now(timezone.utc).isoformat()
         self._conn.execute(
@@ -119,6 +123,7 @@ class ModelDiscoveryCache:
             (
                 project_id,
                 agent,
+                tier,
                 model.id,
                 model.label,
                 model.source,
@@ -131,14 +136,16 @@ class ModelDiscoveryCache:
         self._conn.commit()
 
     def get(
-        self, project_id: str, agent: str, auth_mode: str
+        self, project_id: str, agent: str, auth_mode: str, tier: str = "any"
     ) -> DiscoveredModel | None:
-        """Return the cached model for (project, agent, auth_mode), or None.
+        """Return the cached model for (project, agent, auth_mode, tier), or None.
 
         A row past its TTL reads as a miss (expired entries are lazily
         deleted on read).
         """
-        row = self._conn.execute(_SELECT, (project_id, agent, auth_mode)).fetchone()
+        row = self._conn.execute(
+            _SELECT, (project_id, agent, auth_mode, tier)
+        ).fetchone()
         if row is None:
             return None
 
@@ -146,8 +153,8 @@ class ModelDiscoveryCache:
         ttl = int(row["ttl_seconds"] or _DEFAULT_TTL_SECONDS)
         if probed_at is None or _is_expired(probed_at, ttl):
             self._conn.execute(
-                "DELETE FROM model_discovery WHERE project_id = ? AND agent = ? AND auth_mode = ?",
-                (project_id, agent, auth_mode),
+                "DELETE FROM model_discovery WHERE project_id = ? AND agent = ? AND auth_mode = ? AND tier = ?",
+                (project_id, agent, auth_mode, tier),
             )
             self._conn.commit()
             return None
