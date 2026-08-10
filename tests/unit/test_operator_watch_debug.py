@@ -10,6 +10,8 @@ import hashlib
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 
 def _operator(tmp_path: Path):
     from superharness.engine.operator import Operator
@@ -61,6 +63,7 @@ def test_watch_debug_disabled_keeps_watcher_stdio_quiet(tmp_path, monkeypatch):
     assert popen.call_args.kwargs["stderr"] is subprocess.DEVNULL
 
 
+@pytest.mark.skipif(os.name == "nt", reason="launchd installer is macOS-only")
 def test_install_script_normalizes_watch_debug_environment(tmp_path):
     """The generated plist receives only normalised opt-in debug state."""
     script = (
@@ -100,6 +103,7 @@ def test_install_script_normalizes_watch_debug_environment(tmp_path):
     assert 'launchctl print "gui/${UID_VALUE}/${LABEL}"' in script.read_text()
 
 
+@pytest.mark.skipif(os.name == "nt", reason="launchd installer is macOS-only")
 def test_install_script_uses_requested_runtime_without_checkout_pythonpath(tmp_path):
     """A packaged CLI pins launchd to its own runtime, not a checkout import."""
     script = (
