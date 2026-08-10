@@ -82,18 +82,30 @@ dev = [
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
-addopts = "-ra"
+addopts = "-ra -m \"not stress\""
 # NOT `addopts = "-ra --strict-markers"` (the crossprose form) — on this
 # repo's pytest (9.0.2), a --strict-markers flag embedded in addopts never
 # reaches the override-ini mechanism (see
 # tests/contract/test_pytest_config.py::test_addopts_enables_strict_markers
 # docstring for the root cause) and silently downgrades to a warning. The
 # native ini key below is what actually enforces it.
+#
+# `-m "not stress"` (Iteration 5 of PLAN-prime-agent-adoptions.md): unlike
+# tests/perf/ (which has no exclusion mechanism at all — it is simply part
+# of every default `pytest tests/` run, verified against the actual repo
+# config rather than assumed from the plan), tests/stress/ spawns and
+# SIGKILLs real subprocesses and must never run as part of a routine
+# default invocation. A literal `-m` passed on the command line (e.g.
+# `pytest tests/stress/ -m stress`) replaces this addopts value rather than
+# ANDing with it — verified empirically on this repo's pytest (9.0.2) — so
+# `pytest tests/stress/ -q -m stress` (used by nightly-stress.yml) still
+# selects the stress-marked tests despite this default exclusion.
 strict_markers = true
 markers = [
     "requires_bash: test requires bash shell (skipped on Windows)",
     "regression: guards a specific past bug (cite the CHANGELOG entry or commit in the test docstring)",
     "network: reaches a real external service (LLM provider, remote git). Deselect with -m 'not network'.",
+    "stress: spawns/signals real processes to reproduce operator failure modes. Excluded from the default run by addopts; run via `pytest tests/stress/ -m stress` (nightly in CI).",
 ]
 
 [tool.coverage.run]
