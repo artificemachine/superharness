@@ -24,8 +24,9 @@ logger = logging.getLogger(__name__)
 
 
 def _watcher_status_darwin(project_dir: str) -> tuple[str, str]:
-    slug = re.sub(r"[^A-Za-z0-9]+", "-", os.path.basename(project_dir))
-    label = f"com.superharness.inbox.{slug}"
+    from superharness.engine.launchd_health import operator_label_for_project
+
+    label = operator_label_for_project(project_dir)
     uid = os.getuid() if hasattr(os, "getuid") else 0
     r = subprocess.run(
         ["launchctl", "print", f"gui/{uid}/{label}"], capture_output=True, text=True
@@ -996,15 +997,14 @@ def _auto_fix(project_dir: str, inbox_health: dict, disc_health: dict) -> int:
     # not loaded. Covers the "watcher: not loaded" + "plist file present"
     # divergence that otherwise needs manual intervention. No-op on Linux.
     try:
-        from pathlib import Path
-        import hashlib
-        from superharness.engine.launchd_health import heal as _launchd_heal
-
-        short = hashlib.md5(project_dir.encode()).hexdigest()[:8]
-        operator_label = f"com.superharness.operator.{short}"
-        operator_plist = (
-            Path.home() / "Library" / "LaunchAgents" / f"{operator_label}.plist"
+        from superharness.engine.launchd_health import (
+            heal as _launchd_heal,
+            operator_label_for_project,
+            plist_path_for_label,
         )
+
+        operator_label = operator_label_for_project(project_dir)
+        operator_plist = plist_path_for_label(operator_label)
         report = _launchd_heal(
             operator_plist=operator_plist if operator_plist.is_file() else None,
         )

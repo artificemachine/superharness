@@ -4731,12 +4731,23 @@ def main() -> int:
                         f"dashboard: found stale pid={_other_pid} for project '{project_dir.name}' — clearing and starting fresh"
                     )
                     if not pid_alive(_other_pid):
-                        # PID is dead — remove stale operator-state.json
+                        # PID is dead — remove dashboard ownership only.  The
+                        # guardian may share this state file and still be live.
                         _state_file = (
                             project_dir / ".superharness" / "operator-state.json"
                         )
                         try:
-                            _state_file.unlink(missing_ok=True)
+                            from superharness.engine.operator import _write_operator_state
+
+                            _state = json.loads(_state_file.read_text())
+                            if _state.get("dashboard_pid") == _other_pid:
+                                _state.pop("dashboard_pid", None)
+                                _state.pop("dashboard_port", None)
+                                _state.pop("dashboard_started_at", None)
+                                if _state:
+                                    _write_operator_state(_state_file, _state)
+                                else:
+                                    _state_file.unlink(missing_ok=True)
                         except Exception as e:
                             logger.warning(
                                 "dashboard-ui unexpected error: %s", e, exc_info=True

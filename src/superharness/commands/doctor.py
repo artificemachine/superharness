@@ -16,6 +16,24 @@ logger = logging.getLogger(__name__)
 _REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent.parent.parent
 
 
+def _operator_launchd_status(project_dir: str) -> tuple[str, bool]:
+    """Return the deterministic operator label and whether launchd loaded it."""
+    from superharness.engine.launchd_health import operator_label_for_project
+
+    label = operator_label_for_project(project_dir)
+    uid = os.getuid() if hasattr(os, "getuid") else 0
+    try:
+        result = subprocess.run(
+            ["launchctl", "print", f"gui/{uid}/{label}"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return label, False
+    return label, result.returncode == 0
+
+
 def _is_protected_project_path(project_dir: pathlib.Path, home: pathlib.Path) -> bool:
     """Return whether a project is inside a macOS protected user directory."""
     resolved_project = project_dir.resolve()
@@ -302,12 +320,8 @@ def main(argv: list[str] | None = None) -> None:
     # watcher check
     sys_platform = platform.system()
     if sys_platform == "Darwin":
-        import re
-
-        slug = re.sub(r"[^A-Za-z0-9]+", "-", os.path.basename(project_dir))
-        label = f"com.superharness.inbox.{slug}"
-        r = subprocess.run(["launchctl", "list"], capture_output=True, text=True)
-        if label in r.stdout:
+        label, loaded = _operator_launchd_status(project_dir)
+        if loaded:
             print(f"PASS watcher:{label} loaded")
         elif _operator_running_for_project(project_dir):
             print(

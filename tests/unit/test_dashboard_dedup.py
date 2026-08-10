@@ -100,43 +100,27 @@ class TestFindDashboardProcesses:
 
 
 class TestRunDashboardWritesOperatorState:
-    """_run_dashboard() must write operator-state.json after a successful start
-    so that _is_dashboard_running() Priority 1 check works on the next call."""
+    """Dashboard state must preserve a separately owned operator identity."""
 
-    def test_operator_state_written_after_start(self, tmp_path):
-        """operator-state.json is written with the correct port and pid after dashboard starts."""
+    def test_dashboard_state_write_never_replaces_operator_pid(self, tmp_path):
+        """A standalone dashboard must not impersonate a live operator."""
         harness_dir = tmp_path / ".superharness"
         harness_dir.mkdir()
 
-        # Simulate what _run_dashboard does after reading the url file
-        import json as _json
-        import time as _time2
-        import re as _re
-
-        url = "http://127.0.0.1:8787"
-        pid = 42
-        proj = str(tmp_path)
-
-        port_match = _re.search(r":(\d+)$", url)
-        _port = int(port_match.group(1)) if port_match else None
-        _op_file = os.path.join(proj, ".superharness", "operator-state.json")
-        with open(_op_file, "w") as _f:
-            _json.dump(
-                {
-                    "operator_pid": pid,
-                    "dashboard_port": _port,
-                    "started_at": _time2.time(),
-                    "project": proj,
-                },
-                _f,
-                indent=2,
-            )
-
         op_file = harness_dir / "operator-state.json"
+        op_file.write_text(
+            json.dumps({"operator_pid": 99, "operator_started_at": 1.0})
+        )
+
+        from superharness.commands.dashboard import _write_operator_state
+
+        _write_operator_state(str(tmp_path), pid=42, port=8787, args_list=[])
+
         assert op_file.exists()
         data = json.loads(op_file.read_text())
         assert data["dashboard_port"] == 8787
-        assert data["operator_pid"] == 42
+        assert data["dashboard_pid"] == 42
+        assert data["operator_pid"] == 99
         assert str(tmp_path) in data["project"]
 
     @pytest.mark.skip(

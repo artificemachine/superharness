@@ -813,20 +813,24 @@ def _do_dispatch(
     if rc is not None:
         return rc
 
-    # 2. Resolve
+    # 2. Refresh a worker only after work was actually claimed.  The worker
+    # shares state with the source project but deliberately omits .git.
+    _sync_claimed_worker_copy(ctx)
+
+    # 3. Resolve
     rc = _resolve_execution_context(ctx)
     if rc is not None:
         return rc
 
-    # 3. Transition
+    # 4. Transition
     rc = _transition_to_launched(ctx, lock)
     if rc is not None:
         return rc
 
-    # 4. Prepare
+    # 5. Prepare
     _prepare_launch_context(ctx)
 
-    # 4b. Pre-launch idempotence guard for discussion rounds.
+    # 5b. Pre-launch idempotence guard for discussion rounds.
     # Bug G (docs/bugs/2026-05-11_discuss_dispatch_bugs.md §8): when the
     # watcher restarts, leftover pending inbox items for a round whose
     # YAML is already on disk (or whose discussion is closed) get
@@ -836,10 +840,10 @@ def _do_dispatch(
     if _skip_already_done_discussion_round(ctx):
         return 0
 
-    # 5. Execute
+    # 6. Execute
     _execute_agent(ctx)
 
-    # 6. Cleanup
+    # 7. Cleanup
     if ctx.worktree_dir:
         if _git_worktree_remove(ctx.project_dir, ctx.worktree_dir):
             print(f"Worktree removed: {ctx.worktree_dir}")
@@ -849,11 +853,37 @@ def _do_dispatch(
                 file=sys.stderr,
             )
 
-    # 7. Post-process
+    # 8. Post-process
     if ctx.launcher_rc != 0:
         return _handle_failure(ctx)
 
     return _reconcile_state(ctx)
+
+
+def _sync_claimed_worker_copy(ctx: DispatchContext) -> None:
+    """Refresh a shared-state worker after a real inbox claim.
+
+    ``watcher-worker`` launches the dispatcher from a worker directory whose
+    ``.superharness`` symlink points at the source project.  Synchronizing only
+    here avoids recursive scans during idle watcher cycles while ensuring a
+    newly claimed task sees current source files before execution is resolved.
+    """
+    source_project = os.path.realpath(ctx.item_project)
+    worker_project = os.path.realpath(ctx.project_dir)
+    if source_project == worker_project:
+        return
+    if not os.path.isdir(os.path.join(source_project, ".git")):
+        return
+    if os.path.isdir(os.path.join(worker_project, ".git")):
+        return
+    source_state = os.path.realpath(os.path.join(source_project, ".superharness"))
+    worker_state = os.path.realpath(os.path.join(worker_project, ".superharness"))
+    if source_state != worker_state or not os.path.isdir(source_state):
+        return
+
+    from superharness.engine.platform_runtime import sync_worker_copy
+
+    sync_worker_copy(source_project, worker_project)
 
 
 def _claim_next_item(ctx: DispatchContext) -> int | None:

@@ -517,24 +517,6 @@ def _release_watcher_lock(lock_dir: str) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Worker sync
-# ---------------------------------------------------------------------------
-
-
-def _sync_worker_copy(project_dir: str) -> None:
-    worker_dir = os.path.join(
-        os.path.expanduser("~"), ".superharness-workers", os.path.basename(project_dir)
-    )
-    if not os.path.isdir(worker_dir):
-        return
-    if not os.path.isdir(os.path.join(project_dir, ".git")):
-        return
-    from superharness.engine.platform_runtime import sync_worker_copy
-
-    sync_worker_copy(project_dir, worker_dir)
-
-
-# ---------------------------------------------------------------------------
 # Single cycle
 # ---------------------------------------------------------------------------
 
@@ -2843,9 +2825,6 @@ def _run_scripts(
 
     # SQLite tick: drain dual-write queue + record heartbeat
     _sqlite_tick(project_dir, _now_utc())
-
-    # Worker sync
-    _sync_worker_copy(project_dir)
 
     # Operator commands: process pending approve/reject requests (gateway or retry)
     try:

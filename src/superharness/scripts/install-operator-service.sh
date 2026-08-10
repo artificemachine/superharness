@@ -10,27 +10,27 @@ for arg in "$@"; do
         <string>${arg}</string>"
 done
 
-LABEL="com.superharness.operator.$(echo "$PROJECT_DIR" | md5 | head -c 8)"
+# launchd only receives a normalised boolean, never arbitrary shell/XML data.
+case "$(printf '%s' "${SUPERHARNESS_WATCH_DEBUG:-}" | tr '[:upper:]' '[:lower:]')" in
+    1|true|yes|on) WATCH_DEBUG="1" ;;
+    *) WATCH_DEBUG="0" ;;
+esac
+
+# Keep the launchd label aligned with operator_label_for_project(): hash the
+# resolved path bytes, without echo's trailing newline.
+LABEL="com.superharness.operator.$(printf '%s' "$PROJECT_DIR" | md5 -q | head -c 8)"
 PLIST_PATH="$HOME/Library/LaunchAgents/${LABEL}.plist"
 LOG_DIR="$HOME/Library/Logs/superharness"
+mkdir -p "$(dirname "$PLIST_PATH")"
 mkdir -p "$LOG_DIR"
 
-# Identify the python interpreter.
-# Use `which python3` as the default (persists across pipx reinstalls;
-# pipx venv paths change on every reinstall, breaking KeepAlive operators).
-# Verify the chosen python can import superharness. Fall back through
-# candidates if the default is broken.
-PYTHON_BIN="$(which python3)"
-for candidate in \
-    "$PYTHON_BIN" \
-    "$HOME/.local/pipx/venvs/superharness/bin/python" \
-    "$HOME/.pyenv/shims/python3" \
-    "$HOME/.pyenv/versions/3.11.6/bin/python3"; do
-    if [ -x "$candidate" ] && "$candidate" -c "import superharness" 2>/dev/null; then
-        PYTHON_BIN="$candidate"
-        break
-    fi
-done
+# The CLI supplies its own interpreter so launchd imports the installed wheel
+# that owns the command. Direct script callers fall back to PATH.
+PYTHON_BIN="${SUPERHARNESS_OPERATOR_PYTHON_BIN:-$(command -v python3 || true)}"
+if ! { [ -x "$PYTHON_BIN" ] && "$PYTHON_BIN" -c "import superharness" 2>/dev/null; }; then
+    echo "ERROR: no usable Python interpreter for superharness: ${PYTHON_BIN:-not found}" >&2
+    exit 1
+fi
 
 cat <<EOF > "$PLIST_PATH"
 <?xml version="1.0" encoding="UTF-8"?>
@@ -62,15 +62,25 @@ cat <<EOF > "$PLIST_PATH"
     <string>${LOG_DIR}/${LABEL}.err.log</string>
     <key>EnvironmentVariables</key>
     <dict>
-        <key>PYTHONPATH</key>
-        <string>${PROJECT_DIR}/src</string>
         <key>SUPERHARNESS_FORCE_NO_SDK</key>
         <string>1</string>
+        <key>SUPERHARNESS_WATCH_DEBUG</key>
+        <string>${WATCH_DEBUG}</string>
     </dict>
 </dict>
 </plist>
 EOF
 
-launchctl unload "$PLIST_PATH" 2>/dev/null || true
-launchctl load "$PLIST_PATH"
+UID_VALUE="$(id -u)"
+launchctl bootout "gui/${UID_VALUE}/${LABEL}" 2>/dev/null || true
+# bootout is asynchronous on recent macOS releases.  Do not race a new
+# bootstrap against the old launchd job still being torn down.
+for _ in {1..20}; do
+    if ! launchctl print "gui/${UID_VALUE}/${LABEL}" >/dev/null 2>&1; then
+        break
+    fi
+    sleep 0.1
+done
+launchctl enable "gui/${UID_VALUE}/${LABEL}" 2>/dev/null || true
+launchctl bootstrap "gui/${UID_VALUE}" "$PLIST_PATH"
 echo "🛡️  Superharness Guardian re-installed: ${LABEL}"

@@ -46,6 +46,30 @@ _ROOT = os.path.dirname(
 )  # repo root (editable installs / shux update)
 
 
+def _resume_installed_operator(project_dir, *, no_daemon: bool) -> bool:
+    """Resume an installed launchd operator for an explicit ``operator start``.
+
+    The launchd program invokes this command with ``--no-daemon``.  That
+    child must execute the monitor directly rather than bootstrapping itself.
+    """
+    if no_daemon:
+        return False
+    from superharness.engine.launchd_health import (
+        bootstrap,
+        enable,
+        operator_label_for_project,
+        plist_path_for_label,
+    )
+
+    label = operator_label_for_project(project_dir)
+    plist = plist_path_for_label(label)
+    if not plist.is_file():
+        return False
+    if not enable(label):
+        return False
+    return bootstrap(plist)
+
+
 def _inject_quickstart(help_text: str) -> str:
     """Insert onboarding quickstart before the Commands section.
 
@@ -1061,9 +1085,27 @@ def operator_start(project, port, no_open, use_dashboard, no_daemon):
     By default, daemonizes via fork+setsid so the watcher survives the
     invoking shell session. Use --no-daemon for foreground debugging.
     """
+    from pathlib import Path
     from superharness.engine.operator import Operator
 
-    op = Operator(project)
+    project_dir = Path(project).resolve()
+    if use_dashboard:
+        from superharness.engine.launchd_health import (
+            operator_label_for_project,
+            plist_path_for_label,
+        )
+
+        installed_plist = plist_path_for_label(operator_label_for_project(project_dir))
+        if installed_plist.is_file():
+            raise click.UsageError(
+                "Installed operator service cannot apply --dashboard; "
+                "run 'shux operator install --dashboard' to update it."
+            )
+    if _resume_installed_operator(project_dir, no_daemon=no_daemon):
+        click.echo("operator: enabled and bootstrapped installed launchd service")
+        return
+
+    op = Operator(project_dir)
     try:
         op.start_stack(
             dashboard_port=port, no_open=no_open, use_dashboard=use_dashboard
@@ -1151,7 +1193,6 @@ def operator_install(project, install_all, force, use_dashboard, watchdog):
     agent use: agents must never run --all unattended.
     """
     from pathlib import Path
-    import hashlib
     import subprocess
 
     def _install_one(project_dir: Path) -> str:
@@ -1180,14 +1221,18 @@ def operator_install(project, install_all, force, use_dashboard, watchdog):
         cmd = ["bash", str(script_path), str(project_dir)]
         if use_dashboard:
             cmd.append("--dashboard")
-        subprocess.run(cmd, check=True)
+        install_env = os.environ.copy()
+        install_env["SUPERHARNESS_OPERATOR_PYTHON_BIN"] = sys.executable
+        subprocess.run(cmd, check=True, env=install_env)
 
         # 3. Self-heal: verify the operator plist is loaded.
-        short = hashlib.md5(str(project_dir).encode()).hexdigest()[:8]
-        operator_label = f"com.superharness.operator.{short}"
-        operator_plist = (
-            Path.home() / "Library" / "LaunchAgents" / f"{operator_label}.plist"
+        from superharness.engine.launchd_health import (
+            operator_label_for_project,
+            plist_path_for_label,
         )
+
+        operator_label = operator_label_for_project(project_dir)
+        operator_plist = plist_path_for_label(operator_label)
         post = _heal(operator_plist=operator_plist)
         if post.fixed_count():
             click.echo(f"  [{project_dir.name}] {post.summary()}")
@@ -1288,8 +1333,12 @@ def operator_heal(project, auto_discover, quiet):
     (Fix: BUGREPORT watcher-silent-death-no-recovery, root cause #4.)
     """
     from pathlib import Path
-    import hashlib
-    from superharness.engine.launchd_health import heal as _heal, heal_all as _heal_all
+    from superharness.engine.launchd_health import (
+        heal as _heal,
+        heal_all as _heal_all,
+        operator_label_for_project,
+        plist_path_for_label,
+    )
 
     if auto_discover:
         reports = _heal_all()
@@ -1309,11 +1358,8 @@ def operator_heal(project, auto_discover, quiet):
         return
 
     project_dir = Path(project).resolve()
-    short = hashlib.md5(str(project_dir).encode()).hexdigest()[:8]
-    operator_label = f"com.superharness.operator.{short}"
-    operator_plist = (
-        Path.home() / "Library" / "LaunchAgents" / f"{operator_label}.plist"
-    )
+    operator_label = operator_label_for_project(project_dir)
+    operator_plist = plist_path_for_label(operator_label)
 
     report = _heal(operator_plist=operator_plist if operator_plist.is_file() else None)
     if report.fixed_count() == 0 and quiet:
@@ -1324,28 +1370,66 @@ def operator_heal(project, auto_discover, quiet):
 @operator.command(name="stop")
 @click.option("--project", "-p", default=".", help="Project directory")
 def operator_stop(project):
-    """Stop a running operator for this project (uses operator-state.json PID)."""
-    import json
+    """Persistently stop an installed operator, with a verified PID fallback."""
     from pathlib import Path
+    from superharness.engine.launchd_health import (
+        bootout,
+        disable,
+        operator_label_for_project,
+        operator_labels_for_project,
+        plist_path_for_label,
+    )
+    from superharness.engine.operator import _read_operator_state, _write_operator_state
 
-    state_file = Path(project).resolve() / ".superharness" / "operator-state.json"
-    if not state_file.exists():
-        click.echo("No running operator found (operator-state.json missing).")
-        return
+    project_dir = Path(project).resolve()
+    state_file = project_dir / ".superharness" / "operator-state.json"
+    label = operator_label_for_project(project_dir)
+    plist = plist_path_for_label(label)
     try:
-        with open(state_file) as f:
-            state = json.load(f)
+        labels = operator_labels_for_project(project_dir)
+        if not labels and plist.is_file():
+            labels = [label]
+        if labels:
+            for installed_label in labels:
+                disable(installed_label)
+                bootout(installed_label)
+            click.echo(
+                "Disabled and booted out installed operator(s): " + ", ".join(labels)
+            )
+            state = _read_operator_state(state_file)
+            state.pop("operator_pid", None)
+            state.pop("operator_started_at", None)
+            if state:
+                _write_operator_state(state_file, state)
+            else:
+                state_file.unlink(missing_ok=True)
+            return
+
+        if not state_file.exists():
+            click.echo("No installed operator or operator-state.json found.")
+            return
+        state = _read_operator_state(state_file)
         pid = int(state.get("operator_pid", 0))
         if pid:
-            try:
+            command = subprocess.run(
+                ["ps", "-p", str(pid), "-o", "command="],
+                capture_output=True,
+                text=True,
+                check=False,
+            ).stdout or ""
+            expected = "superharness.cli operator start"
+            if expected in command and str(project_dir) in command:
                 import signal as _signal
-
                 os.kill(pid, _signal.SIGTERM)
                 click.echo(f"Sent SIGTERM to operator (pid={pid}).")
-            except ProcessLookupError:
-                click.echo(f"Operator pid={pid} already gone.")
-        state_file.unlink(missing_ok=True)
-        click.echo("operator-state.json removed.")
+            else:
+                click.echo(f"Refusing to signal unverified operator PID {pid}.")
+        state.pop("operator_pid", None)
+        state.pop("operator_started_at", None)
+        if state:
+            _write_operator_state(state_file, state)
+        else:
+            state_file.unlink(missing_ok=True)
     except Exception as e:
         click.echo(f"Error stopping operator: {e}", err=True)
 

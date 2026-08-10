@@ -8,6 +8,7 @@ import signal
 import socket
 import subprocess
 import sys
+import tempfile
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -15,6 +16,7 @@ from typing import Any
 
 
 from superharness.engine.errors import OperationError
+from superharness.engine.platform_runtime import _SYNC_EXCLUDES, watch_debug_enabled
 from superharness.engine.process import pid_alive, signal_process_group
 
 import logging
@@ -22,6 +24,39 @@ import logging
 logger = logging.getLogger(__name__)
 
 _OPERATOR_STATE_FILE = ".superharness/operator-state.json"
+
+
+def _log_watch_debug(**fields: object) -> None:
+    """Write opt-in watcher lifecycle details to the operator log."""
+    if not watch_debug_enabled():
+        return
+    details = " ".join(f"{key}={value}" for key, value in fields.items())
+    logger.warning("[watch-debug] %s", details)
+
+
+def _read_operator_state(path: Path) -> dict[str, Any]:
+    try:
+        with path.open(encoding="utf-8") as state_file:
+            state = json.load(state_file)
+    except (OSError, ValueError, TypeError):
+        return {}
+    return state if isinstance(state, dict) else {}
+
+
+def _write_operator_state(path: Path, state: dict[str, Any]) -> None:
+    """Atomically update shared runtime state without partial JSON writes."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp_name = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as state_file:
+            json.dump(state, state_file, indent=2)
+        os.replace(tmp_name, path)
+    except (OSError, TypeError, ValueError):
+        try:
+            os.unlink(tmp_name)
+        except OSError:
+            pass
+        raise
 
 
 @dataclass
@@ -85,16 +120,20 @@ class Operator:
         op_file = self.project_dir / _OPERATOR_STATE_FILE
         if not op_file.exists():
             return False
+        state = _read_operator_state(op_file)
         try:
-            with open(op_file) as f:
-                state = json.load(f)
             pid = int(state.get("operator_pid", 0))
-            if pid and self._is_pid_alive(pid):
-                return True
-            # Stale file — dead PID; remove so the fresh start writes cleanly.
-            op_file.unlink(missing_ok=True)
-        except Exception:
-            pass
+        except (TypeError, ValueError):
+            pid = 0
+        if pid and self._is_pid_alive(pid):
+            return True
+        if pid:
+            state.pop("operator_pid", None)
+            state.pop("operator_started_at", None)
+            if state:
+                _write_operator_state(op_file, state)
+            else:
+                op_file.unlink(missing_ok=True)
         return False
 
     def _ensure_db_initialized(self):
@@ -242,15 +281,23 @@ class Operator:
     def _write_daemon_info(self, port: int):
         """Record the active operator/dashboard state to disk."""
         self._dashboard_port = port  # track for reuse on restart
-        info = {
-            "operator_pid": os.getpid(),
-            "dashboard_port": port,
-            "started_at": time.time(),
-            "project": str(self.project_dir),
-        }
         op_file = self.project_dir / _OPERATOR_STATE_FILE
-        with open(op_file, "w") as f:
-            json.dump(info, f, indent=2)
+        info = _read_operator_state(op_file)
+        now = time.time()
+        info.update(
+            {
+                "operator_pid": os.getpid(),
+                "operator_started_at": now,
+                "project": str(self.project_dir),
+            }
+        )
+        if self._use_dashboard:
+            info["dashboard_port"] = port
+            dashboard = self.processes.get("dashboard")
+            if dashboard is not None:
+                info["dashboard_pid"] = dashboard.pid
+                info["dashboard_started_at"] = now
+        _write_operator_state(op_file, info)
 
     def _spawn_watcher(self):
         """Launch the background watcher (one-shot cycle)."""
@@ -265,12 +312,32 @@ class Operator:
             "--non-interactive",
         ]
         self._watcher_last_spawn = time.time()
-        self.processes["watcher"] = subprocess.Popen(
+        debug_enabled = watch_debug_enabled()
+        watcher = subprocess.Popen(
             cmd,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
+            stdout=None if debug_enabled else subprocess.DEVNULL,
+            stderr=None if debug_enabled else subprocess.DEVNULL,
             start_new_session=True,
         )
+        self.processes["watcher"] = watcher
+        _log_watch_debug(**self._watch_debug_fields("start", watcher.pid))
+
+    def _watch_debug_fields(
+        self, lifecycle: str, child_pid: int, **extra: object
+    ) -> dict[str, object]:
+        """Return stable, comparable attribution fields for one watcher event."""
+        fields: dict[str, object] = {
+            "lifecycle": lifecycle,
+            "component": "operator-watcher",
+            "watched_root": self.project_dir,
+            "mode": "poll",
+            "recursive": False,
+            "excludes": ",".join(sorted(_SYNC_EXCLUDES)),
+            "pid": os.getpid(),
+            "child_pid": child_pid,
+        }
+        fields.update(extra)
+        return fields
 
     def _spawn_dashboard(self, port: int, no_open: bool = False):
         """Launch the dashboard UI."""
@@ -345,6 +412,12 @@ class Operator:
                             continue
 
                         if proc.poll() is not None:
+                            if name == "watcher":
+                                _log_watch_debug(
+                                    **self._watch_debug_fields(
+                                        "exit", proc.pid, exit_code=proc.returncode
+                                    )
+                                )
                             trace_event(
                                 self.project_dir,
                                 "process_recovery",
@@ -364,6 +437,10 @@ class Operator:
                             # Fix: BUG-2026-06-04-operator-orphans-pytest-swap-storm
                             # (watcher was being circuit-broken for normal exits)
                             if proc.returncode == 0:
+                                if name == "watcher":
+                                    _log_watch_debug(
+                                        **self._watch_debug_fields("cleanup", proc.pid)
+                                    )
                                 self._kill_process(proc, name)
                                 if name == "watcher":
                                     # Normal end of a one-shot watcher cycle.
@@ -421,6 +498,10 @@ class Operator:
                             # Kill old process before replacing — prevents
                             # orphan accumulation when subprocesses are slow
                             # to exit (DB connections, HTTP keep-alive, etc.)
+                            if name == "watcher":
+                                _log_watch_debug(
+                                    **self._watch_debug_fields("cleanup", proc.pid)
+                                )
                             self._kill_process(proc, name)
                             if name == "watcher":
                                 self._spawn_watcher()
