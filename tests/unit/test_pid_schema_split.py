@@ -8,6 +8,7 @@ Neither should touch the old daemon.pid.json.
 from __future__ import annotations
 
 import json
+from unittest.mock import patch
 
 
 def test_daemon_state_file_constant():
@@ -82,3 +83,45 @@ def test_daemon_reads_own_state_correctly(tmp_path):
 
     state = _read_state(tmp_path)
     assert state.get("pid") == 12345
+
+
+def test_operator_state_write_preserves_dashboard_pid(tmp_path):
+    """Operator state writes keep a running standalone dashboard discoverable."""
+    harness = tmp_path / ".superharness"
+    harness.mkdir()
+    state_file = harness / "operator-state.json"
+    state_file.write_text(
+        json.dumps(
+            {
+                "dashboard_pid": 42,
+                "dashboard_port": 9123,
+                "dashboard_started_at": 1.0,
+            }
+        )
+    )
+
+    from superharness.engine.operator import Operator
+
+    operator = Operator(tmp_path)
+    with patch("superharness.engine.operator.os.getpid", return_value=99):
+        operator._write_daemon_info(8787)
+
+    state = json.loads(state_file.read_text())
+    assert state["operator_pid"] == 99
+    assert state["dashboard_pid"] == 42
+    assert state["dashboard_port"] == 9123
+
+
+def test_dashboard_only_state_does_not_block_operator_singleton(tmp_path):
+    """Dashboard-only state is not stale operator state and must remain intact."""
+    harness = tmp_path / ".superharness"
+    harness.mkdir()
+    state_file = harness / "operator-state.json"
+    state_file.write_text(json.dumps({"dashboard_pid": 42, "dashboard_port": 8787}))
+
+    from superharness.engine.operator import Operator
+
+    operator = Operator(tmp_path)
+
+    assert operator._check_singleton() is False
+    assert json.loads(state_file.read_text())["dashboard_pid"] == 42

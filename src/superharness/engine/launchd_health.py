@@ -20,21 +20,16 @@ from __future__ import annotations
 import logging
 import os
 import platform
+import plistlib
+import re
 import subprocess
 import sys
+import hashlib
 from dataclasses import dataclass
 from pathlib import Path
 
 _log = logging.getLogger(__name__)
 
-
-# Service-label prefixes the current superharness ships. Anything else
-# under com.superharness.* is treated as a stale prior-version artifact
-# and bootout'd during cleanup.
-CURRENT_LABEL_PREFIXES: tuple[str, ...] = (
-    "com.superharness.operator.",
-    "com.superharness.operator-watchdog.",
-)
 
 # Patterns that should always be removed (legacy from pre-1.56 layouts).
 STALE_LABEL_PATTERNS: tuple[str, ...] = (
@@ -116,6 +111,44 @@ def plist_path_for_label(label: str) -> Path:
     return _launch_agents_dir() / f"{label}.plist"
 
 
+def operator_label_for_project(project_dir: str | Path) -> str:
+    """Return the stable launchd label assigned to one project."""
+    project = Path(project_dir).resolve()
+    short = hashlib.md5(str(project).encode()).hexdigest()[:8]
+    return f"com.superharness.operator.{short}"
+
+
+def operator_labels_for_project(project_dir: str | Path) -> list[str]:
+    """Find installed operator labels whose command targets *project_dir*.
+
+    This supports label-scheme migrations: a persistent service may predate
+    the current deterministic hash, but its plist still declares the project
+    argument that gives it unambiguous ownership.
+    """
+    project = Path(project_dir).resolve()
+    labels: list[str] = []
+    for plist_path in _launch_agents_dir().glob("com.superharness.operator.*.plist"):
+        if plist_path.stem == watchdog_label():
+            continue
+        try:
+            with plist_path.open("rb") as plist_file:
+                arguments = plistlib.load(plist_file).get("ProgramArguments", [])
+        except (OSError, ValueError, TypeError, plistlib.InvalidFileException):
+            continue
+        if not isinstance(arguments, list):
+            continue
+        for index, argument in enumerate(arguments[:-1]):
+            if argument == "--project":
+                try:
+                    target = Path(str(arguments[index + 1])).resolve()
+                except (OSError, TypeError, ValueError):
+                    break
+                if target == project:
+                    labels.append(plist_path.stem)
+                break
+    return sorted(labels)
+
+
 def find_zombies() -> list[LaunchdEntry]:
     """Services loaded in launchd whose plist file is missing on disk."""
     return [
@@ -179,6 +212,41 @@ def bootout(label: str) -> bool:
         return False
     # bootout returns non-zero for "service not loaded" which we treat as success.
     return True
+
+
+def disable(label: str) -> bool:
+    """Prevent launchd from relaunching a service until explicitly enabled."""
+    if not _is_macos():
+        return False
+    try:
+        result = _run(["launchctl", "disable", f"gui/{_uid()}/{label}"])
+    except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
+        return False
+    return result.returncode == 0
+
+
+def enable(label: str) -> bool:
+    """Clear a launchd disabled override for an explicitly started service."""
+    if not _is_macos():
+        return False
+    try:
+        result = _run(["launchctl", "enable", f"gui/{_uid()}/{label}"])
+    except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
+        return False
+    return result.returncode == 0
+
+
+def is_disabled(label: str) -> bool:
+    """Return whether launchd has an explicit disabled override for *label*."""
+    if not _is_macos():
+        return False
+    try:
+        result = _run(["launchctl", "print-disabled", f"gui/{_uid()}"])
+    except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
+        return False
+    if result.returncode != 0:
+        return False
+    return bool(re.search(rf'"{re.escape(label)}"\\s*=>\\s*true', result.stdout))
 
 
 def bootstrap(plist_path: Path) -> bool:
@@ -281,9 +349,11 @@ def heal(
             except OSError:
                 pass
 
-    # 4. Bootstrap the operator plist
+    # 4. Bootstrap the operator plist, unless the user explicitly stopped it.
     if operator_plist is not None and operator_plist.is_file():
-        if not is_loaded(operator_plist.stem):
+        if is_disabled(operator_plist.stem):
+            report.skipped_reason = "operator disabled by user"
+        elif not is_loaded(operator_plist.stem):
             if bootstrap(operator_plist):
                 report.bootstrapped.append(operator_plist.stem)
 
@@ -308,7 +378,8 @@ def write_watchdog_plist(
 ) -> Path:
     """Install a watchdog launchd agent that runs `shux operator heal`
     every N seconds. Default 300s = 5 min. The watchdog itself has
-    KeepAlive=true so launchd will restart it if it crashes.
+    failure-only KeepAlive so launchd restarts it after a crash without
+    respawning each successful one-shot invocation.
 
     The watchdog is what catches the pathological case the user hit:
     operator plist on disk + not loaded → no auto-restart possible
@@ -350,7 +421,10 @@ def _render_watchdog_plist(
     <key>RunAtLoad</key>
     <true/>
     <key>KeepAlive</key>
-    <true/>
+    <dict>
+        <key>SuccessfulExit</key>
+        <false/>
+    </dict>
     <key>StartInterval</key>
     <integer>{interval}</integer>
     <key>StandardOutPath</key>
@@ -467,18 +541,13 @@ def heal_all(search_roots: list[Path] | None = None) -> list[HealReport]:
     Each project's operator plist is resolved via its deterministic
     label hash. Returns a list of per-project HealReports.
     """
-    import hashlib
-
     projects = find_all_superharness_projects(search_roots=search_roots)
     reports: list[HealReport] = []
     any_fixes = False
 
     for project_dir in projects:
-        short = hashlib.md5(str(project_dir).encode()).hexdigest()[:8]
-        operator_label = f"com.superharness.operator.{short}"
-        operator_plist = (
-            Path.home() / "Library" / "LaunchAgents" / f"{operator_label}.plist"
-        )
+        operator_label = operator_label_for_project(project_dir)
+        operator_plist = plist_path_for_label(operator_label)
 
         report = heal(
             operator_plist=operator_plist if operator_plist.is_file() else None

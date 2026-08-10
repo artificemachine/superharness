@@ -8,6 +8,7 @@ path comes from the manual smoke test in operator install.
 from __future__ import annotations
 
 import subprocess
+import plistlib
 from pathlib import Path
 from unittest import mock
 
@@ -277,10 +278,34 @@ class TestWatchdogPlist:
         assert "<string>--auto-discover</string>" in content
         assert "<string>--quiet</string>" in content
         assert "<integer>300</integer>" in content
-        # KeepAlive=true so launchd restarts the watchdog if it crashes.
-        assert "<key>KeepAlive</key>\n    <true/>" in content
+        document = plistlib.loads(content.encode())
+        assert document["KeepAlive"] == {"SuccessfulExit": False}
         assert "<key>RunAtLoad</key>\n    <true/>" in content
         assert "<key>WorkingDirectory</key>" in content
+
+    def test_watchdog_keepalive_restarts_only_after_failure(
+        self, force_macos, isolated_launch_agents
+    ):
+        """A successful one-shot heal must wait for StartInterval."""
+        from superharness.engine import launchd_health
+
+        plist = launchd_health.write_watchdog_plist(interval_seconds=300)
+        document = plistlib.loads(plist.read_bytes())
+
+        assert document["KeepAlive"] == {"SuccessfulExit": False}
+
+    def test_watchdog_schedule_retains_configured_interval(
+        self, force_macos, isolated_launch_agents
+    ):
+        """Failure-only KeepAlive must not remove periodic scheduling."""
+        from superharness.engine import launchd_health
+
+        plist = launchd_health.write_watchdog_plist(interval_seconds=300)
+        document = plistlib.loads(plist.read_bytes())
+
+        assert document["RunAtLoad"] is True
+        assert document["StartInterval"] == 300
+        assert document["KeepAlive"] == {"SuccessfulExit": False}
 
     def test_watchdog_uses_custom_interval(self, force_macos, isolated_launch_agents):
         from superharness.engine import launchd_health
