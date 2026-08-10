@@ -632,7 +632,7 @@ def _launch_agent(
     log.info("launch_agent target=%s prompt_len=%d", target, len(prompt))
     log.debug("prompt redacted=%s", redact(prompt[:300]))
 
-    # Harness registry (docs/PLAN-steal-omnigent.md iterations 5-6): every
+    # Harness registry (docs/PLAN-adopt-omnigent.md iterations 5-6): every
     # agent's invocation is built by its Harness adapter, proven
     # byte-identical to the legacy inline construction by
     # tests/unit/test_harness_registry.py and test_harness_adapters.py.

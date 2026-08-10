@@ -1,4 +1,4 @@
-"""OpenCode harness adapter. See docs/PLAN-steal-omnigent.md iteration 6.
+"""OpenCode harness adapter. See docs/PLAN-adopt-omnigent.md iteration 6.
 
 Iteration 2 of PLAN-dynamic-model-selection.md adds native model discovery:
 ``opencode models`` prints one ``provider/model-id`` per line; we parse that

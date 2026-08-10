@@ -3031,7 +3031,7 @@ def _run_scripts(
         _log_watcher_error(project_dir, "watcher", str(e))
 
     # Transcript tailing for live dispatch progress (feature-flagged off by
-    # default; docs/PLAN-steal-omnigent.md iteration 7). No-op, no DB
+    # default; docs/PLAN-adopt-omnigent.md iteration 7). No-op, no DB
     # connection opened, unless profile.yaml sets transcript_tail: true.
     try:
         _run_transcript_tail_if_enabled(project_dir)
@@ -3621,7 +3621,7 @@ def _run_transcript_tail_if_enabled(project_dir: str) -> None:
     byte offset, emitting telemetry events (engine/transcript_tail.py).
 
     Feature-flagged OFF by default via profile.yaml `transcript_tail: true`
-    (docs/PLAN-steal-omnigent.md iteration 7 default; iteration 8 flips the
+    (docs/PLAN-adopt-omnigent.md iteration 7 default; iteration 8 flips the
     project default on). When disabled/unset, this is a true no-op — no DB
     connection is even opened — so existing watcher behavior and tests are
     byte-identical. Never raises.

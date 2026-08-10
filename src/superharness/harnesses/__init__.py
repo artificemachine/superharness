@@ -1,6 +1,6 @@
 """Harness registry: name -> Harness adapter.
 
-See docs/PLAN-steal-omnigent.md iterations 5-6.
+See docs/PLAN-adopt-omnigent.md iterations 5-6.
 
 Resolved ambiguity (see the executor's final report for iteration 5):
 the plan assumed inbox_dispatch.py builds per-agent CLI argv directly and

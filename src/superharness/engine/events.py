@@ -15,7 +15,7 @@ directed tests) call configure() once; callers that don't care (most of the
 existing test suite, which drives state_writer.set_task_status heavily)
 never spawn an emitter thread at all.
 
-See docs/PLAN-steal-omnigent.md iteration 4.
+See docs/PLAN-adopt-omnigent.md iteration 4.
 """
 
 from __future__ import annotations

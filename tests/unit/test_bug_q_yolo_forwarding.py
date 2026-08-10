@@ -35,7 +35,7 @@ class TestStructural_YoloInLaunchAgent:
     def test_launch_agent_appends_yolo_to_launch_args(self):
         """`--yolo` must be added to argv when yolo=True.
 
-        Updated by docs/PLAN-steal-omnigent.md iteration 6: `_launch_agent`
+        Updated by docs/PLAN-adopt-omnigent.md iteration 6: `_launch_agent`
         now delegates argv construction to the harness registry
         (superharness.harnesses) instead of building it inline, so the
         `if yolo: argv.append("--yolo")` shape now lives in

@@ -1,7 +1,7 @@
 """Tests for the codex/gemini/opencode harness adapters + full dispatch
 switchover through the registry.
 
-See docs/PLAN-steal-omnigent.md iteration 6.
+See docs/PLAN-adopt-omnigent.md iteration 6.
 
 Golden values captured from the LIVE legacy code path (delegate.py::
 _launch_agent with platform_runtime.launch_agent mocked to record argv/cwd

@@ -5,7 +5,7 @@ Distinct from (and additive to) engine/event_stream.py, which appends
 free-form JSONL events to `.superharness/events.jsonl`. This module is the
 typed, queryable SQLite counterpart.
 
-See docs/PLAN-steal-omnigent.md iteration 4.
+See docs/PLAN-adopt-omnigent.md iteration 4.
 """
 
 from __future__ import annotations

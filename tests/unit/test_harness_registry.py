@@ -1,8 +1,8 @@
 """Tests for the Harness protocol + registry + Claude adapter.
 
-See docs/PLAN-steal-omnigent.md iteration 5.
+See docs/PLAN-adopt-omnigent.md iteration 5.
 
-Resolved ambiguity (see docs/PLAN-steal-omnigent.md executor report):
+Resolved ambiguity (see docs/PLAN-adopt-omnigent.md executor report):
 inbox_dispatch.py never builds per-agent CLI argv directly — it always
 shells out generically to `python -m superharness.commands.delegate --to
 <agent> ...`. The actual per-agent invocation assembly (agent binary via a

@@ -42,7 +42,7 @@ This convergence is the headline from the intel note. It does **not** require an
 
 ---
 
-## What the LTX-2 skill does that superharness doesn't (steal candidates)
+## What the LTX-2 skill does that superharness doesn't (adoption candidates)
 
 These are **inner-loop guardrails** — patterns for how an agent executes a single complex task. superharness gates lifecycle *boundaries*; it says little about behavior *inside* an `in_progress` task. Candidates to encode as agent-instruction defaults or `.superharness/rules/*.md`:
 
@@ -76,12 +76,12 @@ superharness  → OUTER loop: which task, who runs it, when, gates, did it pass,
 LTX-2 skill   → INNER loop: how to execute ONE complex task as well-gated phases
 ```
 
-You could literally run the LTX-2 `train-model` skill *as the body of* a superharness task: superharness owns `plan_proposed → … → done` and the timer reconciler; the skill owns the in-task phase discipline. The steal list above (1–5) is exactly the inner-loop guardrail vocabulary superharness currently leaves to agent discretion.
+You could literally run the LTX-2 `train-model` skill *as the body of* a superharness task: superharness owns `plan_proposed → … → done` and the timer reconciler; the skill owns the in-task phase discipline. The adoption list above (1–5) is exactly the inner-loop guardrail vocabulary superharness currently leaves to agent discretion.
 
 ---
 
 ## Recommendation
 
 - **No lifecycle change.** The convergence is validation, not a gap.
-- **Optional, low-cost:** capture steal-candidates 1–3 (spot-check-before-batch, no-fabricated-progress, surface-dropped-items) as `.superharness/rules/*.md` entries or as default agent-instruction lines — these are inner-loop guardrails superharness doesn't currently express and they cost nothing to state.
+- **Optional, low-cost:** capture adoption candidates 1–3 (spot-check-before-batch, no-fabricated-progress, surface-dropped-items) as `.superharness/rules/*.md` entries or as default agent-instruction lines — these are inner-loop guardrails superharness doesn't currently express and they cost nothing to state.
 - **Skip** copying the skill's phase-file structure into the lifecycle itself. superharness's enforced transition table is the stronger mechanism; phase files are a per-task playbook concern, which is what `.superharness/skills/` (the loader, already present) is for if you ever want it.
