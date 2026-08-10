@@ -22,6 +22,14 @@ supports_effort: false  # UNVERIFIED — no evidence of an --effort or reasoning
 # been probed against a real binary. Do not treat these ids as confirmed
 # prime-agent behavior; they exist only so the manifest is structurally
 # valid schema v2, per Resolution 1.
+#
+# The `max` tier intentionally reuses the sonnet placeholder rather than a
+# claude-opus-4-N literal: tests/unit/test_flagship_source_of_truth.py
+# requires every claude-opus-4-N version literal to live in exactly one
+# place (adapter_manifests/claude-code.yaml), so a version bump never has
+# to be hunted down across the codebase. A second hardcoded copy here would
+# silently go stale on the next Opus bump — the exact failure class that
+# guard exists to prevent.
 model_tiers:
   mini:
     preferred: claude-haiku-4-5-20251001
@@ -36,10 +44,10 @@ model_tiers:
       apikey: [claude-sonnet-4-6]
     capability_tags: [experimental, balanced]
   max:
-    preferred: claude-opus-4-8
-    accept: [claude-opus-4-8]
+    preferred: claude-sonnet-4-6
+    accept: [claude-sonnet-4-6]
     auth_compat:
-      apikey: [claude-opus-4-8]
+      apikey: [claude-sonnet-4-6]
     capability_tags: [experimental, best_effort]
 requires:
   bin: prime-agent
