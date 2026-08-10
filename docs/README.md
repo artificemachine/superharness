@@ -1,6 +1,6 @@
 # superharness — Documentation Index
 
-> Updated 2026-07-22. Run `docs-organize` skill to audit. 18 internal working docs (`PLAN-*`/`AUDIT-*`/`bulletproof-report-*` matching `.gitignore`) untracked from the public tree; 6 one-off analysis docs (`ANALYSIS-*`/`CLASSIFY-*`/`COMPARE-*`/`DESIGN-*`/`IMPLEMENTATION-*`/`STEAL-*`) moved to `archive/`. The 4 prior-art analyses cited from the root README's "Prior art" section stay tracked. A follow-up `/bulletproof` pass the same day found 13 more dead links to always-gitignored, never-tracked working docs (`PLAN-*`/`AUDIT-*`/`bulletproof-report-2026-06-08.md`/`PYPI_SETUP.md`) that the first pass hadn't checked; those rows are removed too.
+> Updated 2026-07-22. Run `docs-organize` skill to audit. 18 internal working docs (`PLAN-*`/`AUDIT-*`/`bulletproof-report-*` matching `.gitignore`) untracked from the public tree; 6 one-off analysis docs (`ANALYSIS-*`/`CLASSIFY-*`/`COMPARE-*`/`DESIGN-*`/`IMPLEMENTATION-*`/`ADOPTION-LIST-*`) moved to `archive/`. The 4 prior-art analyses cited from the root README's "Prior art" section stay tracked. A follow-up `/bulletproof` pass the same day found 13 more dead links to always-gitignored, never-tracked working docs (`PLAN-*`/`AUDIT-*`/`bulletproof-report-2026-06-08.md`/`PYPI_SETUP.md`) that the first pass hadn't checked; those rows are removed too.
 
 ---
 
@@ -66,7 +66,7 @@
 |-----|------|
 | [`CLASSIFY-discussion-tier-effort.md`](archive/CLASSIFY-discussion-tier-effort.md) | Task & discussion tier/effort classification |
 | [`COMPARE-ltx2-train-model-skill-vs-lifecycle.md`](archive/COMPARE-ltx2-train-model-skill-vs-lifecycle.md) | LTX-2 `train-model` skill vs the superharness lifecycle |
-| [`STEAL-LIST-omnigent-2026-07-19.md`](archive/STEAL-LIST-omnigent-2026-07-19.md) | Steal list — omnigent → superharness (2026-07-19) |
+| [`ADOPTION-LIST-omnigent-2026-07-19.md`](archive/ADOPTION-LIST-omnigent-2026-07-19.md) | Adoption list — omnigent → superharness (2026-07-19) |
 
 ## 📋 Plans (Active)
 

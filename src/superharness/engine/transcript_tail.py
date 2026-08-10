@@ -20,7 +20,7 @@ given directory as the selection rule, per the plan's documented fallback.
 If dispatch metadata later gains a session id column, prefer keying by it
 directly instead of this heuristic.
 
-See docs/PLAN-steal-omnigent.md iteration 7.
+See docs/PLAN-adopt-omnigent.md iteration 7.
 """
 
 from __future__ import annotations

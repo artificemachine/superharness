@@ -14,9 +14,9 @@ TODO (future iteration, not this one): migrate the remaining ~10
 inbox_watch.py mirror sites (see grep `_sqlite_mirror_`,
 `_sqlite_singleton_*`) to this chokepoint. Only the two simplest status
 mirrors (`_sqlite_mirror_task_status`, `_sqlite_mirror_inbox_retry`) are
-migrated in iteration 3 of docs/PLAN-steal-omnigent.md.
+migrated in iteration 3 of docs/PLAN-adopt-omnigent.md.
 
-See docs/PLAN-steal-omnigent.md iteration 3.
+See docs/PLAN-adopt-omnigent.md iteration 3.
 """
 
 from __future__ import annotations

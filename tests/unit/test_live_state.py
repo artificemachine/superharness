@@ -1,6 +1,6 @@
 """Tests for engine.live_state — ordered, deduped, retrying write chokepoint.
 
-See docs/PLAN-steal-omnigent.md iteration 3.
+See docs/PLAN-adopt-omnigent.md iteration 3.
 """
 
 from __future__ import annotations

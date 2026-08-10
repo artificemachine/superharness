@@ -1,6 +1,6 @@
 """Tests for engine.liveness — DB heartbeat timestamp + is_fresh(ttl) helper.
 
-See docs/PLAN-steal-omnigent.md iteration 2.
+See docs/PLAN-adopt-omnigent.md iteration 2.
 """
 
 from __future__ import annotations

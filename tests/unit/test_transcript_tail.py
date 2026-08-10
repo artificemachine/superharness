@@ -4,7 +4,7 @@ live dispatch progress (migration v32).
 Fence: all fixtures are fabricated JSONL files under tmp_path. Never reads
 real ~/.claude/projects/ transcripts (SIDE-EFFECT FENCE).
 
-See docs/PLAN-steal-omnigent.md iteration 7.
+See docs/PLAN-adopt-omnigent.md iteration 7.
 """
 
 from __future__ import annotations
@@ -207,7 +207,7 @@ def test_select_transcript_returns_none_when_no_match(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# Watcher-cycle wiring (docs/PLAN-steal-omnigent.md iteration 7)
+# Watcher-cycle wiring (docs/PLAN-adopt-omnigent.md iteration 7)
 # ---------------------------------------------------------------------------
 
 

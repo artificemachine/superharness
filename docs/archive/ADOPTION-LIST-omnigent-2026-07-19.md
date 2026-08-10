@@ -1,4 +1,4 @@
-# Steal list — omnigent → superharness (2026-07-19)
+# Adoption list — omnigent → superharness (2026-07-19)
 
 Source: read-only code study of omnigent-ai/omnigent (7.5k stars, direct
 competitor: meta-harness orchestrating Claude Code/Codex/Cursor/Pi). Three
@@ -126,11 +126,11 @@ allowlist at every untrusted attach point, so arbitrary callables can't be
 smuggled in (`policies/registry.py:31-66,156-279`). Matters the day policies
 become user-configurable.
 
-## Anti-steal (deliberately NOT copying)
+## Deliberately NOT adopting
 
 - **Store abstraction layer**: 1.5k-line ABC + 3.7k-line SQLAlchemy impl to
   support SQLite AND Postgres. Superharness's plain SQLite DAO is a feature —
-  simpler, auditable. Steal the patterns, not the abstraction.
+  simpler, auditable. Adopt the patterns, not the abstraction.
 - **Client-server split + WS runner tunnels, web/mobile surfaces**: different
   product. Superharness is single-operator local-first; keep it.
 - **9 sandbox providers**: integration surface a solo project can't maintain.
