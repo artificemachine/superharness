@@ -28,18 +28,64 @@ expand_agent_path()
 from __future__ import annotations
 
 import hashlib
+import logging
 import os
 import platform
 import shutil
 import subprocess
 import sys
 import tempfile
+import time
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 # Directories to skip when syncing a project tree to a worker copy.
 _SYNC_EXCLUDES: frozenset[str] = frozenset(
-    {".git", ".superharness", ".venv", "node_modules", ".pytest_cache"}
+    {
+        ".git",
+        ".hypothesis",
+        ".mypy_cache",
+        ".nox",
+        ".pytest_cache",
+        ".ruff_cache",
+        ".superharness",
+        ".superharness-sync.stamp",
+        ".tox",
+        ".venv",
+        "__pycache__",
+        "build",
+        "dist",
+        "htmlcov",
+        "node_modules",
+    }
 )
+_PROTECTED_WORKER_NAMES: frozenset[str] = frozenset(
+    {".git", ".superharness", ".superharness-sync.stamp"}
+)
+_GENERATED_ARTIFACT_NAMES: frozenset[str] = _SYNC_EXCLUDES - _PROTECTED_WORKER_NAMES
+_WATCH_DEBUG_ENV = "SUPERHARNESS_WATCH_DEBUG"
+
+
+def watch_debug_enabled() -> bool:
+    return os.environ.get(_WATCH_DEBUG_ENV, "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+
+
+# Compatibility alias for callers that predate the public diagnostics seam.
+_watch_debug_enabled = watch_debug_enabled
+
+
+def _log_watch_debug(**fields: object) -> None:
+    """Emit one structured, opt-in filesystem activity record."""
+    if not watch_debug_enabled():
+        return
+    details = " ".join(f"{key}={value}" for key, value in fields.items())
+    logger.warning("[watch-debug] %s", details)
 
 
 # ---------------------------------------------------------------------------
@@ -79,33 +125,68 @@ def watcher_lock_path(project_dir: str) -> str:
 # ---------------------------------------------------------------------------
 
 
+def _remove_path(path: Path) -> None:
+    """Remove a file, symlink, or directory from a worker tree."""
+    if path.is_dir() and not path.is_symlink():
+        shutil.rmtree(path)
+    else:
+        path.unlink(missing_ok=True)
+
+
+def _prune_generated_artifacts(dst: Path) -> None:
+    """Remove excluded generated output without touching shared worker state."""
+    if not dst.is_dir() or dst.is_symlink():
+        return
+    for item in list(dst.iterdir()):
+        if item.name in _PROTECTED_WORKER_NAMES:
+            continue
+        if item.name in _GENERATED_ARTIFACT_NAMES:
+            _remove_path(item)
+        elif item.is_dir() and not item.is_symlink():
+            _prune_generated_artifacts(item)
+
+
 def _copy_tree(src: Path, dst: Path) -> None:
-    """Recursively copy *src* to *dst* skipping :data:`_SYNC_EXCLUDES`."""
+    """Mirror *src* to *dst* while preserving protected worker state."""
     dst.mkdir(parents=True, exist_ok=True)
+    source_names: set[str] = set()
     for item in src.iterdir():
+        source_names.add(item.name)
         if item.name in _SYNC_EXCLUDES:
+            target = dst / item.name
+            if item.name in _GENERATED_ARTIFACT_NAMES:
+                _remove_path(target)
             continue
         target = dst / item.name
         if item.is_symlink():
             link_target = os.readlink(item)
             if target.exists() or target.is_symlink():
-                target.unlink()
+                _remove_path(target)
             os.symlink(link_target, target)
         elif item.is_dir():
+            if target.exists() and not target.is_dir():
+                _remove_path(target)
             _copy_tree(item, target)
         else:
+            if target.is_dir() and not target.is_symlink():
+                _remove_path(target)
             shutil.copy2(str(item), str(target))
+    for existing in list(dst.iterdir()):
+        if existing.name in _PROTECTED_WORKER_NAMES:
+            continue
+        if (
+            existing.name in _GENERATED_ARTIFACT_NAMES
+            or existing.name not in source_names
+        ):
+            _remove_path(existing)
 
 
-def _remove_stale(dst: Path) -> None:
-    """Remove items from *dst* that should no longer be there (sync --delete)."""
-    # We don't have the source list here; callers handle incremental delete
-    # by passing an existing dst that we write over.  Full delete is done in
-    # the caller when rsync is disabled.
-    pass
-
-
-def sync_worker_copy(src: str, dst: str, *, rsync_disabled: bool = False) -> None:
+def sync_worker_copy(
+    src: str,
+    dst: str,
+    *,
+    rsync_disabled: bool = False,
+) -> bool:
     """Copy *src* project tree to *dst* worker directory.
 
     On macOS/Linux, ``rsync`` is preferred for efficiency.  If *rsync_disabled*
@@ -118,9 +199,25 @@ def sync_worker_copy(src: str, dst: str, *, rsync_disabled: bool = False) -> Non
         src: Absolute path to the source project root.
         dst: Absolute path to the destination worker directory.
         rsync_disabled: Force the Python fallback (e.g. on Windows or in tests).
+    Returns:
+        ``True`` when the sync completes.
     """
     src_path = Path(src).resolve()
     dst_path = Path(dst)
+    dst_path.mkdir(parents=True, exist_ok=True)
+    excludes = ",".join(sorted(_SYNC_EXCLUDES))
+
+    started = time.monotonic()
+    _log_watch_debug(
+        lifecycle="start",
+        component="worker-sync",
+        mode="recursive-scan",
+        watched_root=src_path,
+        destination=dst_path,
+        recursive="true",
+        excludes=excludes,
+        pid=os.getpid(),
+    )
 
     use_rsync = (
         not rsync_disabled
@@ -129,33 +226,51 @@ def sync_worker_copy(src: str, dst: str, *, rsync_disabled: bool = False) -> Non
     )
 
     if use_rsync:
+        _prune_generated_artifacts(dst_path)
         exclude_args: list[str] = []
         for name in sorted(_SYNC_EXCLUDES):
             exclude_args += [f"--exclude={name}"]
-        subprocess.run(
+        result = subprocess.run(
             ["rsync", "-a", "--delete"]
             + exclude_args
             + [f"{src_path}/", f"{dst_path}/"],
             check=False,
             capture_output=True,
         )
-        return
+        if result.returncode == 0:
+            _log_watch_debug(
+                lifecycle="complete",
+                component="worker-sync",
+                mode="recursive-scan",
+                watched_root=src_path,
+                destination=dst_path,
+                recursive="true",
+                excludes=excludes,
+                pid=os.getpid(),
+                returncode=result.returncode,
+                duration_ms=f"{(time.monotonic() - started) * 1000:.1f}",
+            )
+            return True
+        logger.warning(
+            "worker sync rsync failed with exit code %s; falling back to Python copy",
+            result.returncode,
+        )
 
-    # Python fallback — safe on Windows
-    dst_path.mkdir(parents=True, exist_ok=True)
-
-    # Delete items in dst that are no longer in src (mirror rsync --delete)
-    src_names = {item.name for item in src_path.iterdir()} - _SYNC_EXCLUDES
-    for existing in list(dst_path.iterdir()):
-        if existing.name == ".superharness":
-            continue  # never remove the shared state symlink/dir
-        if existing.name not in src_names:
-            if existing.is_dir() and not existing.is_symlink():
-                shutil.rmtree(str(existing))
-            else:
-                existing.unlink(missing_ok=True)
-
+    # Python fallback — safe on Windows.
     _copy_tree(src_path, dst_path)
+    _log_watch_debug(
+        lifecycle="complete",
+        component="worker-sync",
+        mode="recursive-scan",
+        watched_root=src_path,
+        destination=dst_path,
+        recursive="true",
+        excludes=excludes,
+        pid=os.getpid(),
+        returncode=0,
+        duration_ms=f"{(time.monotonic() - started) * 1000:.1f}",
+    )
+    return True
 
 
 # ---------------------------------------------------------------------------

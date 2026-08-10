@@ -8,6 +8,8 @@ expected to fail on Windows *before* the fix and pass after it.
 
 from __future__ import annotations
 
+import logging
+import inspect
 import os
 import platform
 import shutil
@@ -129,6 +131,31 @@ class TestWorkerSync:
         assert not (dst / ".git").exists()
         assert not (dst / ".superharness").exists()
 
+    def test_sync_worker_copy_falls_back_when_rsync_fails(self, tmp_path, monkeypatch):
+        """A failed rsync must not leave claimed work running against stale files."""
+        from superharness.engine.platform_runtime import sync_worker_copy
+
+        src = tmp_path / "source"
+        src.mkdir()
+        (src / "file.txt").write_text("fresh", encoding="utf-8")
+        dst = tmp_path / "worker"
+        dst.mkdir()
+        (dst / "file.txt").write_text("stale", encoding="utf-8")
+
+        monkeypatch.setattr(
+            "superharness.engine.platform_runtime.platform.system", lambda: "Darwin"
+        )
+        monkeypatch.setattr(
+            "superharness.engine.platform_runtime.shutil.which", lambda _: "/usr/bin/rsync"
+        )
+        monkeypatch.setattr(
+            "superharness.engine.platform_runtime.subprocess.run",
+            lambda *args, **kwargs: subprocess.CompletedProcess(args[0], 23),
+        )
+
+        assert sync_worker_copy(str(src), str(dst)) is True
+        assert (dst / "file.txt").read_text(encoding="utf-8") == "fresh"
+
     def test_sync_worker_copy_excludes_venv_and_cache(self, tmp_path):
         """sync_worker_copy must exclude .venv, node_modules, .pytest_cache."""
         from superharness.engine.platform_runtime import sync_worker_copy
@@ -145,6 +172,178 @@ class TestWorkerSync:
 
         for excluded in [".venv", "node_modules", ".pytest_cache"]:
             assert not (dst / excluded).exists(), f"{excluded} should be excluded"
+
+    def test_sync_worker_copy_excludes_generated_artifacts_at_any_depth(
+        self, tmp_path
+    ):
+        """Worker copies must not mirror generated caches or build output."""
+        from superharness.engine.platform_runtime import sync_worker_copy
+
+        src = tmp_path / "source"
+        nested = src / "tests" / "unit"
+        nested.mkdir(parents=True)
+        (nested / "test_real.py").write_text("def test_real(): pass", encoding="utf-8")
+
+        generated = [
+            nested / "__pycache__",
+            src / "build",
+            src / "dist",
+            src / ".mypy_cache",
+            src / ".ruff_cache",
+            src / ".tox",
+            src / ".nox",
+            src / ".hypothesis",
+            src / "htmlcov",
+        ]
+        for directory in generated:
+            directory.mkdir(parents=True)
+            (directory / "marker").write_text("generated", encoding="utf-8")
+
+        dst = tmp_path / "worker"
+        sync_worker_copy(str(src), str(dst), rsync_disabled=True)
+
+        assert (dst / "tests" / "unit" / "test_real.py").exists()
+        for directory in generated:
+            relative = directory.relative_to(src)
+            assert not (dst / relative).exists(), f"{relative} should be excluded"
+
+    def test_sync_worker_copy_debug_log_attributes_recursive_scan(
+        self, tmp_path, monkeypatch, caplog
+    ):
+        """Opt-in diagnostics identify the scanning component and scope."""
+        from superharness.engine.platform_runtime import sync_worker_copy
+
+        src = tmp_path / "source"
+        src.mkdir()
+        (src / "app.py").write_text("x=1", encoding="utf-8")
+        dst = tmp_path / "worker"
+        monkeypatch.setenv("SUPERHARNESS_WATCH_DEBUG", "1")
+
+        with caplog.at_level(logging.WARNING):
+            sync_worker_copy(str(src), str(dst), rsync_disabled=True)
+
+        messages = "\n".join(record.getMessage() for record in caplog.records)
+        assert "[watch-debug]" in messages
+        assert "component=worker-sync" in messages
+        assert f"watched_root={src.resolve()}" in messages
+        assert "recursive=true" in messages
+        assert "__pycache__" in messages
+        assert f"pid={os.getpid()}" in messages
+        assert "lifecycle=start" in messages
+        assert "lifecycle=complete" in messages
+
+    def test_sync_worker_copy_debounces_repeated_recursive_scan(self, tmp_path):
+        """An explicit dispatch-boundary sync must always refresh the worker."""
+        from superharness.engine.platform_runtime import sync_worker_copy
+
+        src = tmp_path / "source"
+        src.mkdir()
+        source_file = src / "app.py"
+        source_file.write_text("v1", encoding="utf-8")
+        dst = tmp_path / "worker"
+
+        assert sync_worker_copy(str(src), str(dst), rsync_disabled=True)
+        source_file.write_text("v2", encoding="utf-8")
+
+        assert sync_worker_copy(str(src), str(dst), rsync_disabled=True)
+        assert (dst / "app.py").read_text(encoding="utf-8") == "v2"
+
+    def test_worker_sync_removes_preexisting_nested_generated_cache(self, tmp_path):
+        """A sync must prune cache directories left by an older worker copy."""
+        from superharness.engine.platform_runtime import sync_worker_copy
+
+        src = tmp_path / "source"
+        (src / "tests" / "unit").mkdir(parents=True)
+        (src / "tests" / "unit" / "test_real.py").write_text("pass")
+        dst = tmp_path / "worker"
+        stale_cache = dst / "tests" / "unit" / "__pycache__"
+        stale_cache.mkdir(parents=True)
+        (stale_cache / "old.pyc").write_bytes(b"cache")
+
+        sync_worker_copy(str(src), str(dst), rsync_disabled=True)
+
+        assert (dst / "tests" / "unit" / "test_real.py").is_file()
+        assert not stale_cache.exists()
+
+    def test_worker_sync_preserves_superharness_symlink_when_pruning(self, tmp_path):
+        """Generated-cache cleanup must never remove shared worker state."""
+        from superharness.engine.platform_runtime import sync_worker_copy
+
+        src = tmp_path / "source"
+        (src / "pkg").mkdir(parents=True)
+        (src / "pkg" / "module.py").write_text("x = 1")
+        state = tmp_path / "state"
+        state.mkdir()
+        dst = tmp_path / "worker"
+        dst.mkdir()
+        (dst / ".superharness").symlink_to(state, target_is_directory=True)
+        stale_cache = dst / "pkg" / "__pycache__"
+        stale_cache.mkdir(parents=True)
+
+        sync_worker_copy(str(src), str(dst), rsync_disabled=True)
+
+        assert (dst / ".superharness").is_symlink()
+        assert (dst / ".superharness").resolve() == state.resolve()
+        assert not stale_cache.exists()
+
+    def test_idle_watcher_cycle_does_not_sync_worker_copy(self):
+        """Worker copies are synchronized only after a dispatcher claims work."""
+        from superharness.commands import inbox_watch
+
+        source = inspect.getsource(inbox_watch._run_scripts)
+
+        assert "_sync_worker_copy(project_dir)" not in source
+
+    def test_claimed_worker_item_syncs_source_before_execution_context(self, tmp_path):
+        """Claimed worker work synchronizes before the execution path is resolved."""
+        from superharness.commands import inbox_dispatch
+
+        source = tmp_path / "source"
+        (source / ".git").mkdir(parents=True)
+        state = source / ".superharness"
+        state.mkdir()
+        worker = tmp_path / "worker"
+        worker.mkdir()
+        (worker / ".superharness").symlink_to(state, target_is_directory=True)
+
+        order: list[str] = []
+
+        def fake_claim(ctx):
+            ctx.item_project = str(source)
+            order.append("claim")
+            return None
+
+        def fake_sync(ctx):
+            order.append("sync")
+
+        def fake_resolve(ctx):
+            order.append("resolve")
+            return 23
+
+        ctx_args = {
+            "inbox_file": str(worker / ".superharness" / "inbox.yaml"),
+            "contract_file": str(worker / ".superharness" / "contract.yaml"),
+            "project_dir": str(worker),
+            "target_filter": "codex-cli",
+            "print_only": True,
+            "non_interactive": True,
+            "codex_bypass": False,
+            "launcher_timeout": 0,
+            "script_dir": str(tmp_path),
+            "lock": object(),
+            "sqlite_primary": True,
+        }
+
+        monkeypatch = pytest.MonkeyPatch()
+        try:
+            monkeypatch.setattr(inbox_dispatch, "_claim_next_item", fake_claim)
+            monkeypatch.setattr(inbox_dispatch, "_sync_claimed_worker_copy", fake_sync)
+            monkeypatch.setattr(inbox_dispatch, "_resolve_execution_context", fake_resolve)
+            assert inbox_dispatch._do_dispatch(**ctx_args) == 23
+        finally:
+            monkeypatch.undo()
+
+        assert order == ["claim", "sync", "resolve"]
 
     def test_sync_worker_copy_updates_changed_files(self, tmp_path):
         """Re-running sync_worker_copy updates changed files."""

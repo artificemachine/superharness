@@ -41,7 +41,9 @@ class TestOperatorSingleton:
         result = op._check_singleton()
 
         assert not result
-        assert not state_file.exists(), "stale file should have been removed"
+        state = json.loads(state_file.read_text())
+        assert "operator_pid" not in state
+        assert state["dashboard_port"] == 8787
 
     def test_live_pid_is_singleton(self, tmp_path):
         """A state file with our own PID signals an already-running operator."""
@@ -54,8 +56,8 @@ class TestOperatorSingleton:
         op = Operator(str(tmp_path))
         assert op._check_singleton()
 
-    def test_stale_file_removed_on_check(self, tmp_path):
-        """_check_singleton removes stale state files so subsequent starts proceed."""
+    def test_stale_operator_field_removed_on_check(self, tmp_path):
+        """Stale operator ownership is cleared without deleting dashboard state."""
         _harness_dir(tmp_path)
         state_file = tmp_path / _OPERATOR_STATE_FILE
         state_file.write_text(
@@ -65,8 +67,8 @@ class TestOperatorSingleton:
         op = Operator(str(tmp_path))
         op._check_singleton()  # should clean up
 
-        assert not state_file.exists()
-        # Second check sees no file — also returns False (fresh start is allowed)
+        assert json.loads(state_file.read_text()) == {"dashboard_port": 8787}
+        # A dashboard-only file does not block a fresh operator start.
         assert not op._check_singleton()
 
     def test_corrupt_state_file_is_not_singleton(self, tmp_path):

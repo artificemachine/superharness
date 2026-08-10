@@ -21,6 +21,30 @@ import click
 logger = logging.getLogger(__name__)
 
 
+def _read_operator_state(path: str) -> dict:
+    try:
+        with open(path, encoding="utf-8") as state_file:
+            state = json.load(state_file)
+    except (OSError, ValueError, TypeError):
+        return {}
+    return state if isinstance(state, dict) else {}
+
+
+def _write_state_atomically(path: str, state: dict) -> None:
+    directory = os.path.dirname(path)
+    fd, tmp_path = tempfile.mkstemp(prefix=".operator-state.", dir=directory)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as state_file:
+            json.dump(state, state_file, indent=2)
+        os.replace(tmp_path, path)
+    except (OSError, TypeError, ValueError):
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+        raise
+
+
 def _find_dashboard_processes() -> list[tuple[int, Optional[int], Optional[str]]]:
     """Return list of (pid, port, project_dir) for all running dashboard-ui.py processes."""
     try:
@@ -176,21 +200,20 @@ def _kill_stale_dashboard(proj: str, port: int) -> None:
 
 
 def _write_operator_state(proj: str, pid: int, port: int, args_list: list[str]) -> None:
-    """Write operator-state.json so health checks find the dashboard."""
+    """Record dashboard ownership without replacing a live operator PID."""
     try:
         op_file = os.path.join(proj, ".superharness", "operator-state.json")
         if os.path.isdir(os.path.dirname(op_file)):
-            with open(op_file, "w") as f:
-                json.dump(
-                    {
-                        "operator_pid": pid,
-                        "dashboard_port": port,
-                        "started_at": time.time(),
-                        "project": proj,
-                    },
-                    f,
-                    indent=2,
-                )
+            state = _read_operator_state(op_file)
+            state.update(
+                {
+                    "dashboard_pid": pid,
+                    "dashboard_port": port,
+                    "dashboard_started_at": time.time(),
+                    "project": proj,
+                }
+            )
+            _write_state_atomically(op_file, state)
     except Exception as e:
         logger.warning("Failed to write operator-state.json: %s", e)
 
