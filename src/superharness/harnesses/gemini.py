@@ -1,4 +1,4 @@
-"""Gemini CLI harness adapter. See docs/PLAN-steal-omnigent.md iteration 6."""
+"""Gemini CLI harness adapter. See docs/PLAN-adopt-omnigent.md iteration 6."""
 
 from __future__ import annotations
 

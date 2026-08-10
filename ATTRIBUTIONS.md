@@ -148,8 +148,8 @@ Repo: <https://github.com/omnigent-ai/omnigent>
 - Test-environment guardrail, DB heartbeat-timestamp liveness (`is_fresh(ttl)`), ordered live-state write chokepoint, typed telemetry events, harness registry, transcript tailing, and idle+absolute dual watchdog patterns. Ideas only, reimplemented from scratch (Apache-2.0 both sides) — no code copied.
 
 **Comparison docs**
-- [docs/STEAL-LIST-omnigent-2026-07-19.md](docs/STEAL-LIST-omnigent-2026-07-19.md)
-- [docs/PLAN-steal-omnigent.md](docs/PLAN-steal-omnigent.md)
+- [docs/archive/ADOPTION-LIST-omnigent-2026-07-19.md](docs/archive/ADOPTION-LIST-omnigent-2026-07-19.md)
+- `docs/PLAN-adopt-omnigent.md` — internal working plan, not tracked in this repository.
 
 ---
 

@@ -1322,7 +1322,7 @@ def _migration_v31(conn: sqlite3.Connection) -> None:
 def _migration_v32(conn: sqlite3.Connection) -> None:
     """Byte-offset cursor per dispatch for transcript tailing
     (engine/transcript_tail.py). Feature-flagged off by default; see
-    docs/PLAN-steal-omnigent.md iteration 7."""
+    docs/PLAN-adopt-omnigent.md iteration 7."""
     conn.execute("""
         CREATE TABLE IF NOT EXISTS dispatch_cursors (
             dispatch_id  TEXT    PRIMARY KEY,

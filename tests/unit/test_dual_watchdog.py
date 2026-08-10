@@ -5,7 +5,7 @@ Regression hard gate: tests/unit/test_deadline_in_progress_at.py's 3 PR #43
 tests must stay green UNMODIFIED (checked separately in this run, not
 reproduced here).
 
-See docs/PLAN-steal-omnigent.md iteration 8.
+See docs/PLAN-adopt-omnigent.md iteration 8.
 """
 
 from __future__ import annotations

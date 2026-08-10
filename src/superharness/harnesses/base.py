@@ -1,7 +1,7 @@
 """Harness protocol + Invocation value object.
 
 A Harness turns a task into the exact subprocess argv/env/cwd superharness
-will spawn to run that agent. See docs/PLAN-steal-omnigent.md iterations 5-6.
+will spawn to run that agent. See docs/PLAN-adopt-omnigent.md iterations 5-6.
 """
 
 from __future__ import annotations

@@ -7,7 +7,7 @@ table (agent_id="watcher") via `watcher_heartbeat_dao` — the same table
 liveness here and rendering it in status.py observe the same signal instead
 of introducing a second, parallel source of truth.
 
-See docs/PLAN-steal-omnigent.md iteration 2.
+See docs/PLAN-adopt-omnigent.md iteration 2.
 """
 
 from __future__ import annotations

@@ -6,7 +6,7 @@ Origin: audit of thedotmack/claude-mem MCP search surface
 
 ## Context
 
-Different problem space from claude-mem (passive memory vs. our task orchestration), but their MCP search pattern is worth stealing.
+Different problem space from claude-mem (passive memory vs. our task orchestration), but their MCP search pattern is worth adopting.
 
 The pattern (theirs):
 

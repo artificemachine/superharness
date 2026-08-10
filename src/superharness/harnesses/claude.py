@@ -8,7 +8,7 @@ env is intentionally {} — the legacy path never built a bespoke env dict for
 claude-code either; the subprocess simply inherits the parent process
 environment (see platform_runtime.launch_agent, which has no env parameter).
 
-See docs/PLAN-steal-omnigent.md iteration 5.
+See docs/PLAN-adopt-omnigent.md iteration 5.
 """
 
 from __future__ import annotations

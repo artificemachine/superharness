@@ -1,7 +1,7 @@
 """Tests for the test-environment guardrail: fail fast when a test targets a
 non-ephemeral SUPERHARNESS_STATE_DIR.
 
-See docs/PLAN-steal-omnigent.md iteration 1.
+See docs/PLAN-adopt-omnigent.md iteration 1.
 """
 
 from __future__ import annotations

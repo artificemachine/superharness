@@ -496,7 +496,7 @@ No hard blockers — all three can be built incrementally. `explain` is the obvi
 
 ### Top Inspirations
 
-| Tool | GitHub | Pattern to steal | Stars |
+| Tool | GitHub | Pattern to adopt | Stars |
 |------|--------|-----------------|-------|
 | **docker init** | [docker/cli](https://github.com/docker/cli) | Detect → confirm → scaffold. `"Detected: Python. Is this right?"` Pre-filled defaults in brackets. Summary of created files. | Docker CLI |
 | **create-astro** | [withastro/astro](https://github.com/withastro/astro) | Houston mascot personality, `--yes` accept-all-defaults, `--dry-run` preview, `--skip-houston` for power users. | 51k |

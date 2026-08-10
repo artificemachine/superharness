@@ -377,7 +377,7 @@ def _last_event_age_minutes(conn, task_id: str) -> float | None:
     """Minutes since the most recent `events` row (engine/events.py,
     migration v31) for task_id, or None if no events exist for it.
 
-    See docs/PLAN-steal-omnigent.md iteration 8.
+    See docs/PLAN-adopt-omnigent.md iteration 8.
     """
     try:
         row = conn.execute(
@@ -396,7 +396,7 @@ def _check_deadlines(project_dir: str, profile: dict) -> int:
     absolute ceiling) when the task has event history, PR #43's
     in_progress_at-budgeted deadline_minutes check otherwise.
 
-    Dual watchdog (docs/PLAN-steal-omnigent.md iteration 8), opt-in via
+    Dual watchdog (docs/PLAN-adopt-omnigent.md iteration 8), opt-in via
     profile keys `idle_timeout_minutes` and `absolute_ceiling_minutes`
     (both default 0 = disabled — with both unset, behavior is byte-identical
     to the PR #43 fix this extends). When enabled AND the task has at least
