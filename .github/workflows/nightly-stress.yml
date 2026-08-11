@@ -1,0 +1,36 @@
+name: Nightly Stress
+
+# Iteration 5 of docs/PLAN-prime-agent-adoptions.md — process-lifecycle
+# stress suite for the operator's historical failure modes (see
+# docs/bugs/BUG-2026-06-04-operator-orphans-pytest-swap-storm.md). These
+# tests spawn and SIGKILL real subprocesses, so they run nightly rather
+# than on every push/PR (tests/stress/ is excluded from the default
+# `pytest tests/` invocation via the `stress` pytest marker).
+
+on:
+  schedule:
+    - cron: "17 9 * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  stress:
+    name: Operator Process Lifecycle
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install pytest pyyaml click ruamel.yaml && pip install -e .
+
+      - name: Run stress suite
+        run: python3 -m pytest tests/stress/ -q -m stress
+        env:
+          PYTHONPATH: src

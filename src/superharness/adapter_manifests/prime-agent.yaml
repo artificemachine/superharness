@@ -1,0 +1,57 @@
+name: prime-agent
+version: "1"
+description: >-
+  prime-agent — PrimeIntellect-ai/prime-agent coding CLI (source: 2026-08-10
+  audit of PrimeIntellect-ai/prime-agent @ d698b4b7, MIT licensed). EXPERIMENTAL
+  / UNVERIFIED: this manifest was written without an installed prime-agent
+  binary to probe against (PLAN-prime-agent-adoptions.md, Iteration 6,
+  Resolution 1, binding). It ships INERT — dispatch is intentionally
+  disabled; see the `experimental` capability_tags below and
+  scripts/delegate-to-prime-agent.sh, which refuses to run anything but
+  `--help`. Do not enable dispatch until a real binary has been installed
+  and its non-interactive flags probed.
+type: external
+launcher_script: delegate-to-prime-agent.sh
+capabilities:
+  - code_generation
+  - file_editing
+supports_effort: false  # UNVERIFIED — no evidence of an --effort or reasoning-budget flag; treat as unsupported until probed
+# UNVERIFIED — model entries mirror codex-cli's schema-v2 structure
+# (preferred/accept/auth_compat/capability_tags) with an anthropic-family
+# accept-chain placeholder, since prime-agent's own model routing has not
+# been probed against a real binary. Do not treat these ids as confirmed
+# prime-agent behavior; they exist only so the manifest is structurally
+# valid schema v2, per Resolution 1.
+#
+# The `max` tier intentionally reuses the sonnet placeholder rather than a
+# claude-opus-4-N literal: tests/unit/test_flagship_source_of_truth.py
+# requires every claude-opus-4-N version literal to live in exactly one
+# place (adapter_manifests/claude-code.yaml), so a version bump never has
+# to be hunted down across the codebase. A second hardcoded copy here would
+# silently go stale on the next Opus bump — the exact failure class that
+# guard exists to prevent.
+model_tiers:
+  mini:
+    preferred: claude-haiku-4-5-20251001
+    accept: [claude-haiku-4-5-20251001]
+    auth_compat:
+      apikey: [claude-haiku-4-5-20251001]
+    capability_tags: [experimental, cost_optimised]
+  standard:
+    preferred: claude-sonnet-4-6
+    accept: [claude-sonnet-4-6]
+    auth_compat:
+      apikey: [claude-sonnet-4-6]
+    capability_tags: [experimental, balanced]
+  max:
+    preferred: claude-sonnet-4-6
+    accept: [claude-sonnet-4-6]
+    auth_compat:
+      apikey: [claude-sonnet-4-6]
+    capability_tags: [experimental, best_effort]
+requires:
+  bin: prime-agent
+  env: []
+validation:
+  check_bin: false # experimental — do not block on binary absence, same convention as gemini-cli's limited-status precedent
+  check_env: false
