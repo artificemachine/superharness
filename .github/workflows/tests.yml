@@ -81,13 +81,21 @@ jobs:
   unit-tests:
     name: Unit Tests (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
-    # 30, not 20: the Windows leg measured 13m49s and 18m45s on two consecutive
-    # runs of near-identical trees, and the 18m45s run completed with zero
-    # failures but was killed at 20m10s wall-clock, counting setup. The suite is
-    # not hanging; the ceiling was simply below the runner's variance. A genuine
-    # hang is still caught here, and this is the only backstop on Windows because
-    # the per-test pytest-timeout is disabled below.
-    timeout-minutes: 30
+    # 40, not 30: the same variance-vs-ceiling pattern that first forced 20->30
+    # recurred on 2026-08-11 (PR #117) as tests/unit grew by four files. The
+    # Windows leg was killed at 30m08s wall-clock while genuinely still
+    # executing (no hang, no failing test up to that point); a same-commit
+    # rerun then completed in 28m29s, comfortably below 30 but too close to be
+    # a durable margin as the suite keeps growing. Historical Windows-leg
+    # durations on main sit around 18-22.5m, so 40 restores a real buffer
+    # rather than chasing the ceiling one bump behind actual growth. The
+    # xdist trial job (see below) is the eventual fix for Windows unit-test
+    # wall-clock, but it is not yet reliable enough to replace this job: it
+    # was cancelled on the 2026-08-11 main run and failed on the run before
+    # that. A genuine hang is still caught here, and this is the only
+    # backstop on Windows because the per-test pytest-timeout is disabled
+    # below.
+    timeout-minutes: 40
     strategy:
       fail-fast: false
       matrix:
