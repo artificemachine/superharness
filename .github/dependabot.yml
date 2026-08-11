@@ -11,6 +11,10 @@ updates:
           - "*"
     commit-message:
       prefix: "chore(deps)"
+    # Dependabot exempts security-advisory PRs from cooldown by design —
+    # a fix for a known CVE is proposed immediately regardless of this window.
+    cooldown:
+      default-days: 7
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
@@ -18,3 +22,7 @@ updates:
     open-pull-requests-limit: 3
     commit-message:
       prefix: "chore(ci)"
+    # Dependabot exempts security-advisory PRs from cooldown by design —
+    # a fix for a known CVE is proposed immediately regardless of this window.
+    cooldown:
+      default-days: 7

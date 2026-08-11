@@ -110,7 +110,18 @@ class TestOrchestratorChain:
     """Orchestrator chain models must match manifests."""
 
     def test_all_owners_in_chain(self):
-        """Every owner with a manifest should be in the orchestrator chain."""
+        """Every non-experimental owner with a manifest should be in the
+        orchestrator chain.
+
+        Iteration 6 of PLAN-prime-agent-adoptions.md (Resolution 1, binding):
+        an experimental adapter ships inert and must NOT be added to the
+        orchestrator's live escalation chain — that would make it dispatch-
+        eligible for real orchestrator-role selection, contradicting "ships
+        inert". A manifest is exempt from this invariant when every one of
+        its model_tiers entries tags itself `experimental` in
+        `capability_tags` (schema v2). This is a test-only exemption; no
+        dispatch-path source file changes with it.
+        """
         from superharness.engine.orchestrator import _ORCHESTRATOR_CHAIN
         from superharness.engine.adapter_registry import list_adapters
 
@@ -125,7 +136,23 @@ class TestOrchestratorChain:
             "gemini-cli": "gemini",
             "opencode": "opencode",
         }
-        missing = [o for o in all_owners if name_map.get(o, o) not in owners_in_chain]
+
+        def _is_experimental(name: str) -> bool:
+            manifest = _load_manifest(name)
+            tiers = manifest.get("model_tiers") or {}
+            if not tiers:
+                return False
+            return all(
+                isinstance(tier, dict)
+                and "experimental" in (tier.get("capability_tags") or [])
+                for tier in tiers.values()
+            )
+
+        missing = [
+            o
+            for o in all_owners
+            if name_map.get(o, o) not in owners_in_chain and not _is_experimental(o)
+        ]
         assert not missing, (
             f"Owners missing from orchestrator chain: {missing}. "
             f"Chain has: {owners_in_chain}. Adapters: {all_owners}."

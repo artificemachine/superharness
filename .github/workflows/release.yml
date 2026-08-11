@@ -44,6 +44,13 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Release identity preflight
+        run: |
+          python3 scripts/release_preflight.py \
+            --tag "${GITHUB_REF_NAME}" \
+            --pyproject pyproject.toml \
+            --changelog CHANGELOG.md
+
       - name: Require branch-protection checks to be green on this commit
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -16,6 +16,15 @@ REQUIRED_ENV = {
     "LANGFUSE_BASE_URL",
     "LANGFUSE_TRACING_ENVIRONMENT",
     "SUPERHARNESS_STATE_PROJECT",
+    # Iteration 4 of PLAN-prime-agent-adoptions.md: DO_NOT_TRACK/
+    # SUPERHARNESS_TELEMETRY now gate LangfuseSettings.enabled too — clear
+    # them so a CI runner (or a developer's shell) that happens to export
+    # DO_NOT_TRACK=1 doesn't silently flip every test in this file to the
+    # disabled branch. (Caught by the acceptance criterion in Iteration 4:
+    # `DO_NOT_TRACK=1 uv run pytest tests/unit -q -k telemetry` must stay
+    # green — an env leak must not break unrelated tests.)
+    "DO_NOT_TRACK",
+    "SUPERHARNESS_TELEMETRY",
 }
 
 

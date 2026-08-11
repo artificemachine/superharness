@@ -23,6 +23,7 @@ from superharness.utils.paths import project_hash, resolve_state_project_path
 logger = logging.getLogger(__name__)
 
 _TRUE_VALUES = frozenset({"1", "true", "yes", "on"})
+_FALSE_VALUES = frozenset({"0", "false", "no", "off"})
 _REQUIRED_SETTINGS = (
     "LANGFUSE_PUBLIC_KEY",
     "LANGFUSE_SECRET_KEY",
@@ -47,12 +48,29 @@ def _value(values: Mapping[str, str], name: str, default: str = "") -> str:
     return values.get(name, os.environ.get(name, default))
 
 
+def _env_opt_out() -> bool:
+    """Return True when the environment explicitly disables telemetry.
+
+    `DO_NOT_TRACK` takes precedence over everything else, including an
+    explicit `SUPERHARNESS_TELEMETRY=1` enable — the opt-out is absolute,
+    mirroring prime-agent's precedence. `SUPERHARNESS_TELEMETRY` accepts a
+    falsy value (`0/false/no/off`) as a superharness-specific alias for the
+    same opt-out. Unrecognized values (e.g. `DO_NOT_TRACK=garbage`) are
+    treated as unset, never as truthy.
+    """
+    if os.environ.get("DO_NOT_TRACK", "").strip().lower() in _TRUE_VALUES:
+        return True
+    if os.environ.get("SUPERHARNESS_TELEMETRY", "").strip().lower() in _FALSE_VALUES:
+        return True
+    return False
+
+
 def load_settings() -> LangfuseSettings:
     """Load Langfuse settings from the machine credential store and env."""
     values = read_credentials_file()
     enabled = _value(values, "SUPERHARNESS_LANGFUSE_ENABLED").lower()
     return LangfuseSettings(
-        enabled=enabled in _TRUE_VALUES,
+        enabled=(enabled in _TRUE_VALUES) and not _env_opt_out(),
         public_key=_value(values, "LANGFUSE_PUBLIC_KEY"),
         secret_key=_value(values, "LANGFUSE_SECRET_KEY"),
         base_url=_value(values, "LANGFUSE_BASE_URL"),
