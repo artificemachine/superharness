@@ -45,7 +45,7 @@ Repo: <https://github.com/earendil-works/pi>
 Repo: <https://github.com/obra/superpowers>
 
 **Adopted**
-- Two-stage review pattern per task: spec compliance first, then code quality. Mapped onto our `report_ready → review_requested → review_passed` transitions.
+- The shape of a staged review, not the two-stage split itself: our `report_ready → review_requested → review_passed|review_failed` transitions give review its own states, inspired by Superpowers' spec-compliance-then-code-quality pattern. Whether a reviewer actually checks spec compliance before code quality is not separately enforced — that discipline is left to whoever (human or agent) performs the review at `review_requested`.
 - TDD enforcement as a first-class field on the plan handoff (`tdd: { red, green, refactor }`).
 - Skill-as-context shape: composable `SKILL.md` files that load on situation match.
 
