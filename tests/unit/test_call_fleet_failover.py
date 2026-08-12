@@ -93,9 +93,12 @@ def test_failover_to_next_endpoint_on_error():
             result = _call_fleet("classify this")
 
     assert result == "standard medium"
-    assert len(calls) == 2
-    assert "dead" in calls[0]
-    assert "alive" in calls[1]
+    assert calls == [
+        "http://dead/v1/models",
+        "http://alive/v1/models",
+        "http://dead/v1/chat/completions",
+        "http://alive/v1/chat/completions",
+    ]
 
 
 def test_all_endpoints_failing_returns_none():
@@ -113,3 +116,80 @@ def test_all_endpoints_failing_returns_none():
         ):
             result = _call_fleet("classify this")
     assert result is None
+
+
+def test_live_candidates_prefer_configured_brain_priority_and_loaded_models():
+    """A fleet brain must only select advertised, loaded models.
+
+    ``brain.model_priority`` is an operator policy, ordered from best to worst.
+    It wins over endpoint/tier order, while a model marked ``loaded: false`` is
+    never selected.
+    """
+    from superharness.engine.model_router import _live_fleet_candidates
+
+    fleet = {
+        "endpoints": {"mini": "http://mini/v1", "standard": "http://std/v1"},
+        "models": {"mini": "small", "standard": "stale-model"},
+        "brain": {"model_priority": ["strong", "small"]},
+    }
+
+    with patch(
+        "superharness.engine.model_router._fetch_fleet_models",
+        side_effect=lambda endpoint: {
+            "http://mini/v1": ["small"],
+            "http://std/v1": ["strong"],
+        }.get(endpoint),
+    ):
+        assert _live_fleet_candidates(fleet) == [
+            ("http://std/v1", "strong"),
+            ("http://mini/v1", "small"),
+        ]
+
+
+def test_live_candidates_keep_static_pair_when_discovery_is_unavailable():
+    """A transient /models failure must not disable a known-good fleet config."""
+    from superharness.engine.model_router import _live_fleet_candidates
+
+    fleet = {
+        "endpoints": {"all": "http://local/v1"},
+        "models": {"all": "local-model"},
+    }
+
+    with patch(
+        "superharness.engine.model_router._fetch_fleet_models", return_value=None
+    ):
+        assert _live_fleet_candidates(fleet) == [("http://local/v1", "local-model")]
+
+
+def test_deepseek_is_tried_only_after_every_fleet_candidate_fails(monkeypatch):
+    """The external fallback is opt-in and comes after the local fleet."""
+    from superharness.engine.model_router import _call_fleet
+
+    fleet = {
+        "endpoints": {"all": "http://local/v1"},
+        "models": {"all": "local-model"},
+        "deepseek_fallback": {
+            "enabled": True,
+            "endpoint": "https://api.deepseek.example/v1",
+            "model": "deepseek-chat",
+        },
+    }
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "test-key")
+    calls = []
+
+    def call(endpoint, model, prompt, expect_tokens, api_key=None):
+        calls.append((endpoint, model, api_key))
+        return "remote answer" if api_key else None
+
+    with patch(
+        "superharness.engine.model_router._load_fleet_config", return_value=fleet
+    ), patch(
+        "superharness.engine.model_router._live_fleet_candidates",
+        return_value=[("http://local/v1", "local-model")],
+    ), patch("superharness.engine.model_router._call_fleet_endpoint", side_effect=call):
+        assert _call_fleet("classify this") == "remote answer"
+
+    assert calls == [
+        ("http://local/v1", "local-model", None),
+        ("https://api.deepseek.example/v1", "deepseek-chat", "test-key"),
+    ]

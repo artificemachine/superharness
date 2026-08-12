@@ -6,6 +6,45 @@
 
 Type these directly into Claude Code or Codex CLI — no terminal needed after first install.
 
+### Core workflow
+
+| Phrase | What happens |
+|--------|-------------|
+| `shux explain` | Explain the product in ten seconds |
+| `shux onboard` | First-time setup wizard |
+| `shux task create` | Define a task and its criteria |
+| `shux contract` | Show active work and owners |
+| `shux delegate <task-id>` | Dispatch approved work |
+| `shux status` | Show watcher, queue, and task health |
+| `shux context <task-id>` | Show decisions, handoffs, failures, and Git context |
+| `shux verify <task-id>` | Record verification before closure |
+| `shux close <task-id>` | Close verified work and write its handoff |
+| `shux dashboard` | Open the visual task board |
+| `shux doctor` | Check setup and state health |
+| `shux recall <keywords>` | Search prior handoffs and ledger entries |
+
+Run `shux help --all` for the complete expert catalog. The four domains below keep advanced commands discoverable without making the default help a flat list.
+
+### `state`
+
+`shux state --help` covers project configuration, rules, approvals, artifacts, backups, packs, and compatibility tools. `shux state migrate` and YAML tools appear only when legacy state is detected.
+
+### `agent`
+
+`shux agent --help` covers adapters, dispatch, discussion via `shux agent discuss`, handoffs, scheduling, test requirements, and worktrees.
+
+### `ops`
+
+`shux ops --help` covers daemons, dashboard operations, hooks, diagnostics, logs, notifications, MCP, and maintenance.
+
+### `memory`
+
+`shux memory --help` covers distilled lessons, analytics, memory roots, behavioral profile, learned failure patterns, and recap.
+
+### Compatibility reference
+
+The established top-level paths below remain supported for scripts and existing workflows. Prefer the Core workflow and groups above for discovery.
+
 | Phrase | What happens |
 |--------|-------------|
 | `shux onboard` | First-time setup wizard — detect stack, scaffold `.superharness/`, write `AGENTS.md`, configure git tracking, create first task |
@@ -40,7 +79,7 @@ Type these directly into Claude Code or Codex CLI — no terminal needed after f
 
 **New project cold-start:** Running `shux --help` in a directory without `.superharness/` shows a quickstart banner pointing to `shux onboard`.
 
-Old long-form phrases (`contract today`, `continue contract`, etc.) still work.
+Old long-form phrases (`contract today`, `continue contract`, etc.) still work. The old top-level migration path `shux migrate-state` also remains supported.
 
 ---
 
@@ -522,11 +561,11 @@ Since v1.60.0, superharness stores `state.db` in the XDG state directory (`~/.lo
 
 ```bash
 # Stop the watcher first to avoid copying a partial WAL
-shux operator stop --project .
+shux ops operator stop --project .
 
 # Migrate (dry run first)
-shux migrate-state --project . --dry-run
-shux migrate-state --project .
+shux state migrate --project . --dry-run
+shux state migrate --project .
 
 # Verify
 shux doctor --project .
@@ -537,6 +576,8 @@ Options:
 - `--keep-legacy` — copy to XDG but leave the legacy file in place (useful for rollback testing)
 
 The command aborts if the XDG path already exists to prevent overwriting data. WAL and SHM sidecar files are migrated automatically.
+
+For scripts written before progressive help, `shux migrate-state --project .` remains supported.
 
 ### Dashboard UI
 

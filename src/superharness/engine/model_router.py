@@ -309,22 +309,109 @@ def _fleet_candidates(fleet: dict) -> list[tuple[str, str]]:
     return candidates
 
 
+def _fetch_fleet_models(endpoint: str, timeout: float = 3.0) -> list[str] | None:
+    """Return live model IDs advertised by an OpenAI-compatible endpoint.
+
+    An explicitly unloaded model is excluded.  Endpoints that do not expose a
+    ``loaded`` field (such as Ollama) are treated as advertising usable models.
+    ``None`` means discovery failed, distinct from an endpoint which answered
+    successfully with no usable models.
+    """
+    try:
+        import json as _json
+        import urllib.request
+
+        req = urllib.request.Request(f"{endpoint.rstrip('/')}/models")
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            data = _json.loads(resp.read())
+        models = data.get("data")
+        if not isinstance(models, list):
+            return None
+        return [
+            str(model["id"])
+            for model in models
+            if isinstance(model, dict)
+            and model.get("id")
+            and model.get("loaded") is not False
+        ]
+    except Exception:
+        return None
+
+
+def _live_fleet_candidates(fleet: dict) -> list[tuple[str, str]]:
+    """Return fleet candidates ranked by operator policy and live discovery.
+
+    ``fleet.brain.model_priority`` is an optional best-to-worst list of model
+    IDs.  Only models currently advertised by ``/models`` are eligible for a
+    priority.  If discovery is unavailable, the existing pinned tier pairs are
+    retained so a temporary health-check failure cannot disable the brain.
+    """
+    static_candidates = _fleet_candidates(fleet)
+    priorities = fleet.get("brain", {}).get("model_priority", [])
+    priority_index = {
+        str(model): index
+        for index, model in enumerate(priorities)
+        if isinstance(model, str)
+    }
+    ranked: list[tuple[tuple[int, int, int], tuple[str, str]]] = []
+
+    for endpoint_index, (endpoint, pinned_model) in enumerate(static_candidates):
+        live_models = _fetch_fleet_models(endpoint)
+        if live_models is None:
+            ranked.append(((1, endpoint_index, 0), (endpoint, pinned_model)))
+            continue
+
+        # The pinned model remains the first choice at its endpoint when it is
+        # live.  Other live models allow recovery after a model rotation.
+        ordered_models = [pinned_model] if pinned_model in live_models else []
+        ordered_models.extend(model for model in live_models if model != pinned_model)
+        for model_index, model in enumerate(ordered_models):
+            if model in priority_index:
+                score = (0, priority_index[model], endpoint_index)
+            else:
+                score = (1, endpoint_index, model_index)
+            ranked.append((score, (endpoint, model)))
+
+    ranked.sort(key=lambda item: item[0])
+    return [candidate for _score, candidate in ranked]
+
+
+def _call_deepseek_fallback(
+    fleet: dict, prompt: str, expect_tokens: int
+) -> str | None:
+    """Use the opt-in DeepSeek fallback without persisting its API key."""
+    config = fleet.get("deepseek_fallback", {})
+    if not isinstance(config, dict) or not config.get("enabled", False):
+        return None
+    key_env = str(config.get("api_key_env", "DEEPSEEK_API_KEY"))
+    api_key = os.environ.get(key_env)
+    if not api_key:
+        return None
+    endpoint = str(config.get("endpoint", "https://api.deepseek.com/v1"))
+    model = str(config.get("model", "deepseek-chat"))
+    return _call_fleet_endpoint(
+        endpoint, model, prompt, expect_tokens, api_key=api_key
+    )
+
+
 def _call_fleet(prompt: str, expect_tokens: int = 10) -> str | None:
-    """Call the fleet API and return the response text. Tries every configured
-    endpoint in tier order (mini, standard, all) until one succeeds. Returns
-    None if none respond."""
+    """Call the best live fleet model, then an opt-in DeepSeek fallback."""
     fleet = _load_fleet_config()
     if not fleet:
         return None
-    for endpoint, model_id in _fleet_candidates(fleet):
+    for endpoint, model_id in _live_fleet_candidates(fleet):
         result = _call_fleet_endpoint(endpoint, model_id, prompt, expect_tokens)
         if result is not None:
             return result
-    return None
+    return _call_deepseek_fallback(fleet, prompt, expect_tokens)
 
 
 def _call_fleet_endpoint(
-    endpoint: str, model_id: str, prompt: str, expect_tokens: int
+    endpoint: str,
+    model_id: str,
+    prompt: str,
+    expect_tokens: int,
+    api_key: str | None = None,
 ) -> str | None:
     """Call one fleet endpoint. Returns None on any failure."""
     try:
@@ -339,10 +426,13 @@ def _call_fleet_endpoint(
                 "temperature": 0,
             }
         ).encode()
+        headers = {"Content-Type": "application/json"}
+        if api_key:
+            headers["Authorization"] = f"Bearer {api_key}"
         req = urllib.request.Request(
             f"{endpoint.rstrip('/')}/chat/completions",
             data=payload,
-            headers={"Content-Type": "application/json"},
+            headers=headers,
         )
         with urllib.request.urlopen(req, timeout=30) as resp:
             data = _json.loads(resp.read())
