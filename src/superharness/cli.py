@@ -558,8 +558,6 @@ def _register_explain():
         from superharness.commands.explain import cmd_explain
 
         main.add_command(cmd_explain, name="explain")
-        main.add_command(cmd_explain, name="why")
-        main.add_command(cmd_explain, name="wtf")
     except Exception as e:
         _logger.warning("Failed to register explain commands: %s", e)
 

@@ -9,7 +9,22 @@ from __future__ import annotations
 
 import pytest
 
+from superharness.engine import decisions_dao, failures_dao, handoffs_dao
 from superharness.utils.privacy import strip_private_tags, PRIVATE_TAG_RE
+
+
+T0 = "2026-01-01T00:00:00Z"
+
+
+@pytest.fixture
+def privacy_db(tmp_path):
+    from superharness.engine.db import get_connection, init_db
+
+    (tmp_path / ".superharness").mkdir()
+    conn = get_connection(str(tmp_path))
+    init_db(conn)
+    yield conn
+    conn.close()
 
 
 def test_strip_single_span():
@@ -77,3 +92,59 @@ def test_compiled_regex_constant_available():
 )
 def test_empty_and_boundary_spans(text, expected):
     assert strip_private_tags(text) == expected
+
+
+def test_handoff_dao_strips_private_tags_from_content_and_nested_metadata(privacy_db):
+    privacy_db.execute(
+        "INSERT INTO tasks (id, title, status, version, created_at) "
+        "VALUES (?, ?, ?, ?, ?)",
+        ("privacy-handoff", "Privacy", "todo", 1, T0),
+    )
+
+    row = handoffs_dao.append(
+        privacy_db,
+        task_id="privacy-handoff",
+        phase="report",
+        status="report_ready",
+        content="visible <private>handoff secret</private> text",
+        metadata={
+            "note": "keep <private>metadata secret</private> safe",
+            "nested": {"items": ["<private>token</private>visible", 7]},
+        },
+        now=T0,
+    )
+
+    assert row.content == "visible  text"
+    assert row.metadata == {
+        "note": "keep  safe",
+        "nested": {"items": ["visible", 7]},
+    }
+
+
+def test_decision_dao_strips_private_tags_from_all_authored_fields(privacy_db):
+    row = decisions_dao.record(
+        privacy_db,
+        decision="choose <private>secret option</private> SQLite",
+        reason="because <private>private rationale</private> durable",
+        alternatives=[
+            "YAML <private>credential</private>",
+            "<private>hidden</private>files",
+        ],
+        now=T0,
+    )
+
+    assert row.decision == "choose  SQLite"
+    assert row.reason == "because  durable"
+    assert row.alternatives == ["YAML ", "files"]
+
+
+def test_failure_dao_strips_private_tags_from_all_authored_fields(privacy_db):
+    row = failures_dao.record(
+        privacy_db,
+        pattern="auth <private>private pattern</private> failure",
+        error_snippet="before <private>raw credential</private> after",
+        now=T0,
+    )
+
+    assert row.pattern == "auth  failure"
+    assert row.error_snippet == "before  after"

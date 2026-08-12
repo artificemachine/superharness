@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from superharness.engine.state_errors import StateError
+from superharness.utils.privacy import strip_private_tags
 
 
 @dataclass(frozen=True)
@@ -21,6 +22,16 @@ class HandoffRow:
     created_at: str
 
 
+def _strip_private_values(value: Any) -> Any:
+    if isinstance(value, str):
+        return strip_private_tags(value)
+    if isinstance(value, dict):
+        return {key: _strip_private_values(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_strip_private_values(item) for item in value]
+    return value
+
+
 def append(
     conn: sqlite3.Connection,
     *,
@@ -34,7 +45,8 @@ def append(
     now: str,
 ) -> HandoffRow:
     """Append a handoff event. Append-only: never updates or deletes."""
-    meta_json = json.dumps(metadata or {})
+    cleaned_content = strip_private_tags(content) if content is not None else None
+    meta_json = json.dumps(_strip_private_values(metadata or {}))
     try:
         cursor = conn.execute(
             """
@@ -43,7 +55,16 @@ def append(
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             RETURNING *
             """,
-            (task_id, phase, status, from_agent, to_agent, content, meta_json, now),
+            (
+                task_id,
+                phase,
+                status,
+                from_agent,
+                to_agent,
+                cleaned_content,
+                meta_json,
+                now,
+            ),
         )
         row = cursor.fetchone()
         if not row:

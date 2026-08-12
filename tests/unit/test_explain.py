@@ -69,11 +69,11 @@ def test_explain_does_not_claim_contract_yaml_is_source_of_truth(runner):
     assert "sqlite" in result.output.lower()
 
 
-def test_explain_aliases(runner):
-    """'why' and 'wtf' are registered aliases that also work."""
+@pytest.mark.parametrize("alias", ["why", "wtf"])
+def test_explain_aliases_are_not_registered(runner, alias):
+    """The canonical pitch is exposed only as `shux explain`."""
     from superharness.cli import main
 
-    for alias in ("why", "wtf"):
-        result = runner.invoke(main, [alias])
-        assert result.exit_code == 0, f"alias '{alias}' failed: {result.output}"
-        assert "multi-agent" in result.output, f"alias '{alias}' missing core pitch"
+    result = runner.invoke(main, [alias])
+    assert result.exit_code == 2
+    assert f"No such command '{alias}'" in result.output

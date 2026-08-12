@@ -31,8 +31,6 @@ KNOWN_SUBCOMMANDS = [
     "daemon",
     "diff",
     "explain",
-    "why",  # alias
-    "wtf",  # alias
     "onboard",
     "config",
     "version",

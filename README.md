@@ -5,9 +5,13 @@
 [![Python versions](https://img.shields.io/pypi/pyversions/superharness.svg)](https://pypi.org/project/superharness/)
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 
+## Overview
+
 **Multi-agent task coordination for Claude Code, Codex CLI, Gemini CLI, and OpenCode**
 
 superharness lets AI coding assistants work on the same project without stepping on each other. It provides a shared contract (SQLite-backed), queue-based delegation, lifecycle rules, and handoff/ledger state so tasks survive across sessions and auto-manage themselves.
+
+### Example output
 
 One command tells you the whole state of a project — agents, queue, discussions, and every task, in one screen:
 
@@ -41,7 +45,7 @@ No issues found. All clean.
 
 Gives you `/shux` (raw CLI passthrough), `/shux-contract`, `/shux-status`, `/shux-delegate`, `/shux-doctor`, `/shux-close`, plus a skill that auto-routes plain-English task/status questions to the right command.
 
-## What's New in the v1.80.x line
+## Recent Highlights
 
 - **Harness adapter registry**: claude/codex/gemini/opencode dispatch routed through a single `Harness` protocol, with golden-parity tests proving byte-identical invocations
 - **Transcript tailing + dual watchdog**: byte-offset live dispatch progress with persisted cursors, backed by idle-timeout + absolute-ceiling deadline enforcement from the event stream
@@ -128,7 +132,7 @@ cd ~/.local/share/superharness && pip install -e .
 
 **Step 3 — Type these phrases directly to the agent:**
 ```
-shux explain           # what is superharness? (10-second answer — aliases: shux why, shux wtf)
+shux explain           # what is superharness? (10-second answer)
 shux onboard           # guided 7-step setup wizard (non-interactive: --non-interactive --git-mode team|solo)
 shux init              # bootstrap .superharness/ for this project
 shux doctor            # check prerequisites and protocol health
@@ -339,6 +343,14 @@ You probably **don't need** superharness if you only ever run a single agent int
 - `claude` CLI (for Claude delegation commands): `npm install -g @anthropic-ai/claude-code`
 - `codex` CLI (for Codex delegation commands): `npm install -g @openai/codex`
 - macOS `launchd` or Linux `systemd` for background watcher (see Platform Support); `--foreground` mode works everywhere
+
+---
+
+## Troubleshooting
+
+- Run `shux doctor` to check prerequisites, hooks, state, and background services.
+- Run `shux status --fix` to reconcile stale queue items and orphaned runtime state.
+- For watcher, dashboard, and CLI recovery steps, see the [troubleshooting guide](docs/GUIDE.md#troubleshooting).
 
 ---
 
