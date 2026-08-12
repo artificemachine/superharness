@@ -130,52 +130,23 @@ cd ~/.local/share/superharness && pip install -e .
 
 **Step 2 — Go to your project and open Claude Code or Codex CLI.**
 
-**Step 3 — Type these phrases directly to the agent:**
+**Step 3 — Core workflow:**
 ```
 shux explain           # what is superharness? (10-second answer)
-shux onboard           # guided 7-step setup wizard (non-interactive: --non-interactive --git-mode team|solo)
-shux init              # bootstrap .superharness/ for this project
-shux doctor            # check prerequisites and protocol health
-shux contract          # show all tasks with status and next-task suggestion
-shux continue          # resume active contract: next resumable task + recommended action
-shux delegate <id>     # create task + enqueue in one step (task must be plan_approved or later)
-shux test-type <id>    # set mandatory test types for a task
-shux verify <id>       # record verification result (pass/fail)
-shux close <id>        # mark done (task must be report_ready or review_passed); use --cancel-remaining --cancel-reason "..." to bulk-cancel open subtasks and close atomically; --force bypasses all gates
-shux subtask-cancel    # cancel a single subtask with a mandatory reason (--task <id> --sub <sub-id> --reason "...")
-shux task create       # create a task with --blocked-by, --tdd-red/green/refactor, --criteria flags
-shux task status       # update task lifecycle status (todo → plan_proposed → plan_approved → in_progress → report_ready → done)
-shux status            # dashboard: tasks, watcher, profile
-shux recall <keywords> # search past handoffs and ledger (hits >14d old get a staleness caveat; tune with --max-fresh-days)
-shux distill           # distill recent handoffs+ledger into curated project lessons (--dry-run/--apply/--schedule)
-shux uninstall         # remove watcher and system artifacts for this project
-shux hygiene           # validate protocol compliance (contract, handoffs, ledger)
-shux hygiene --repair  # auto-fix missing handoffs, ledger entries, and stuck statuses
-shux dashboard         # open browser dashboard
-shux watch             # start continuous watcher in foreground
-shux update            # pull latest superharness + refresh templates, hooks, and watcher
-shux discuss           # start or manage a cross-agent discussion (topic, owners, optional ID)
-shux agent-pulse       # write/read agent liveness signal (heartbeat for running tasks)
-shux auto-dispatch     # scan todo tasks, classify via model router, and enqueue to best agent
-shux schedule          # cron-like scheduled dispatch: add/list/remove/run
-shux install-hooks     # merge adapter hooks into ~/.claude/settings.json (portable, run once per machine)
-shux init --skip-hooks # init without modifying ~/.claude/settings.json (for CI or conservative setups)
-shux benchmark         # show dispatch cost/duration leaderboard (--top N, --agents, --models)
-shux config get <key>  # read a profile.yaml setting (e.g. budget.daily_limit, default_model)
-shux config set <key> <val>  # write a profile.yaml setting (e.g. budget.daily_limit 5.00, budget.strict true)
-shux diff <id>         # preview agent changes for a task before closing (--stat, --base)
-shux daemon start      # start background watcher daemon (portable, no launchd/systemd needed)
-shux daemon stop       # stop the daemon
-shux daemon status     # show daemon running state and PID
-shux pack export       # bundle .superharness/ into a portable .tar.gz for handoff
-shux pack import       # restore a pack into a new project
-shux inbox-gc          # reconcile stale inbox items against contract
-shux worktree-gc       # clean orphaned dispatch worktrees
-shux recap             # what happened in the last N hours (timeline view)
-shux notify-desktop    # send a native desktop notification
-shux adapter-payload --json  # emit project state as stable JSON payload (schema v1.0) for Morpheme/adapters
-shux help              # show all shux shortcuts in the terminal
+shux onboard           # guided first-time setup
+shux task create       # define the task and its criteria
+shux contract          # inspect the active work
+shux delegate <id>     # send approved work to its owner
+shux status            # inspect watcher and queue health
+shux context <id>      # recover the task's decisions and handoff
+shux verify <id>       # record end-to-end verification
+shux close <id>        # close verified work and write its handoff
+shux dashboard         # open the visual task board
+shux doctor            # diagnose setup and state health
+shux recall <keywords> # retrieve relevant prior handoffs
 ```
+
+For advanced work, use `shux state --help`, `shux agent --help`, `shux ops --help`, or `shux memory --help`. Run `shux help --all` for the complete expert catalog; established top-level commands remain supported for scripts and existing workflows.
 
 **Dashboard features** (`shux dashboard`):
 - Activity feed — live timeline of dispatch, gc, and inbox events

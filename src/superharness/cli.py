@@ -14,6 +14,12 @@ import sys
 import click
 
 from superharness import __version__
+from superharness.commands.help_catalog import (
+    CORE_COMMANDS,
+    DOMAIN_ENTRY_POINTS,
+    canonical_command_names,
+    legacy_state_present,
+)
 from superharness.engine.adapter_registry import fallback_flagship, flagship
 from superharness.engine.errors import SuperharnessError, handle_cli_error
 from superharness.logging_utils import get_logger as _bootstrap_logger
@@ -78,7 +84,12 @@ def _inject_quickstart(help_text: str) -> str:
     """
     lines = help_text.split("\n")
     insert_idx = next(
-        (i for i, line in enumerate(lines) if line.startswith("Commands:")), len(lines)
+        (
+            i
+            for i, line in enumerate(lines)
+            if line.startswith("Core commands:") or line.startswith("All commands:")
+        ),
+        len(lines),
     )
 
     has_superharness = os.path.isdir(os.path.join(os.getcwd(), ".superharness"))
@@ -108,8 +119,44 @@ def _inject_quickstart(help_text: str) -> str:
     return "\n".join(lines[:insert_idx] + quickstart + lines[insert_idx:])
 
 
+def _format_command_section(
+    ctx: click.Context,
+    formatter: click.HelpFormatter,
+    heading: str,
+    commands: list[str] | tuple[str, ...],
+) -> None:
+    """Render known root commands with Click's standard description layout."""
+    rows = []
+    for name in commands:
+        command = ctx.command.get_command(ctx, name)
+        if command is not None:
+            rows.append((name, command.get_short_help_str()))
+    if rows:
+        with formatter.section(heading):
+            formatter.write_dl(rows)
+
+
 class _OnboardingGroup(click.Group):
-    """Group that injects the first-commands quickstart into --help output."""
+    """Group that provides progressive discovery while preserving all commands."""
+
+    def format_commands(self, ctx: click.Context, formatter: click.HelpFormatter) -> None:
+        if ctx.meta.get("superharness_help_all", False):
+            _format_command_section(
+                ctx,
+                formatter,
+                "All commands",
+                canonical_command_names(self.commands),
+            )
+            return
+
+        _format_command_section(ctx, formatter, "Core commands", CORE_COMMANDS)
+        with formatter.section("More commands"):
+            formatter.write_dl(list(DOMAIN_ENTRY_POINTS.items()))
+        if legacy_state_present():
+            formatter.write_paragraph()
+            formatter.write_text("Legacy state detected — run 'shux state --help' for migration tools.")
+        formatter.write_paragraph()
+        formatter.write_text("Run 'shux help --all' for the complete expert catalog.")
 
     def get_help(self, ctx: click.Context) -> str:  # noqa: D401
         return _inject_quickstart(super().get_help(ctx))
@@ -1022,9 +1069,12 @@ def cmd_version():
 
 
 @main.command(name="help", hidden=True)
+@click.option("--all", "show_all", is_flag=True, help="Show every public command.")
 @click.pass_context
-def cmd_help(ctx):
+def cmd_help(ctx, show_all):
     """Show help text (alias for --help)."""
+    if show_all:
+        ctx.parent.meta["superharness_help_all"] = True
     click.echo(ctx.parent.get_help())
 
 
@@ -1430,6 +1480,11 @@ def operator_stop(project):
             state_file.unlink(missing_ok=True)
     except Exception as e:
         click.echo(f"Error stopping operator: {e}", err=True)
+
+
+from superharness.commands.domain_groups import register_domain_groups  # noqa: E402
+
+register_domain_groups(main)
 
 
 if __name__ == "__main__":
