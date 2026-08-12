@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from superharness.engine.state_errors import StateError
+from superharness.utils.privacy import strip_private_tags
 
 logger = logging.getLogger(__name__)
 
@@ -39,9 +40,19 @@ def record(
     ON DELETE SET NULL semantics already used when a real task is later
     deleted.
     """
-    alt_json = json.dumps(alternatives or [])
+    cleaned_decision = strip_private_tags(decision)
+    cleaned_reason = strip_private_tags(reason) if reason is not None else None
+    alt_json = json.dumps([strip_private_tags(item) for item in alternatives or []])
     try:
-        return _insert(conn, agent, task_id, decision, reason, alt_json, now)
+        return _insert(
+            conn,
+            agent,
+            task_id,
+            cleaned_decision,
+            cleaned_reason,
+            alt_json,
+            now,
+        )
     except sqlite3.IntegrityError as e:
         if task_id is None:
             raise StateError(f"Failed to record decision: {e}") from e
@@ -49,7 +60,15 @@ def record(
             "decisions.task_id %r does not reference an existing task — recording with task_id=NULL",
             task_id,
         )
-        return _insert(conn, agent, None, decision, reason, alt_json, now)
+        return _insert(
+            conn,
+            agent,
+            None,
+            cleaned_decision,
+            cleaned_reason,
+            alt_json,
+            now,
+        )
     except sqlite3.Error as e:
         raise StateError(f"Failed to record decision: {e}") from e
 

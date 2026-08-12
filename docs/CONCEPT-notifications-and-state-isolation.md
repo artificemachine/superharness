@@ -730,7 +730,7 @@ Explicitly deferred to keep v1 shippable:
 
 ## 9. Onboarding Integration (`shux onboard`, `shux explain`)
 
-Note on naming: the existing commands are `shux onboard` (the 7-step setup wizard) and `shux explain` (the 10-second pitch, aliased as `shux why` / `shux wtf`). This section uses those names. No separate `shux demo` or `shux wizard` exists today.
+Note on naming: the existing commands are `shux onboard` (the 7-step setup wizard) and `shux explain` (the 10-second pitch). This section uses those names. No separate `shux demo` or `shux wizard` exists today.
 
 ### 9.1 Why surface this in onboarding
 
