@@ -862,3 +862,7 @@ chore: submitted gemini-cli round 1 position for gap analysis discussion
 - 2026-08-11: fix(ci): raise Windows unit-test job ceiling from 30 to 40 minutes. Same variance-vs-ceiling pattern that first forced 20->30 recurred on PR #117 (killed at 30m08s while still running, same-commit rerun completed in 28m29s) as tests/unit grew by four files; 40 restores a real buffer instead of chasing the ceiling one bump behind actual growth.
 - 2026-08-11: docs(attributions): correct the obra/superpowers two-stage-review claim to match reality — report_ready/review_requested/review_passed give review its own states (borrowed shape), but spec-compliance-then-code-quality is not separately enforced; that discipline is left to whoever performs the review.
 - 2026-08-12: fix(privacy+cli): strip `<private>` spans at handoff, decision, and failure SQLite write boundaries (including nested handoff metadata); remove the `shux why` and `shux wtf` aliases while retaining `shux explain`; refresh README structure, troubleshooting guidance, and the lean CLI analysis.
+- 2026-08-12: feat(cli): introduce progressive command help with a concise Core workflow, expert catalog, and hidden compatibility aliases.
+- 2026-08-12: feat(cli): add executable state, agent, ops, and memory command groups while retaining every top-level path.
+- 2026-08-12: feat(cli): show legacy YAML and XDG migration tools only when read-only state signals require them.
+- 2026-08-12: docs(cli): document progressive command discovery across README and GUIDE, with contract coverage against CLI taxonomy drift.
