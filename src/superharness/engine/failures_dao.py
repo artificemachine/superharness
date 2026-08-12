@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from superharness.engine.state_errors import StateError
+from superharness.utils.privacy import strip_private_tags
 
 logger = logging.getLogger(__name__)
 
@@ -37,8 +38,12 @@ def record(
     matches the ON DELETE SET NULL semantics already used when a real task
     is later deleted.
     """
+    cleaned_pattern = strip_private_tags(pattern) if pattern is not None else None
+    cleaned_error = (
+        strip_private_tags(error_snippet) if error_snippet is not None else None
+    )
     try:
-        return _insert(conn, task_id, agent, pattern, error_snippet, now)
+        return _insert(conn, task_id, agent, cleaned_pattern, cleaned_error, now)
     except sqlite3.IntegrityError as e:
         if task_id is None:
             raise StateError(f"Failed to record failure: {e}") from e
@@ -46,7 +51,7 @@ def record(
             "failures.task_id %r does not reference an existing task — recording with task_id=NULL",
             task_id,
         )
-        return _insert(conn, None, agent, pattern, error_snippet, now)
+        return _insert(conn, None, agent, cleaned_pattern, cleaned_error, now)
     except sqlite3.Error as e:
         raise StateError(f"Failed to record failure: {e}") from e
 
