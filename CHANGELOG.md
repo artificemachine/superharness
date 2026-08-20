@@ -869,3 +869,4 @@ chore: submitted gemini-cli round 1 position for gap analysis discussion
 - 2026-08-12: feat(router): rank the internal brain's live fleet models by operator policy and use the opt-in DeepSeek API fallback only after every fleet candidate fails.
 - 2026-08-20: chore(git): record branch cleanup handoff, deleted 8 merged local branches and 5 stale merged remote branches, enabled deleteBranchOnMerge on superharness repo.
 - 2026-08-20: fix(tests): repoint CLI help assertions at `shux help --all` for init/rules, which moved there when progressive help catalog shipped (PR #121).
+- 2026-08-20: chore(release): bump version to 1.82.2 (patch, CLI help test fix).
