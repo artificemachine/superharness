@@ -234,9 +234,9 @@ class TestDelegatePromptReferences:
 
 class TestShuxRulesIntegration:
     def test_shux_rules_listed_in_cli_help(self):
-        """shux --help must list 'rules' as a command."""
+        """shux help --all expert catalog must list 'rules' as a command."""
         result = subprocess.run(
-            [sys.executable, "-m", "superharness", "--help"],
+            [sys.executable, "-m", "superharness", "help", "--all"],
             capture_output=True,
             text=True,
         )

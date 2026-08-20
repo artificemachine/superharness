@@ -1,3 +1,82 @@
+# Session Handoff — 2026-08-20 (branch cleanup, local + remote)
+Agent: Claude Code (Sonnet 5) | Branch: `main` | Tests: not run this session (git/GitHub housekeeping only, no code changes) | N/A (no commits)
+
+## What happened this session
+
+- Audited local branches: 3 were merged into `main` (`chore/public-repo-audit-remediation`, `feat/langfuse-observability`, `feat/progressive-cli-help`) and deleted.
+- Audited remaining 5 unmerged local branches. Verified each via `gh pr list --state all` + `git cherry`: `fix/privacy-cli-surface` (PR #120), `feat/dashboard-langfuse-pulse` (PR #108), `feat/hermeticity-guard` (PR #88) were all already squash-merged into main — content confirmed present, so `git cherry` showed no unique commits. Deleted all 3, after removing the 2 worktrees that had them checked out (`pi-agent/.../hermwt` for `feat/hermeticity-guard`, `~/DevOpsSec/superharness-langfuse` for `feat/langfuse-observability-stale-base`).
+- `backup/pre-history-rewrite-main-c11e0859` and `feat/langfuse-observability-stale-base` both pointed at the old main tip (`c11e0859`, 557 commits behind current main) from before a history rewrite, with no open PR. User confirmed delete of both.
+- Local branch list is now just `main`.
+- Root cause found for why GitHub still showed old branches after local deletes: repo setting `deleteBranchOnMerge` was `false`, so merged PR branches never auto-delete on GitHub. Fixed via `gh repo edit artificemachine/superharness --delete-branch-on-merge` (now `true`).
+- Deleted the 5 stale merged remote branches with `ALLOW_PUSH=1 git push origin --delete ...` (pre-push guard required the flag; user authorized via "go" + explicit follow-up confirmation). GitHub `origin` now shows only `main` and the open dependabot PR branch (`dependabot/pip/python-deps-cc6c16f905`, PR #122, open).
+- Left untouched: worktree `~/DevOpsSec/superharness-langfuse-current` (detached HEAD at `4ed52f58`) — never asked about, not touched.
+
+## Next session — first moves
+
+1. No pending branch cleanup remains in `superharness`. If asked to do the same audit in another repo, repeat this pattern: `git branch --merged`/`--no-merged` locally, cross-check each unmerged branch against `gh pr list --state all --search "head:<branch>"`, confirm content via `git cherry`, then `git push origin --delete` for confirmed-merged ones.
+2. Decide on PR #122 (dependabot mcp requirement bump) — merge or close.
+3. `HANDOFF.md` currently has an uncommitted modification (this prepend) plus untracked `.superharness/agent-auth-state.json` and `docs/ARCH-exo-vs-superharness.md` from the prior session — still pending a commit/retention decision per that session's notes.
+
+### Operational notes
+
+- `deleteBranchOnMerge` is now `true` on `artificemachine/superharness` — future merged PR branches auto-delete on GitHub, no manual cleanup needed.
+- Pre-push guard blocks branch deletes same as regular pushes — needs `ALLOW_PUSH=1` or `/ship`.
+- Local `git branch -D` never touches remote — always a separate `git push origin --delete` step, easy to forget.
+
+---
+
+# Session Handoff — 2026-08-16 (Exo architecture, security audit, and Superharness comparison)
+Agent: Codex | Branch: `main` | Tests: not run — project policy requires explicit approval; static audit only | UNCOMMITTED
+
+## What happened this session
+
+- Loaded the current Superharness handoff and task context before work. The checkout remains on `main` at `cb0a5c53`; no queued project task was adopted or closed.
+- Audited `exoharness/exo` at commit `5bc77ce7c7a2921794083d58c926cf721c14bf8a`. Static verdict: NOT READY. The critical trust-boundary failure is the canonical read-write mount of the entire checkout, including `.env` and `.exo`, combined with a model-visible guardian that executes checkout scripts on the host. A prompt-injected turn can therefore read credentials, forge canonical history, and reach host-user execution. Upstream issue #215 independently tracks the core boundary.
+- Confirmed additional high-risk Exo findings: redirect-based host SSRF and external exfiltration through adapter attachments; model-controlled adapter paths that can delete or write arbitrary user-writable host paths; file-backed state protected only by process-local locks; detached-turn, adapter-delivery, and scheduler paths that can race, lose work, or block later work.
+- Completed the static QA comparison. Exo's heavy integration suite is post-merge only, coverage is not enforced, the agent-harness E2E command is absent from CI, and optional AWS AgentCore code is not compiled in CI. No runtime exploit, build, test, linter, installer, or deployment command was run.
+- Compared Exo with Superharness, Pi, and Hermes. Conclusion: Pi, Hermes, and Exo are agent runtimes; Superharness is the external multi-agent control plane. Superharness should remain authoritative for task contracts, approvals, worktrees, verification, and handoffs; a future Exo integration should be a constrained execution adapter with self-mount, host guardian, arbitrary host paths, and unauthenticated HTTP disabled.
+- Saved the comparison via the `2md`/`to-md` workflow as `docs/ARCH-exo-vs-superharness.md`. No Exo source was changed; the temporary Exo checkout and ShipGuard database were removed after the audit.
+
+## Next session — first moves
+
+1. Decide whether Exo integration is wanted. If yes, create a bounded TDD plan for a constrained Superharness harness adapter and make the Exo security prerequisites explicit before implementation.
+2. If dynamic Exo verification is wanted, obtain explicit approval before running its Rust/TypeScript tests, coverage tooling, Docker-backed integration suite, or builds.
+3. Review `docs/ARCH-exo-vs-superharness.md` and decide whether it should be retained and committed; do not commit or push without fresh owner instruction.
+
+### Operational notes
+
+- Exo evidence is pinned to commit `5bc77ce7c7a2921794083d58c926cf721c14bf8a`; re-check upstream HEAD before acting because the repository may have moved.
+- Current Superharness worktree state before this prepend was: modified `HANDOFF.md`, untracked `.superharness/agent-auth-state.json`, and new `docs/ARCH-exo-vs-superharness.md`. Preserve the agent-auth file and do not stage it.
+- The Exo audit and architectural comparison are also stored in ICM under `context-superharness`. Scratch audit artifacts were deleted and can be regenerated from the pinned commit.
+
+---
+
+# Session Handoff — 2026-08-12 (progressive CLI help, fleet routing, and packaged install)
+Agent: Codex | Branch: `main` | Tests: pre-commit `867 passed, 9 skipped`; docs/CLI `22 passed`; installed CLI validation passed; a later bare full-suite probe stopped at 7% without a summary, so it is inconclusive | COMMITTED, pushed, merged
+
+## What happened this session
+
+- Saved and implemented the progressive CLI-help plan: default help now exposes the 12-command core workflow, expert features live under executable `state`, `agent`, `ops`, and `memory` groups, `shux help --all` exposes the public expert catalogue, and compatibility aliases remain callable but hidden from normal help.
+- Kept migration commands callable while making their normal-help visibility conditional on read-only legacy-state signals. Updated `README.md` and `docs/GUIDE.md`, added CLI/documentation contract coverage, and saved the ignored local source plan at `docs/PLAN-progressive-cli-help.md`.
+- Added live GPU-fleet model discovery and policy ordering for the internal brain, preserving static candidates when discovery fails and using the opt-in DeepSeek fallback only after every fleet candidate fails. The API key remains environment-only.
+- Committed the work as `357eb0c4` and `97de9b21`, pushed `feat/progressive-cli-help`, then merged it through PR #121 (`cb0a5c53`) into `main` with owner-authorized temporary branch-protection changes. Review requirement, the four required gates, and admin enforcement were restored and read back successfully.
+- Built `superharness-1.82.1-py3-none-any.whl`, reinstalled the global pipx package non-editably, and ran `shux install-hooks` so Claude hooks use the installed `~/.local/bin/shux`, not the repository virtualenv. In a clean directory, the installed CLI showed the progressive help and hid legacy state commands; compatibility `shux discussion --help` still worked.
+
+## Next session — first moves
+
+1. No queued Superharness work: ask the operator what to work on next rather than inventing a task.
+2. If requested, resolve the three non-blocking `shux doctor` warnings: split-brain state DB, optional Langfuse absent, and the unavailable `qwen3-32b-awq` standard fleet model.
+3. Before asserting a new full-suite result, rerun it to completion; this session's final bare `uv run pytest -q` probe has no completion summary.
+
+### Operational notes
+
+- `main` and `origin/main` are at merge commit `cb0a5c53`; PR #121 is merged. The version remains 1.82.1 — no release or tag was created.
+- The global installation is self-contained at the pipx site-packages path, not editable against this checkout. Pipx required uninstall/reinstall rather than `--force` because the existing venv could not be recreated in place.
+- `.superharness/agent-auth-state.json` remains the only untracked local file. The pre-commit secret guard deliberately refuses to commit it, even when it contains no API key.
+- ICM storage was unavailable because its transport was closed; the complete handoff is preserved here instead.
+
+---
+
 # Session Handoff — 2026-08-12 (PRs #117-#119 merged; adoptions shipped, CI timeout fixed, ATTRIBUTIONS corrected)
 Agent: Claude Code (Sonnet 5) | Branch: `main` | Tests: CI green on all 5 merged PRs this arc (#115-#119); local full run this session timed out at 300s/48% progress, inconclusive — not evidence of failure, just didn't finish | COMMITTED, pushed, merged
 

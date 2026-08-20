@@ -26,9 +26,9 @@ class TestShuxHelpQuickstart:
         )
 
     def test_help_shows_init_first(self):
-        """shux --help quickstart section mentions 'shux init' as first step."""
+        """shux help --all expert catalog mentions 'shux init' as a setup command."""
         result = subprocess.run(
-            [sys.executable, "-m", "superharness", "--help"],
+            [sys.executable, "-m", "superharness", "help", "--all"],
             capture_output=True,
             text=True,
         )
@@ -38,7 +38,7 @@ class TestShuxHelpQuickstart:
         assert "init" in output.lower()
 
     def test_help_shows_core_commands(self):
-        """shux --help quickstart mentions core commands: init, doctor, contract, delegate."""
+        """shux --help quickstart mentions core commands: onboard, doctor, contract, delegate."""
         result = subprocess.run(
             [sys.executable, "-m", "superharness", "--help"],
             capture_output=True,
@@ -47,7 +47,7 @@ class TestShuxHelpQuickstart:
         assert result.returncode == 0
         output = result.stdout.lower()
         # Core workflow commands should be visible
-        for cmd in ["init", "doctor", "contract", "delegate"]:
+        for cmd in ["onboard", "doctor", "contract", "delegate"]:
             assert cmd in output
 
 
