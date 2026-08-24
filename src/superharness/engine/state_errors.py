@@ -31,3 +31,9 @@ class SingletonConflict(StateError):
 
 class ContractLockError(StateError):
     """Raised when a write targets a field frozen at plan_approved time."""
+
+
+class BoundaryError(StateError):
+    """Raised when a payload fails schema validation at a typed write boundary
+    (e.g. handoffs_dao.append phase/status). Distinct from infrastructure
+    failures so best-effort callers can swallow the latter and not the former."""

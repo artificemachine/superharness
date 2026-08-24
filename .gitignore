@@ -59,6 +59,8 @@ json
 
 # JSONL event stream — runtime data, not source
 .superharness/events.jsonl
+# Local agent auth-mode marker — machine-specific, not source
+.superharness/agent-auth-state.json
 .hablatone-project
 .ship-check-passed
 # ShipGuard runtime state — written relative to the scan cwd, so it appears in

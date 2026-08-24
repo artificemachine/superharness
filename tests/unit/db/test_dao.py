@@ -357,7 +357,7 @@ def test_handoffs_dao(db_conn):
         db_conn,
         task_id="t1",
         phase="plan",
-        status="proposed",
+        status="plan_proposed",
         now="2026-01-01T00:00:00Z",
     )
     handoffs_dao.append(
@@ -370,7 +370,7 @@ def test_handoffs_dao(db_conn):
 
     history = handoffs_dao.get_history(db_conn, "t1")
     assert len(history) == 2
-    assert history[0].status == "proposed"
+    assert history[0].status == "plan_proposed"
     assert history[1].status == "approved"
 
     latest = handoffs_dao.get_latest(db_conn, "t1", "plan")

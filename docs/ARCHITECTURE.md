@@ -47,11 +47,69 @@ SQLite data access, lifecycle rules, and orchestration logic.
 | `commands/` | One module per command: task management, delegation, watcher control, export/import, diagnostics, and installation. |
 | `engine/next_action.py` | Pure task lifecycle state machine and dispatch gates. |
 | `engine/schemas.py` | Pydantic models for task, inbox, handoff, profile, and adapter data. |
-| `engine/*_dao.py` | SQLite data-access layer for tasks, inbox, handoffs, decisions, failures, discussions, and heartbeats. |
+| `engine/*_dao.py` | SQLite data-access layer for tasks, inbox, handoffs, decisions, failures, discussions, heartbeats, and dispatch context components. |
+| `engine/context_dao.py` | Content-addressed store for dispatch prompt components (see [Typed write boundaries](#typed-write-boundaries)). |
 | `engine/operator.py` | Starts, monitors, and stops the optional watcher/dashboard stack. |
 | `engine/state_reader.py` and `engine/state_writer.py` | Canonical read/write paths over the SQLite store. |
 | `adapters/` and `adapter_manifests/` | Agent-specific launch, hook, and capability definitions. |
 | `scripts/dashboard-ui.py` | Authenticated loopback dashboard and optional autohealth supervisor. |
+
+## Typed write boundaries
+
+Two write paths validate their payload at the DAO edge rather than trusting
+callers. The rule is that a malformed payload fails loudly at the boundary
+instead of being silently persisted or silently dropped.
+
+### Handoff boundary — `engine/handoffs_dao.append`
+
+`append()` rejects any out-of-set `phase` or `status` before it writes,
+raising `BoundaryError`:
+
+| Set | Values | Where they come from |
+| --- | --- | --- |
+| `VALID_PHASES` | `plan`, `report` | what `shux handoff-write --phase` offers |
+| `LEGACY_PHASES` | `done` | legacy `<task>-done-<date>.yaml` filenames parsed by `engine/migrate_yaml.py`; still read by the watcher |
+| `tasks_dao.VALID_STATUSES` | the task lifecycle enum | normal handoff status |
+| `HANDOFF_ONLY_STATUSES` | `approved`, `plan_confirmed` | discussion approval gate (`engine/discuss.py`) and the dashboard's legacy plan alias |
+
+`engine/state_errors.BoundaryError` is a `StateError` subclass, and the
+distinction is load-bearing: the DAO wraps every `sqlite3.Error` as a plain
+`StateError`, so `state_writer.write_handoff_to_db` re-raises only
+`BoundaryError` (a caller bug) while continuing to swallow infrastructure
+failures (a storage outage must not break the YAML export path).
+
+### Event boundary — `engine/events.validate_event`
+
+`events.emit()` validates synchronously, before anything is queued, and
+raises `TypeError` (not an event, or a field of the wrong type) or
+`ValueError` (empty `task_id`). The check is structural, not a closed list of
+classes: any frozen dataclass exposing a non-empty `str` `kind` and a
+`task_id` is accepted, so modules may define their own events
+(`engine/transcript_tail.TranscriptProgress` does).
+
+A failure in the *background writer* remains warn-only, by design — a DB
+outage degrades telemetry, it does not break the caller.
+
+### Content-addressed dispatch context
+
+`engine/context_dao.py` records what actually went into a dispatch's prompt,
+so a re-dispatch can be diffed ingredient by ingredient instead of as a wall
+of text. Schema v39 adds three tables:
+
+| Table | Holds |
+| --- | --- |
+| `context_component` | one row per distinct component, keyed by the sha256 of its content (`INSERT OR IGNORE`, so identical content is stored once) |
+| `dispatch_context` | one row per dispatch: `task_id`, `agent`, `recorded_at` |
+| `dispatch_context_component` | the ordered `position` → `sha256` mapping joining the two |
+
+`COMPONENT_TYPES` is the accepted set: `system`, `task_instructions`,
+`discussion_prompt`, `vault_block`, `project_rules`. `record_dispatch()`
+validates every type up front, so a bad type cannot leave a partial dispatch
+behind. Recording is best-effort at the call site — `shux delegate` logs a
+warning and dispatches anyway if it fails.
+
+Read it back with `shux diff <task-id> --context` (see the guide) or via
+`last_dispatches()` / `components_for_dispatch()`.
 
 ## State model
 

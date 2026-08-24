@@ -47,6 +47,7 @@
 | [`CONCEPT-superpowers-extraction.md`](CONCEPT-superpowers-extraction.md) | Superpowers → superharness extraction |
 | [`CONCEPT-behavioral-profile.md`](CONCEPT-behavioral-profile.md) | Zero-touch adaptive layer — behavioral profile |
 | [`CONCEPT-notifications-and-state-isolation.md`](CONCEPT-notifications-and-state-isolation.md) | Notifications + state isolation concept |
+| [`CONCEPT-content-addressed-context-typed-boundaries.md`](CONCEPT-content-addressed-context-typed-boundaries.md) | Content-addressed context hashing + typed handoff boundaries |
 
 ## 🔒 Security & Audits
 

@@ -21,6 +21,8 @@ import yaml
 
 import logging
 
+from superharness.engine.state_errors import BoundaryError
+
 logger = logging.getLogger(__name__)
 
 
@@ -376,8 +378,13 @@ def write_handoff_to_db(
     document is stored both as readable text (content) and structured json
     (metadata) so recall can search it and readers can reconstruct it.
 
-    Best-effort: never raises — a DB failure must not break the YAML write
-    path that un-migrated readers still depend on during the transition.
+    Best-effort for infrastructure failures (DB unreachable, disk full,
+    etc.): those never raise, so a storage outage must not break the YAML
+    write path that un-migrated readers still depend on during the
+    transition. A `BoundaryError` from the typed handoff boundary
+    (`handoffs_dao.append`, e.g. an invalid `phase`/`status`) is a caller
+    bug, not an infrastructure failure, and is re-raised so it is not
+    silently swallowed.
     """
     try:
         from superharness.engine.db import managed_connection, now_iso
@@ -448,6 +455,8 @@ def write_handoff_to_db(
                     now=str(created),
                 )
         return True
+    except BoundaryError:
+        raise
     except Exception as e:
         logger.warning("write_handoff_to_db failed (non-fatal): %s", e, exc_info=True)
         return False

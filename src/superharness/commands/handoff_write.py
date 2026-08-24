@@ -46,8 +46,9 @@ try:
 except ImportError:
     yaml = None  # type: ignore[assignment]
 
+from superharness.engine.handoffs_dao import VALID_PHASES
+from superharness.engine.state_errors import BoundaryError
 
-VALID_PHASES = {"plan", "report"}
 VALID_FROM = {"claude-code", "codex-cli", "gemini-cli", "opencode", "owner"}
 VALID_TO = {"claude-code", "codex-cli", "gemini-cli", "opencode", "owner"}
 _ID_RE = re.compile(r"^[A-Za-z0-9._-]+$")
@@ -272,9 +273,12 @@ def write_handoff(
     # ── SQLite is the source of truth (mandatory). YAML is export-only. ──
     from superharness.engine.state_writer import write_handoff_to_db
 
-    write_handoff_to_db(
-        str(project_dir), payload, task_id=args.task_id, phase=args.phase
-    )
+    try:
+        write_handoff_to_db(
+            str(project_dir), payload, task_id=args.task_id, phase=args.phase
+        )
+    except BoundaryError as e:
+        _abort(str(e))
 
     # Optional YAML export — best-effort, never blocks the write path.
     handoffs_dir = project_dir / ".superharness" / "handoffs"
