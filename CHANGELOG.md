@@ -876,3 +876,5 @@ chore: submitted gemini-cli round 1 position for gap analysis discussion
 - 2026-08-24: fix(events): validate event shape at emit() boundary (structural: frozen dataclass with kind+task_id); DB failure stays warn-only.
 - 2026-08-24: feat(context): add content-addressed context_component table and DAO (schema v39: context_component, dispatch_context, dispatch_context_component).
 - 2026-08-24: feat(diff): record dispatch context components on SDK delegate and diff them with shux diff --context (changed/added/removed/unchanged, git-diff fallback).
+- 2026-08-24: docs(architecture): document typed write boundaries (handoffs/events), content-addressed dispatch context + schema v39, and valid handoff-write phase/status values.
+- 2026-08-24: chore(release): bump version to 1.83.0 (minor, typed boundaries + context components).
