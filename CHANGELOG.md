@@ -874,3 +874,4 @@ chore: submitted gemini-cli round 1 position for gap analysis discussion
 - 2026-08-24: docs(concept): capture content-addressed context hashing + typed handoff boundaries concept (from dottxt talk intel).
 - 2026-08-24: fix(handoffs): reject invalid phase/status at handoffs_dao.append boundary (BoundaryError; HANDOFF_ONLY_STATUSES approved/plan_confirmed, LEGACY_PHASES done).
 - 2026-08-24: fix(events): validate event shape at emit() boundary (structural: frozen dataclass with kind+task_id); DB failure stays warn-only.
+- 2026-08-24: feat(context): add content-addressed context_component table and DAO (schema v39: context_component, dispatch_context, dispatch_context_component).
