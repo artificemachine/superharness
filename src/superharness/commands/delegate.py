@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import sqlite3
 import subprocess
 import sys
 from pathlib import Path
@@ -19,6 +20,8 @@ from superharness.engine.orchestrator import DecompositionResult
 from superharness.engine.taxonomy import VALID_EFFORTS
 from superharness.utils.paths import is_project_initialized
 import logging
+
+from superharness.engine.state_errors import StateError
 
 logger = logging.getLogger(__name__)
 
@@ -1219,6 +1222,11 @@ def delegate(
     # Discussion-round detection (moved up)
     discussions_dir = os.path.join(harness_dir, "discussions")
     prompt = ""
+    # Prompt components captured as the prompt is assembled below, keyed by
+    # context_dao.COMPONENT_TYPES name — recorded (best-effort) just before
+    # SDK dispatch so `shux diff --context` can show what changed between
+    # dispatches. See docs/PLAN-typed-boundaries-context-hashing.md, Iter 4.
+    components: list[tuple[str, str]] = []
 
     if discussion_id and discussion_round:
         disc_dir = os.path.join(discussions_dir, discussion_id)
@@ -1241,6 +1249,7 @@ def delegate(
             auto_directive=auto_directive,
             prior_context=prior_context,
         )
+        components.append(("discussion_prompt", prompt))
 
         print(f"Project: {project_dir}")
         print(f"Discussion: {discussion_id}")
@@ -1333,6 +1342,7 @@ def delegate(
                     f"Contract id: {contract_id}."
                     f"{acceptance_criteria}{user_instructions}"
                 )
+        components.append(("task_instructions", prompt))
 
         # Enrich prompt with vault context
         task_title = _get_task_title(project_dir, task_id)
@@ -1348,6 +1358,7 @@ def delegate(
                     preview = r.get("preview", "")[:120].replace("\n", " ")
                     vault_block += f"  - {r['path']} (similarity: {r['similarity']})\n    {preview}\n"
                 prompt += vault_block
+                components.append(("vault_block", vault_block))
         except Exception as e:
             logger.warning("delegate.py unexpected error: %s", e, exc_info=True)
             pass
@@ -1358,6 +1369,7 @@ def delegate(
             rules_text = all_rules_text(project_dir)
             if rules_text:
                 prompt += f"\n\nProject rules (run `shux rules` to see full list):\n{rules_text}"
+                components.append(("project_rules", rules_text))
         except Exception as e:
             logger.warning("delegate.py unexpected error: %s", e, exc_info=True)
             pass
@@ -1446,6 +1458,29 @@ def delegate(
             task_budget = _get_task_budget(project_dir, task_id, resolved_effort)
             if task_budget:
                 print(f"Budget: ${task_budget:.2f}")
+
+            # Record this dispatch's prompt components (content-addressed,
+            # sha256-deduplicated) so `shux diff <id> --context` can show
+            # what changed between dispatches. Best-effort: recording is
+            # observability, not a gate — a failure here must never block
+            # the actual dispatch below.
+            try:
+                from superharness.engine import context_dao
+                from superharness.engine.db import managed_connection, now_iso
+
+                with managed_connection(project_dir) as _ctx_conn:
+                    context_dao.record_dispatch(
+                        _ctx_conn,
+                        task_id=task_id,
+                        agent=target,
+                        components=components,
+                        now=now_iso(),
+                    )
+            except (StateError, sqlite3.Error, OSError) as e:
+                logger.warning(
+                    "delegate.py failed to record dispatch context: %s", e
+                )
+
             runner = SDKRunner(
                 project_dir=Path(project_dir),
                 model=resolved_model,

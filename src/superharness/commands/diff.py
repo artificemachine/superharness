@@ -10,12 +10,15 @@ Usage:
 from __future__ import annotations
 
 import os
+import sqlite3
 import subprocess
 from pathlib import Path
 
 import click
 
 import logging
+
+from superharness.engine.state_errors import StateError
 
 logger = logging.getLogger(__name__)
 
@@ -81,6 +84,66 @@ def _find_worktree_branch(project_dir: Path, task_id: str) -> str | None:
     return None
 
 
+def _context_diff(project_dir: Path, task_id: str) -> str | None:
+    """Diff prompt components between a task's last two SDK dispatches.
+
+    Returns a human-readable report string, or None if the context tables
+    are unavailable (e.g. schema not migrated yet). When fewer than two
+    dispatches have been recorded, returns a "no prior dispatch" message so
+    the caller can still fall back to the ordinary git diff below it.
+    """
+    try:
+        from superharness.engine.db import get_connection, init_db
+        from superharness.engine import context_dao
+
+        conn = get_connection(str(project_dir))
+        try:
+            init_db(conn)
+            dispatch_ids = context_dao.last_dispatches(conn, task_id=task_id, n=2)
+            if len(dispatch_ids) < 2:
+                return (
+                    "no prior dispatch to compare — showing git diff below"
+                )
+
+            newest_id, previous_id = dispatch_ids[0], dispatch_ids[1]
+            newest = {
+                component_type: sha256
+                for _, component_type, sha256 in context_dao.components_for_dispatch(
+                    conn, newest_id
+                )
+            }
+            previous = {
+                component_type: sha256
+                for _, component_type, sha256 in context_dao.components_for_dispatch(
+                    conn, previous_id
+                )
+            }
+        finally:
+            conn.close()
+    except (StateError, sqlite3.Error, OSError) as e:
+        logger.warning("diff.py unexpected error computing context diff: %s", e)
+        return None
+
+    types = sorted(set(previous) | set(newest))
+    lines = [f"Context diff: dispatch {previous_id} -> dispatch {newest_id}"]
+    for component_type in types:
+        old_sha = previous.get(component_type)
+        new_sha = newest.get(component_type)
+        if old_sha is not None and new_sha is not None:
+            if old_sha == new_sha:
+                lines.append(f"unchanged: {component_type}")
+            else:
+                lines.append(
+                    f"changed: {component_type} {old_sha[:8]}..{new_sha[:8]}"
+                )
+        elif new_sha is not None:
+            lines.append(f"added: {component_type}")
+        else:
+            lines.append(f"removed: {component_type}")
+
+    return "\n".join(lines)
+
+
 def _last_merge_base(project_dir: Path, task_id: str) -> str | None:
     """Find the commit on the default branch right before the task started.
 
@@ -124,15 +187,29 @@ def _last_merge_base(project_dir: Path, task_id: str) -> str | None:
     default=None,
     help="Compare against this git ref (default: auto-detect).",
 )
-def cmd_diff(task_id, project_str, stat_only, base_ref):
+@click.option(
+    "--context",
+    "show_context",
+    is_flag=True,
+    default=False,
+    help="Diff prompt components between the last two dispatches.",
+)
+def cmd_diff(task_id, project_str, stat_only, base_ref, show_context):
     """Preview agent changes for a task before closing.
 
     \b
     shux diff task-001              # diff for task-001 vs auto-detected base
     shux diff task-001 --stat       # stat summary only
     shux diff task-001 --base main  # diff against a specific branch
+    shux diff task-001 --context    # diff dispatch prompt components
     """
     project_dir = Path(project_str or os.getcwd()).resolve()
+
+    if show_context:
+        context_report = _context_diff(project_dir, task_id)
+        if context_report:
+            click.echo(context_report)
+            click.echo()
 
     task = _find_task(project_dir, task_id)
     if task is None:

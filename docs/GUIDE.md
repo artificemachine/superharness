@@ -290,6 +290,35 @@ superharness contract today --project /path/to/project
 
 Prints all tasks with id, status, owner, and suggests the next task to work on.
 
+### Reviewing changes before closing (`shux diff`)
+
+```bash
+shux diff task-001                  # git diff for task-001 vs auto-detected base
+shux diff task-001 --stat           # stat summary only
+shux diff task-001 --base main      # diff against a specific branch
+shux diff task-001 --context        # diff dispatch prompt components
+```
+
+`--context` compares the prompt ingredients ("components") of a task's last
+two SDK dispatches instead of file contents. Every `shux delegate` SDK
+dispatch records a sha256 per prompt component (`task_instructions`,
+`discussion_prompt`, `vault_block`, `project_rules`) before the agent runs;
+`--context` reports which of those hashes changed:
+
+```
+Context diff: dispatch 4 -> dispatch 7
+changed: task_instructions a1b2c3d4..e5f6a7b8
+unchanged: project_rules
+added: vault_block
+```
+
+With fewer than two recorded dispatches it prints a "no prior dispatch to
+compare" note and falls back to the ordinary git diff below it. Recording is
+best-effort observability — a recording failure never blocks a dispatch —
+so `--context` may occasionally have nothing to compare even after a real
+dispatch ran. Only the SDK dispatch path records components; `--via cli`
+dispatches are not yet covered.
+
 ### Task lifecycle
 
 Every task follows this mandatory sequence:
