@@ -878,3 +878,4 @@ chore: submitted gemini-cli round 1 position for gap analysis discussion
 - 2026-08-24: feat(diff): record dispatch context components on SDK delegate and diff them with shux diff --context (changed/added/removed/unchanged, git-diff fallback).
 - 2026-08-24: docs(architecture): document typed write boundaries (handoffs/events), content-addressed dispatch context + schema v39, and valid handoff-write phase/status values.
 - 2026-08-24: chore(release): bump version to 1.83.0 (minor, typed boundaries + context components).
+- 2026-08-24: fix(scripts): dev-reinstall.sh now targets the repo-local .venv exclusively instead of a bare python3/pip off PATH, falling back to uv pip install when the uv-created .venv has no pip; prevents the shared pyenv interpreter contamination incident from this session.
