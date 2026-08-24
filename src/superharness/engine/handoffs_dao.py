@@ -5,8 +5,49 @@ import json
 from dataclasses import dataclass
 from typing import Any
 
-from superharness.engine.state_errors import StateError
+from superharness.engine.state_errors import BoundaryError, StateError
 from superharness.utils.privacy import strip_private_tags
+
+# arch A2 (mirrors tasks_dao.VALID_STATUSES): single definition of the
+# handoff phase enum. commands/handoff_write.py re-imports this rather than
+# redefining it, so there is exactly one source of truth for "plan"/"report".
+VALID_PHASES: frozenset[str] = frozenset({"plan", "report"})
+
+# Phases the gate accepts beyond what the CLI offers. "done" enters via
+# engine/migrate_yaml.py parsing legacy `<task>-done-<date>` handoff
+# filenames; commands/inbox_watch.py still reads it alongside "report".
+LEGACY_PHASES: frozenset[str] = frozenset({"done"})
+
+# Handoff-level statuses that are NOT task statuses but are written by real
+# paths: "approved" by engine/discuss.py _do_approve (approval_gate sync) and
+# "plan_confirmed" by scripts/dashboard-ui.py (legacy alias of plan_approved).
+# Found 2026-08-23 when the typed gate silently dropped both via the
+# best-effort warning path. Kept as a separate set so the task enum stays pure.
+HANDOFF_ONLY_STATUSES: frozenset[str] = frozenset({"approved", "plan_confirmed"})
+
+
+def _validate_boundary(phase: str, status: str) -> None:
+    """Gate `append` against out-of-set phase/status before any write.
+
+    Imports `tasks_dao.VALID_STATUSES` locally to avoid a module-level
+    import cycle (tasks_dao and handoffs_dao are both leaf DAO modules
+    under superharness.engine, but neither should have to know about the
+    other at import time).
+    """
+    from superharness.engine.tasks_dao import VALID_STATUSES
+
+    valid_phases = VALID_PHASES | LEGACY_PHASES
+    if phase not in valid_phases:
+        raise BoundaryError(
+            f"Invalid handoff phase '{phase}'. Valid phases: "
+            f"{', '.join(sorted(valid_phases))}"
+        )
+    valid_statuses = VALID_STATUSES | HANDOFF_ONLY_STATUSES
+    if status not in valid_statuses:
+        raise BoundaryError(
+            f"Invalid handoff status '{status}'. Valid statuses: "
+            f"{', '.join(sorted(valid_statuses))}"
+        )
 
 
 @dataclass(frozen=True)
@@ -45,6 +86,7 @@ def append(
     now: str,
 ) -> HandoffRow:
     """Append a handoff event. Append-only: never updates or deletes."""
+    _validate_boundary(phase, status)
     cleaned_content = strip_private_tags(content) if content is not None else None
     meta_json = json.dumps(_strip_private_values(metadata or {}))
     try:
