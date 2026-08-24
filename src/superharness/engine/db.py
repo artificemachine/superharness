@@ -17,7 +17,7 @@ from superharness.utils.paths import (
 
 logger = logging.getLogger(__name__)
 
-CURRENT_SCHEMA_VERSION = 38
+CURRENT_SCHEMA_VERSION = 39
 
 # Journal modes SQLite accepts; used to validate the SUPERHARNESS_JOURNAL_MODE
 # override before it is interpolated into a PRAGMA (guards against injection/typos).
@@ -1836,6 +1836,53 @@ def _migration_v38(conn: sqlite3.Connection) -> None:
     conn.execute("ALTER TABLE model_discovery_new RENAME TO model_discovery")
 
 
+def _migration_v39(conn: sqlite3.Connection) -> None:
+    """context_component / dispatch_context: content-addressed prompt
+    ingredients for `shux delegate` dispatches.
+
+    ``context_component`` deduplicates prompt component content by its
+    sha256 (the primary key), so identical content recorded across many
+    dispatches is stored once. ``dispatch_context`` is one row per dispatch
+    of a task; ``dispatch_context_component`` is the ordered join table
+    between a dispatch and the components that made up its prompt.
+
+    See docs/PLAN-typed-boundaries-context-hashing.md, Iteration 3.
+    """
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS context_component (
+            sha256         TEXT PRIMARY KEY,
+            component_type TEXT NOT NULL,
+            content        TEXT NOT NULL,
+            first_seen     TEXT NOT NULL
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS dispatch_context (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            task_id      TEXT    NOT NULL,
+            agent        TEXT    NOT NULL,
+            recorded_at  TEXT    NOT NULL
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS dispatch_context_component (
+            dispatch_id INTEGER NOT NULL,
+            position    INTEGER NOT NULL,
+            sha256      TEXT    NOT NULL,
+            PRIMARY KEY (dispatch_id, position)
+        )
+        """
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_dispatch_context_task_id ON dispatch_context(task_id)"
+    )
+
+
 _MIGRATIONS: list[Callable[[sqlite3.Connection], None]] = [
     _migration_v1,
     _migration_v2,
@@ -1875,4 +1922,5 @@ _MIGRATIONS: list[Callable[[sqlite3.Connection], None]] = [
     _migration_v36,
     _migration_v37,
     _migration_v38,
+    _migration_v39,
 ]

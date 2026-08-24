@@ -20,13 +20,14 @@ See docs/PLAN-adopt-omnigent.md iteration 4.
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import logging
 import queue
 import threading
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
-from typing import Optional, Union
+from typing import Optional, Union, get_type_hints
 
 logger = logging.getLogger(__name__)
 
@@ -65,6 +66,63 @@ class DispatchFinished:
 
 
 Event = Union[TaskTransition, DispatchStarted, DispatchFinished]
+
+# The three classes above are the core kinds; other modules may define their
+# own frozen dataclass events (e.g. engine/transcript_tail.TranscriptProgress)
+# and emit them here. The boundary is therefore structural, not nominal: a
+# frozen dataclass instance exposing a non-empty str `kind` and a `task_id`.
+_EVENT_TYPES: tuple[type, ...] = (TaskTransition, DispatchStarted, DispatchFinished)
+
+
+def _is_event_shaped(event: object) -> bool:
+    if isinstance(event, type) or not dataclasses.is_dataclass(event):
+        return False
+    if not getattr(type(event), "__dataclass_params__").frozen:
+        return False
+    kind = getattr(event, "kind", None)
+    return isinstance(kind, str) and kind != "" and hasattr(event, "task_id")
+
+
+def validate_event(event: object) -> None:
+    """Raise synchronously if `event` is not a well-formed Event.
+
+    - TypeError: `event` is not a frozen dataclass with a str `kind` and a
+      `task_id`, or a field holds a value of the wrong type (an int is
+      accepted where a float is declared).
+    - ValueError: `task_id` is present but empty.
+
+    Called as the first step of emit(), before anything is queued for the
+    background writer, so malformed payloads never reach _write_one() (and
+    are unaffected by whether that writer's DB call succeeds or fails).
+    """
+    if not _is_event_shaped(event):
+        raise TypeError(
+            "events.emit() expects a frozen dataclass with str `kind` and "
+            f"`task_id` (e.g. {[t.__name__ for t in _EVENT_TYPES]}), "
+            f"got {type(event).__name__}"
+        )
+
+    hints = get_type_hints(type(event))
+    for field in dataclasses.fields(event):
+        expected = hints.get(field.name)
+        if expected is None:
+            continue
+        value = getattr(event, field.name)
+        if expected is float:
+            ok = isinstance(value, (int, float)) and not isinstance(value, bool)
+        else:
+            ok = isinstance(value, expected) and not (
+                expected is int and isinstance(value, bool)
+            )
+        if not ok:
+            raise TypeError(
+                f"{type(event).__name__}.{field.name} expected "
+                f"{expected.__name__}, got {type(value).__name__}"
+            )
+
+    task_id = getattr(event, "task_id", None)
+    if task_id == "":
+        raise ValueError(f"{type(event).__name__}.task_id must not be empty")
 
 
 @dataclass(frozen=True)
@@ -139,7 +197,15 @@ def configure(project_dir: str) -> None:
 
 
 def emit(event: Event) -> None:
-    """Queue event for background write. Silent no-op if unconfigured."""
+    """Validate then queue event for background write.
+
+    Validation (validate_event) runs synchronously and raises TypeError /
+    ValueError on a malformed payload, before anything is queued -- even if
+    configure() was never called. Once validated, queuing is a silent
+    no-op if unconfigured; a DB failure during the background write is
+    warn-only (see _write_one).
+    """
+    validate_event(event)
     if _emitter is None:
         logger.debug("events.emit called before configure(); dropping %r", event)
         return

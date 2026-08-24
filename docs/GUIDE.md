@@ -290,6 +290,35 @@ superharness contract today --project /path/to/project
 
 Prints all tasks with id, status, owner, and suggests the next task to work on.
 
+### Reviewing changes before closing (`shux diff`)
+
+```bash
+shux diff task-001                  # git diff for task-001 vs auto-detected base
+shux diff task-001 --stat           # stat summary only
+shux diff task-001 --base main      # diff against a specific branch
+shux diff task-001 --context        # diff dispatch prompt components
+```
+
+`--context` compares the prompt ingredients ("components") of a task's last
+two SDK dispatches instead of file contents. Every `shux delegate` SDK
+dispatch records a sha256 per prompt component (`task_instructions`,
+`discussion_prompt`, `vault_block`, `project_rules`) before the agent runs;
+`--context` reports which of those hashes changed:
+
+```
+Context diff: dispatch 4 -> dispatch 7
+changed: task_instructions a1b2c3d4..e5f6a7b8
+unchanged: project_rules
+added: vault_block
+```
+
+With fewer than two recorded dispatches it prints a "no prior dispatch to
+compare" note and falls back to the ordinary git diff below it. Recording is
+best-effort observability — a recording failure never blocks a dispatch —
+so `--context` may occasionally have nothing to compare even after a real
+dispatch ran. Only the SDK dispatch path records components; `--via cli`
+dispatches are not yet covered.
+
 ### Task lifecycle
 
 Every task follows this mandatory sequence:
@@ -542,6 +571,27 @@ shux handoff-write --task <id> --phase report --from codex-cli --to owner \
 ```
 
 All four flags are optional and independent — report only what you have (e.g. `--cost-usd` alone).
+
+#### Valid `--phase` and status values
+
+`shux handoff-write` writes through a typed boundary that rejects unknown
+values instead of storing them, so an invalid value fails immediately with
+`Invalid handoff phase ...` / `Invalid handoff status ...` rather than
+producing a handoff no reader recognises.
+
+- `--phase`: `plan` or `report`. (`done` is also accepted by the store, but
+  only because legacy `<task>-done-<date>.yaml` files import with it; do not
+  write new handoffs with it.)
+- status: any task lifecycle status — `todo`, `plan_proposed`,
+  `plan_approved`, `in_progress`, `report_ready`, `review_requested`,
+  `review_passed`, `review_failed`, `waiting_input`, `pending`,
+  `pending_user_approval`, `blocked`, `paused`, `pr_open`, `stopped`,
+  `failed`, `done`, `archived` — plus the two handoff-only values
+  `approved` and `plan_confirmed` written by the discussion approval gate and
+  the dashboard.
+
+Run `shux handoff-write --help` for the current `--phase` choices; the full
+rationale is in [ARCHITECTURE.md → Typed write boundaries](ARCHITECTURE.md#typed-write-boundaries).
 
 View the aggregate via `shux insights` (`--json` includes a `cost_breakdown` key): per-agent `total_cost_usd`, `total_input_tokens`, `total_output_tokens`, `task_count`, answering "which agent/model was most cost-effective for this kind of task."
 
