@@ -871,3 +871,4 @@ chore: submitted gemini-cli round 1 position for gap analysis discussion
 - 2026-08-20: fix(tests): repoint CLI help assertions at `shux help --all` for init/rules, which moved there when progressive help catalog shipped (PR #121).
 - 2026-08-20: chore(release): bump version to 1.82.2 (patch, CLI help test fix).
 - 2026-08-20: docs(arch): commit Exo-vs-Superharness comparison, gitignore local agent-auth-state.json.
+- 2026-08-24: docs(concept): capture content-addressed context hashing + typed handoff boundaries concept (from dottxt talk intel).
