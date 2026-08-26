@@ -187,6 +187,16 @@ def test_watcher_both_target_no_hardcoded_opencode_exclusion():
     )
 
 
+def test_watcher_both_target_excludes_manifest_only_adapters(monkeypatch):
+    """The watcher discovers manifests but dispatches only executable harnesses."""
+    from superharness.commands.inbox_watch import _watcher_targets
+    from superharness.engine import adapter_registry
+
+    monkeypatch.setattr(adapter_registry, "list_adapters", lambda: ["pi", "prime-agent"])
+
+    assert _watcher_targets("both") == ["pi"]
+
+
 def test_cancel_undispatchable_uses_adapter_registry():
     """_cancel_undispatchable_agents must use list_adapters() as its primary
     source of known agent names (not just a glob + hardcoded list fallback)."""

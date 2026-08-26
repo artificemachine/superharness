@@ -6,6 +6,8 @@ RED phase: Write failing tests first.
 from __future__ import annotations
 
 import json
+import platform
+import shlex
 import subprocess
 import sys
 import time
@@ -14,7 +16,7 @@ from pathlib import Path
 import pytest
 
 
-pytestmark = pytest.mark.skip(
+_LEGACY_YAML_SKIP = pytest.mark.skip(
     reason="legacy YAML fixture — pending SQLite migration (see PR #208)"
 )
 
@@ -22,6 +24,7 @@ pytestmark = pytest.mark.skip(
 @pytest.mark.skipif(
     sys.platform == "win32", reason="bash shell launcher not available on Windows"
 )
+@_LEGACY_YAML_SKIP
 def test_launcher_creates_log_file(tmp_path: Path):
     """Test that launching a task creates a log file in .superharness/launcher-logs/"""
     # Setup
@@ -110,6 +113,7 @@ exit 0
     assert "Done" in log_content
 
 
+@_LEGACY_YAML_SKIP
 def test_api_task_log_endpoint_returns_log_content(tmp_path: Path):
     """Test /api/task-log endpoint returns log file content."""
     import importlib.util
@@ -176,6 +180,7 @@ def test_api_task_log_endpoint_returns_log_content(tmp_path: Path):
         server.shutdown()
 
 
+@_LEGACY_YAML_SKIP
 def test_ui_polls_live_output_for_launched_task(tmp_path: Path):
     """Test that UI JavaScript polls for live output when task is launched."""
     import re
@@ -203,6 +208,7 @@ def test_ui_polls_live_output_for_launched_task(tmp_path: Path):
     )
 
 
+@_LEGACY_YAML_SKIP
 def test_log_file_rotation_keeps_last_5_launches(tmp_path: Path):
     """Test that old log files are cleaned up (keep last 5 per task+agent)."""
     log_dir = tmp_path / "launcher-logs"
@@ -228,6 +234,7 @@ def test_log_file_rotation_keeps_last_5_launches(tmp_path: Path):
     assert not (log_dir / "task-1-claude-code-20260321T120000Z.log").exists()
 
 
+@_LEGACY_YAML_SKIP
 def test_api_task_log_handles_missing_file_gracefully(tmp_path: Path):
     """Test /api/task-log returns exists=false when log file doesn't exist."""
     import importlib.util
@@ -275,3 +282,48 @@ def test_api_task_log_handles_missing_file_gracefully(tmp_path: Path):
 
     finally:
         server.shutdown()
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="script PTY wrapper is unavailable on Windows"
+)
+def test_launcher_log_receives_forwarded_child_output(tmp_path: Path) -> None:
+    """The dispatch-style PTY log records output forwarded by launch_agent."""
+    child = tmp_path / "child.py"
+    child.write_text("print('fixture launcher output')\n", encoding="utf-8")
+    launcher = tmp_path / "launcher.py"
+    launcher.write_text(
+        "from superharness.engine.platform_runtime import launch_agent\n"
+        "import sys\n"
+        f"raise SystemExit(launch_agent([sys.executable, {str(child)!r}], cwd={str(tmp_path)!r}))\n",
+        encoding="utf-8",
+    )
+    log_file = tmp_path / "launcher.log"
+    if platform.system() == "Darwin":
+        script_args = [
+            "script",
+            "-q",
+            "-F",
+            str(log_file),
+            sys.executable,
+            str(launcher),
+        ]
+    else:
+        script_args = [
+            "script",
+            "-q",
+            "-f",
+            "-c",
+            shlex.join([sys.executable, str(launcher)]),
+            str(log_file),
+        ]
+
+    result = subprocess.run(
+        script_args,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0
+    assert log_file.read_text(encoding="utf-8").count("fixture launcher output") == 1

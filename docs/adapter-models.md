@@ -82,6 +82,64 @@ Alternatives considered but not chosen:
 - `gpt-5.1-codex-max` system card: https://openai.com/index/gpt-5-1-codex-max-system-card/
 - `gpt-5.1-codex-max` model page: https://platform.openai.com/docs/models/gpt-5.1-codex-max
 
+## pi adapter
+
+Source of truth: `src/superharness/adapter_manifests/pi.yaml`.
+
+| Tier | Provider-qualified model id | Label |
+|---|---|---|
+| `mini` | `deepseek/deepseek-v4-flash` | DeepSeek V4 Flash |
+| `standard` | `deepseek/deepseek-v4-flash` | DeepSeek V4 Flash |
+| `max` | `deepseek/deepseek-v4-pro` | DeepSeek V4 Pro |
+
+**Rationale:** Pi's authenticated DeepSeek provider exposes two coding models.
+Flash covers the cheap/fast and default workhorse roles; Pro is reserved for the
+highest-quality tier. Reusing Flash for two tiers is explicit and preferable to
+inventing an unverified third model.
+
+### Activation evidence — 2026-08-26
+
+- Pi CLI version `0.73.1` reproduced twice.
+- Safe offline model discovery reproduced and listed both selected IDs.
+- Two bounded Flash probes and two bounded Pro probes each exited zero, returned a
+  terminal assistant message with `stopReason: stop`, and emitted no tool-execution
+  events. Probes used no session, context files, extensions, skills, prompt templates,
+  or tools.
+- No credential value was read, written, or recorded.
+
+### Pi worker activation evidence — 2026-08-26
+
+- Pi CLI version: `0.73.1`.
+- Approved provider/model: `deepseek/deepseek-v4-flash`.
+- Run 1: `2026-08-26T16:20:37Z`; sanitized prompt SHA-256
+  `133a9685b268198649324434ba06d52f9ab4918a792fac94dce655fbdc84eb93`;
+  exit `0`; result `pass`; stopReason `stop`; exact file/scope verified; valid
+  terminal stream; cleanup verified.
+- Run 2: `2026-08-26T16:23:02Z`; sanitized prompt SHA-256
+  `33af538d4aba0db1c662d1600020f6d2d245ca54a822d00e88c6830bf52f4753`;
+  exit `0`; result `pass`; stopReason `stop`; exact file/scope verified; valid
+  terminal stream; cleanup verified.
+- Reviewer decision: APPROVE — two independently approved Pi worker runs reproduced successful exact-scope edits using deepseek/deepseek-v4-flash in distinct disposable worktrees; both exited 0 with stopReason stop, valid terminal streams, and verified cleanup.
+
+### Pi orchestrator activation evidence — 2026-08-26
+
+- Timestamp: `2026-08-26T17:23:23Z`.
+- Pi CLI version: `0.73.1`.
+- Requested provider/model: `deepseek/deepseek-v4-pro`.
+- Actual provider/model: `deepseek/deepseek-v4-pro`.
+- Prompt SHA-256: `06fb34316c4435b572bba8fe44220590ba73c0b41b44212a26b3c1cc8bd357f9`.
+- Exit: `0`.
+- Assistant messages: `1`.
+- Agent-end events: `1`.
+- Valid bounded stream: `yes`.
+- Complete valid decomposition: `yes`.
+- Produced-owner set: `{codex-cli, pi}`.
+- Tools: `--no-tools`.
+- Fresh disposable worktree: `yes`.
+- Worktree modifications: `0`.
+- Cleanup verified: `yes`.
+- Reviewer decision: APPROVE — the separately approved Pi live decomposition at 2026-08-26T17:23:23Z used Pi CLI 0.73.1 with requested and actual deepseek/deepseek-v4-pro, exited 0 with one assistant message and one agent_end in a valid bounded stream, returned a complete valid decomposition with produced-owner set {codex-cli, pi}, ran with --no-tools in a fresh disposable worktree, left zero modifications, and completed verified cleanup; the earlier schema-invalid attempt is excluded from evidence.
+
 ## How the mapping is consumed
 
 Every task and subtask in `shux adapter-payload --json` (schema v1.2+) carries:

@@ -56,6 +56,7 @@ class DispatchContext:
     effective_timeout: int = 0
     launcher: str = ""
     worktree_dir: str | None = None
+    worktree_source_dir: str | None = None
     launch_args: list[str] = field(default_factory=list)
     spawn_env: dict[str, str] = field(default_factory=dict)
     task_log: str = ""
@@ -65,6 +66,7 @@ class DispatchContext:
     classification_category: str = "unknown"
     classification_explain: str = ""
     is_discussion: bool = False
+    prelaunch_failure_reason: str = ""
 
 
 def _get_python() -> str:
@@ -298,6 +300,34 @@ def _has_dirty_worktree(project_dir: str) -> bool:
         return bool(r2.stdout.strip())
     except FileNotFoundError:
         return False
+
+
+def _pi_worktree_preflight_error(project_dir: str) -> str | None:
+    """Return an actionable reason when Pi isolation cannot use ``HEAD``."""
+    try:
+        inside = subprocess.run(
+            ["git", "-C", project_dir, "rev-parse", "--is-inside-work-tree"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except FileNotFoundError:
+        return "Git executable is unavailable"
+    if inside.returncode != 0 or inside.stdout.strip() != "true":
+        return "project is not a Git repository"
+
+    try:
+        head = subprocess.run(
+            ["git", "-C", project_dir, "rev-parse", "--verify", "HEAD"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except OSError as exc:
+        return f"Git HEAD check failed: {exc}"
+    if head.returncode != 0:
+        return "Git repository has no committed HEAD"
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -657,6 +687,28 @@ def _sqlite_mirror_dispatch(
         )
 
 
+def _clear_claimed_inbox_pid(project_dir: str, item_id: str) -> None:
+    """Clear the dispatcher PID when a claimed item fails before launch."""
+    try:
+        from superharness.engine import inbox_dao
+        from superharness.engine.db import get_connection, init_db
+
+        conn = get_connection(project_dir)
+        try:
+            init_db(conn)
+            inbox_dao.set_field(conn, item_id, "pid", None)
+            conn.commit()
+        finally:
+            conn.close()
+    except Exception as exc:
+        _log.warning(
+            "failed to clear pre-launch inbox PID for %s: %s",
+            item_id,
+            exc,
+            exc_info=True,
+        )
+
+
 # ---------------------------------------------------------------------------
 # Cost extraction helper
 # ---------------------------------------------------------------------------
@@ -820,6 +872,14 @@ def _do_dispatch(
     # 3. Resolve
     rc = _resolve_execution_context(ctx)
     if rc is not None:
+        if ctx.prelaunch_failure_reason:
+            ctx.launcher_rc = 2
+            ctx.launch_start = time.time()
+            lock.release()
+            try:
+                return _handle_failure(ctx)
+            finally:
+                _clear_claimed_inbox_pid(ctx.project_dir, ctx.item_id)
         return rc
 
     # 4. Transition
@@ -845,7 +905,8 @@ def _do_dispatch(
 
     # 7. Cleanup
     if ctx.worktree_dir:
-        if _git_worktree_remove(ctx.project_dir, ctx.worktree_dir):
+        worktree_source = ctx.worktree_source_dir or ctx.project_dir
+        if _git_worktree_remove(worktree_source, ctx.worktree_dir):
             print(f"Worktree removed: {ctx.worktree_dir}")
         else:
             print(
@@ -1462,11 +1523,10 @@ def _handle_failure(ctx: DispatchContext) -> int:
                     finally:
                         new_lock.release()
 
-    # Exit code 2 == permanent block (lifecycle gate rejected the task). Retrying
-    # will fail identically on every attempt, so mark retry_count=max_retries
-    # immediately to stop the watcher from burning its retry budget. See
-    # superharness.commands.delegate.EXIT_PERMANENT_BLOCK.
-    permanent_block = ctx.launcher_rc == 2
+    # Exit code 2 == permanent block. Pre-launch Pi isolation failures use the
+    # same non-retryable path because no agent process ran and retrying without
+    # correcting Git state would fail identically.
+    permanent_block = ctx.launcher_rc == 2 or bool(ctx.prelaunch_failure_reason)
 
     # Read log tail for classifier
     log_tail_text = ""
@@ -1484,21 +1544,31 @@ def _handle_failure(ctx: DispatchContext) -> int:
             _log.warning("inbox_dispatch.py unexpected error: %s", e, exc_info=True)
             log_tail_text = ""
 
-    # Classify the failure
-    try:
-        from superharness.engine.failure_classifier import classify as _classify_failure
+    # Classify the failure. Isolation failures already have their precise,
+    # actionable classification before any launcher exists.
+    if ctx.prelaunch_failure_reason:
+        failure_class = "worktree_isolation"
+        failure_explain = ctx.prelaunch_failure_reason
+    else:
+        try:
+            from superharness.engine.failure_classifier import (
+                classify as _classify_failure,
+            )
 
-        _classification = _classify_failure(
-            launcher_rc=ctx.launcher_rc, error_text="", log_tail=log_tail_text
-        )
-        failure_class = _classification.category
-        failure_explain = _classification.explain
-    except Exception as e:
-        _log.warning("inbox_dispatch.py unexpected error: %s", e, exc_info=True)
-        failure_class = "unknown"
-        failure_explain = f"launcher exited with code {ctx.launcher_rc}"
+            _classification = _classify_failure(
+                launcher_rc=ctx.launcher_rc, error_text="", log_tail=log_tail_text
+            )
+            failure_class = _classification.category
+            failure_explain = _classification.explain
+        except Exception as e:
+            _log.warning("inbox_dispatch.py unexpected error: %s", e, exc_info=True)
+            failure_class = "unknown"
+            failure_explain = f"launcher exited with code {ctx.launcher_rc}"
 
-    if ctx.launcher_rc == 124:
+    if ctx.prelaunch_failure_reason:
+        fail_reason = ctx.prelaunch_failure_reason
+        print(f"Pre-launch isolation failure for {ctx.item_id}: {fail_reason}", file=sys.stderr)
+    elif ctx.launcher_rc == 124:
         fail_reason = f"launcher timed out after {ctx.effective_timeout}s"
         print(
             f"Launcher timed out after {ctx.effective_timeout}s for {ctx.item_id}",
@@ -2045,20 +2115,49 @@ def _resolve_execution_context(ctx: DispatchContext) -> int | None:
     if ctx.launcher_timeout == 0:
         ctx.effective_timeout = _get_task_effort_timeout(ctx.project_dir, ctx.item_task)
 
-    # Worktree isolation: if dirty, dispatch in a temporary worktree.
+    # Worktree isolation: Pi always gets an isolated checkout for autonomous
+    # inbox work, including discussions. Other agents retain the existing
+    # dirty-worktree-only policy and discussion exemption.
     ctx.is_discussion = "/round-" in ctx.item_task or ctx.item_task.startswith(
         "discuss-"
     )
-    if (
-        not ctx.is_discussion
-        and ctx.non_interactive
-        and not ctx.print_only
+    automated_dispatch = ctx.non_interactive and not ctx.print_only
+    pi_requires_worktree = automated_dispatch and ctx.item_to == "pi"
+    dirty_requires_worktree = (
+        automated_dispatch
+        and not ctx.is_discussion
+        and not pi_requires_worktree
         and _has_dirty_worktree(ctx.exec_project)
-    ):
-        ctx.worktree_dir = _git_worktree_add(ctx.exec_project, ctx.item_task)
-        if ctx.worktree_dir:
+    )
+    if pi_requires_worktree:
+        # Watcher workers deliberately omit .git. Pi must branch from the task's
+        # canonical project checkout, then execute only inside the new worktree.
+        worktree_source = ctx.item_project
+        preflight_error = _pi_worktree_preflight_error(worktree_source)
+        if preflight_error:
+            ctx.prelaunch_failure_reason = (
+                "Pi non-interactive dispatch requires an isolated Git worktree: "
+                f"{preflight_error}. Commit an initial revision and retry."
+            )
             print(
-                f"Dispatching in worktree: {ctx.worktree_dir} (main worktree is dirty)"
+                ctx.prelaunch_failure_reason,
+                file=sys.stderr,
+            )
+            return 1
+    else:
+        worktree_source = ctx.exec_project
+
+    if pi_requires_worktree or dirty_requires_worktree:
+        ctx.worktree_dir = _git_worktree_add(worktree_source, ctx.item_task)
+        if ctx.worktree_dir:
+            ctx.worktree_source_dir = worktree_source
+            reason = (
+                "Pi non-interactive isolation"
+                if pi_requires_worktree
+                else "main worktree is dirty"
+            )
+            print(
+                f"Dispatching in worktree: {ctx.worktree_dir} ({reason})"
             )
             ctx.exec_project = ctx.worktree_dir
             # Record worktree path on task for dashboard visibility
@@ -2077,7 +2176,18 @@ def _resolve_execution_context(ctx: DispatchContext) -> int | None:
                 _log.warning("inbox_dispatch.py unexpected error: %s", e, exc_info=True)
                 pass
         else:
-            # Worktree creation failed — fall back to pause
+            if pi_requires_worktree:
+                ctx.prelaunch_failure_reason = (
+                    "Pi non-interactive dispatch requires an isolated Git worktree, "
+                    "but superharness could not create one. Resolve the Git worktree "
+                    "error and retry; dispatch did not fall back to the main checkout."
+                )
+                print(
+                    ctx.prelaunch_failure_reason,
+                    file=sys.stderr,
+                )
+                return 1
+            # Existing behavior for other agents: pause a dirty dispatch.
             pause_now = _now_utc()
             if _mark_item_paused_dirty(ctx.inbox_file, ctx.item_id, pause_now):
                 return 0

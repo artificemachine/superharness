@@ -108,6 +108,9 @@ files:
   - path: src/superharness/adapter_manifests/prime-agent.yaml
     type: config
     reason: prime-agent adapter manifest — EXPERIMENTAL/UNVERIFIED, ships inert (PLAN-prime-agent-adoptions.md Iteration 6)
+  - path: src/superharness/adapter_manifests/pi.yaml
+    type: config
+    reason: Pi adapter manifest
   - path: src/superharness/module_templates/auto-schedule.yaml
     type: template
     reason: module template — auto-schedule cron

@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "superharness"
-version = "1.83.1"
-description = "Multi-agent session handoff framework for Claude Code and Codex CLI"
+version = "1.84.0"
+description = "Multi-agent session handoff framework for AI coding agents"
 readme = "README.md"
 license = "Apache-2.0"
 requires-python = ">=3.11"
@@ -70,6 +70,7 @@ superharness = [
 
 [dependency-groups]
 dev = [
+    "build>=1.2,<2",
     "pytest>=9.0,<10",
     "pytest-cov>=7.0.0",
     # Required by the Linux/macOS unit job in .github/workflows/tests.yml,

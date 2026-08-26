@@ -125,6 +125,42 @@ def _get_task_field(project_dir: str, task_id: str, field: str) -> str | None:
     return str(val) if val is not None else None
 
 
+def _build_task_execution_prompt(
+    *,
+    target: str,
+    task_id: str,
+    contract_id: str,
+    latest_handoff: bool,
+    acceptance_criteria: str,
+    context_hint: str,
+    user_instructions: str,
+    auto_directive: str,
+) -> str:
+    """Build the shared task prompt, addressed to the selected harness."""
+    if latest_handoff:
+        handoff_instruction = (
+            f"Read the latest handoff addressed to {target} and execute task {task_id}.\n"
+            "Use scope, commands, and acceptance criteria from the handoff.\n"
+            "Run `shux rules` to see project constraints before starting.\n"
+            "Use `shux contract` to update task status. Append .superharness/ledger.md, "
+            "and refresh the handoff with outcomes.\n"
+        )
+    else:
+        handoff_instruction = (
+            f"No handoff exists yet for task {task_id}; you are {target}.\n"
+            "Run `shux rules` to see project constraints before starting.\n"
+            f"Use `shux contract` and `shux context {task_id}` to understand the task.\n"
+            "Use `shux contract` to update task status. Append .superharness/ledger.md, "
+            "and create a new handoff with outcomes.\n"
+        )
+    return (
+        "continue contract\n"
+        f"{handoff_instruction}"
+        f"Contract id: {contract_id}."
+        f"{acceptance_criteria}{context_hint}{user_instructions}{auto_directive}"
+    )
+
+
 # Effort → max budget USD (per-task caps to prevent runaway spend)
 EFFORT_BUDGET_MAP = {
     "low": 0.50,
@@ -1274,74 +1310,16 @@ def delegate(
         # Build context hint to reduce cold-start exploration time
         context_hint = build_context_hint(project_dir, task_obj or {})
 
-        if target == "claude-code":
-            if latest_handoff:
-                prompt = (
-                    f"continue contract\n"
-                    f"Read the latest handoff addressed to claude-code and execute task {task_id}.\n"
-                    f"Use scope, commands, and acceptance criteria from the handoff.\n"
-                    f"Run `shux rules` to see project constraints before starting.\n"
-                    f"Use `shux contract` to update task status. Append .superharness/ledger.md, "  # shipguard:ignore PY-007
-                    f"and refresh the handoff with outcomes.\n"
-                    f"Contract id: {contract_id}."
-                    f"{acceptance_criteria}{context_hint}{user_instructions}{auto_directive}"
-                )
-            else:
-                prompt = (
-                    f"continue contract\n"
-                    f"No handoff exists yet for task {task_id}.\n"
-                    f"Run `shux rules` to see project constraints before starting.\n"
-                    f"Use `shux contract` and `shux context {task_id}` to understand the task.\n"
-                    f"Use `shux contract` to update task status. Append .superharness/ledger.md, "  # shipguard:ignore PY-007
-                    f"and create a new handoff with outcomes.\n"  # shipguard:ignore PY-007
-                    f"Contract id: {contract_id}."
-                    f"{acceptance_criteria}{context_hint}{user_instructions}{auto_directive}"
-                )
-        elif target == "gemini-cli":
-            if latest_handoff:
-                prompt = (
-                    f"continue contract\n"
-                    f"Read the latest handoff addressed to gemini-cli and execute task {task_id}.\n"
-                    f"Use scope, commands, and acceptance criteria from the handoff.\n"
-                    f"Run `shux rules` to see project constraints before starting.\n"
-                    f"Use `shux contract` to update task status. Append .superharness/ledger.md, "  # shipguard:ignore PY-007
-                    f"and refresh the handoff with outcomes.\n"
-                    f"Contract id: {contract_id}."
-                    f"{acceptance_criteria}{context_hint}{user_instructions}{auto_directive}"
-                )
-            else:
-                prompt = (
-                    f"continue contract\n"
-                    f"No handoff exists yet for task {task_id}.\n"
-                    f"Run `shux rules` to see project constraints before starting.\n"
-                    f"Use `shux contract` and `shux context {task_id}` to understand the task.\n"
-                    f"Use `shux contract` to update task status. Append .superharness/ledger.md, "  # shipguard:ignore PY-007
-                    f"and create a new handoff with outcomes.\n"  # shipguard:ignore PY-007
-                    f"Contract id: {contract_id}."
-                    f"{acceptance_criteria}{context_hint}{user_instructions}{auto_directive}"
-                )
-        else:  # codex-cli
-            if latest_handoff:
-                prompt = (
-                    f"continue contract\n"
-                    f"Read the latest handoff addressed to codex-cli and execute task {task_id}.\n"
-                    f"Use scope, commands, and acceptance criteria from the handoff.\n"
-                    f"Use `shux contract` to update task status. Append .superharness/ledger.md, "  # shipguard:ignore PY-007
-                    f"and refresh the handoff with outcomes.\n"
-                    f"Contract id: {contract_id}."
-                    f"{acceptance_criteria}{user_instructions}"
-                )
-            else:
-                prompt = (
-                    f"continue contract\n"
-                    f"No handoff exists yet for task {task_id}.\n"
-                    f"Run `shux rules` to see project constraints before starting.\n"
-                    f"Use `shux contract` and `shux context {task_id}` to understand the task.\n"
-                    f"Use `shux contract` to update task status. Append .superharness/ledger.md, "  # shipguard:ignore PY-007
-                    f"and create a new handoff with outcomes.\n"  # shipguard:ignore PY-007
-                    f"Contract id: {contract_id}."
-                    f"{acceptance_criteria}{user_instructions}"
-                )
+        prompt = _build_task_execution_prompt(
+            target=target,
+            task_id=task_id,
+            contract_id=contract_id,
+            latest_handoff=bool(latest_handoff),
+            acceptance_criteria=acceptance_criteria,
+            context_hint=context_hint,
+            user_instructions=user_instructions,
+            auto_directive=auto_directive,
+        )
         components.append(("task_instructions", prompt))
 
         # Enrich prompt with vault context
