@@ -12,6 +12,12 @@ from click.testing import CliRunner
 from tests.helpers import REPO_ROOT
 
 
+_REQUIRES_POSIX_FIXTURE = pytest.mark.skipif(
+    os.name != "posix",
+    reason="Pi delegate integration fixture uses a POSIX shebang executable",
+)
+
+
 def _run_delegate_py(cwd, args: list[str] | None = None, env: dict | None = None):
     """Run delegate Python module."""
     merged = os.environ.copy()
@@ -93,6 +99,7 @@ def test_delegate_shorthand_preserves_pi_owner(monkeypatch, tmp_path: Path) -> N
     ]
 
 
+@_REQUIRES_POSIX_FIXTURE
 def test_delegate_shorthand_runs_fake_pi_with_target_correct_prompt(
     monkeypatch, tmp_path: Path
 ) -> None:

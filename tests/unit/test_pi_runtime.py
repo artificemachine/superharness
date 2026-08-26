@@ -15,6 +15,10 @@ import pytest
 _POSIX_TERMINATION_SIGNALS = (
     (signal.SIGTERM, signal.SIGKILL) if os.name == "posix" else (signal.SIGTERM,)
 )
+_REQUIRES_POSIX_FIXTURE = pytest.mark.skipif(
+    os.name != "posix",
+    reason="Pi fixture launchers use POSIX shebang executables and delegate-to-pi.sh",
+)
 
 SUCCESS_LINES = (
     '{"type":"session","version":3,"id":"fixture-session"}\n'
@@ -166,6 +170,7 @@ def test_effort_max_maps_to_supported_thinking_level() -> None:
     assert command[command.index("--thinking") + 1] == "xhigh"
 
 
+@_REQUIRES_POSIX_FIXTURE
 def test_session_header_is_accepted_and_stream_is_forwarded_once(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -176,6 +181,7 @@ def test_session_header_is_accepted_and_stream_is_forwarded_once(
     assert record["argv"].count("one prompt argument\nwith a newline") == 1
 
 
+@_REQUIRES_POSIX_FIXTURE
 def test_assistant_error_returns_nonzero(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -199,6 +205,7 @@ def test_assistant_error_returns_nonzero(
         ),
     ],
 )
+@_REQUIRES_POSIX_FIXTURE
 def test_each_assistant_error_signal_returns_nonzero(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -223,6 +230,7 @@ def test_each_assistant_error_signal_returns_nonzero(
         '{"type":"session","version":3,"id":"fixture"}\n',
     ],
 )
+@_REQUIRES_POSIX_FIXTURE
 def test_missing_terminal_event_returns_nonzero(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -232,6 +240,7 @@ def test_missing_terminal_event_returns_nonzero(
     assert rc != 0
 
 
+@_REQUIRES_POSIX_FIXTURE
 def test_truncated_stream_without_agent_end_returns_nonzero(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -239,6 +248,7 @@ def test_truncated_stream_without_agent_end_returns_nonzero(
     assert rc != 0
 
 
+@_REQUIRES_POSIX_FIXTURE
 def test_malformed_json_returns_nonzero_and_is_forwarded_once(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -249,6 +259,7 @@ def test_malformed_json_returns_nonzero_and_is_forwarded_once(
     assert captured.out == fixture
 
 
+@_REQUIRES_POSIX_FIXTURE
 def test_tool_using_turn_with_multiple_assistant_messages_succeeds(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -260,6 +271,7 @@ def test_tool_using_turn_with_multiple_assistant_messages_succeeds(
     assert capsys.readouterr().out == TOOL_SUCCESS_LINES
 
 
+@_REQUIRES_POSIX_FIXTURE
 def test_multiple_intermediate_tool_use_messages_succeed(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -294,6 +306,7 @@ def test_multiple_intermediate_tool_use_messages_succeed(
         ('"stopReason":"error"', "assistant stopReason was error"),
     ],
 )
+@_REQUIRES_POSIX_FIXTURE
 def test_nonterminal_assistant_message_cannot_end_run(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -315,6 +328,7 @@ def test_nonterminal_assistant_message_cannot_end_run(
     assert expected_error in capsys.readouterr().err
 
 
+@_REQUIRES_POSIX_FIXTURE
 def test_length_is_a_terminal_success_reason(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -330,6 +344,7 @@ def test_length_is_a_terminal_success_reason(
     assert rc == 0
 
 
+@_REQUIRES_POSIX_FIXTURE
 def test_duplicate_terminal_success_returns_nonzero(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -352,6 +367,7 @@ def test_duplicate_terminal_success_returns_nonzero(
     assert "duplicate terminal-success" in capsys.readouterr().err
 
 
+@_REQUIRES_POSIX_FIXTURE
 def test_event_after_agent_end_returns_nonzero(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -382,6 +398,7 @@ def test_protocol_failure_is_sticky() -> None:
     assert "stopReason is missing" in initial_failure
 
 
+@_REQUIRES_POSIX_FIXTURE
 def test_terminal_assistant_message_must_precede_agent_end(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -390,6 +407,7 @@ def test_terminal_assistant_message_must_precede_agent_end(
     assert rc != 0
 
 
+@_REQUIRES_POSIX_FIXTURE
 def test_child_nonzero_is_failure_even_with_valid_stream(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -397,6 +415,7 @@ def test_child_nonzero_is_failure_even_with_valid_stream(
     assert rc == 7
 
 
+@_REQUIRES_POSIX_FIXTURE
 def test_runtime_launches_argv_without_a_shell(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -416,6 +435,7 @@ def test_runtime_launches_argv_without_a_shell(
     assert calls[0][1].get("shell", False) is False
 
 
+@_REQUIRES_POSIX_FIXTURE
 def test_runtime_restores_signal_handlers_after_normal_completion(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -516,6 +536,7 @@ def test_signal_between_child_spawn_and_assignment_cleans_process_tree(
                 pass
 
 
+@_REQUIRES_POSIX_FIXTURE
 def test_timeout_returns_nonzero(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -783,6 +804,7 @@ def test_usage_and_cost_are_retained_without_event_history() -> None:
     assert not hasattr(parser, "events")
 
 
+@_REQUIRES_POSIX_FIXTURE
 def test_launcher_runs_runtime_with_fake_pi_and_project_cwd(tmp_path: Path) -> None:
     project = tmp_path / "project"
     project.mkdir()
@@ -832,6 +854,7 @@ def test_launcher_runs_runtime_with_fake_pi_and_project_cwd(tmp_path: Path) -> N
 
 
 @pytest.mark.parametrize("args", [[], ["--project"], ["--prompt"], ["--bogus"]])
+@_REQUIRES_POSIX_FIXTURE
 def test_launcher_rejects_incomplete_or_unknown_arguments_without_invoking_pi(
     tmp_path: Path, args: list[str]
 ) -> None:
@@ -860,6 +883,7 @@ def test_launcher_rejects_incomplete_or_unknown_arguments_without_invoking_pi(
     assert not record.exists()
 
 
+@_REQUIRES_POSIX_FIXTURE
 def test_launcher_help_does_not_invoke_pi(tmp_path: Path) -> None:
     fake_pi, record = _write_fake_pi(tmp_path)
     launcher = (

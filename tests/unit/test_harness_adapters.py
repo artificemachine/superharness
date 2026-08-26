@@ -24,6 +24,12 @@ from superharness.engine.adapter_registry import resolve_launcher
 import superharness
 
 
+_REQUIRES_POSIX_FIXTURE = pytest.mark.skipif(
+    os.name != "posix",
+    reason="Pi launcher assertion executes the POSIX delegate-to-pi.sh script",
+)
+
+
 def _scripts_dir() -> str:
     return str(Path(superharness.__file__).parent / "scripts")
 
@@ -182,6 +188,7 @@ def test_pi_model_discovery_never_raises(
         {"prompt": "do the thing", "effort": "--help"},
     ],
 )
+@_REQUIRES_POSIX_FIXTURE
 def test_pi_launcher_rejects_help_like_task_values_without_invoking_pi(
     tmp_path: Path, task: dict[str, str]
 ):
