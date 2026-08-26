@@ -38,6 +38,10 @@ _ORCHESTRATOR_REVIEWER_DECISION = (
     "disposable worktree, left zero modifications, and completed verified cleanup; "
     "the earlier schema-invalid attempt is excluded from evidence."
 )
+_REQUIRES_POSIX_FIXTURE = pytest.mark.skipif(
+    os.name != "posix",
+    reason="Pi capture fixtures use POSIX shebang executables",
+)
 
 
 def _worker_evidence_record(document: str) -> str | None:
@@ -816,6 +820,7 @@ def _write_interrupt_pi_fixture(tmp_path: Path, *, descendant: bool) -> Path:
 
 
 @pytest.mark.parametrize("failure_kind", ["keyboard", "unexpected"])
+@_REQUIRES_POSIX_FIXTURE
 def test_capture_pi_command_cleans_once_and_restores_handlers_on_exception(
     tmp_path, monkeypatch, failure_kind
 ) -> None:
@@ -1036,6 +1041,7 @@ def _write_oversize_pi_fixture(tmp_path: Path, mode: str) -> Path:
 
 
 @pytest.mark.parametrize("failure_kind", ["total", "record", "timeout"])
+@_REQUIRES_POSIX_FIXTURE
 def test_bounded_pi_capture_is_terminated_and_falls_through_without_raw_leak(
     tmp_path, monkeypatch, caplog, failure_kind
 ) -> None:
