@@ -7,7 +7,7 @@
 
 ## Overview
 
-**Multi-agent task coordination for Claude Code, Codex CLI, Gemini CLI, and OpenCode**
+**Multi-agent task coordination for Claude Code, Codex CLI, Gemini CLI, OpenCode, and Pi**
 
 superharness lets AI coding assistants work on the same project without stepping on each other. It provides a shared contract (SQLite-backed), queue-based delegation, lifecycle rules, and handoff/ledger state so tasks survive across sessions and auto-manage themselves.
 
@@ -47,7 +47,7 @@ Gives you `/shux` (raw CLI passthrough), `/shux-contract`, `/shux-status`, `/shu
 
 ## Recent Highlights
 
-- **Harness adapter registry**: claude/codex/gemini/opencode dispatch routed through a single `Harness` protocol, with golden-parity tests proving byte-identical invocations
+- **Harness adapter registry**: claude/codex/gemini/opencode/pi dispatch routed through a single `Harness` protocol, with golden-parity tests proving byte-identical invocations
 - **Transcript tailing + dual watchdog**: byte-offset live dispatch progress with persisted cursors, backed by idle-timeout + absolute-ceiling deadline enforcement from the event stream
 - **Typed telemetry events**: dedicated events table (migration v31) with a background emitter and DB-heartbeat liveness (`is_fresh`)
 - **Dependency hygiene**: CVE floors on `starlette`/`python-multipart`, a previously-undeclared `requests` dependency now declared, and `.github/dependabot.yml` for ongoing drift
@@ -59,7 +59,7 @@ Gives you `/shux` (raw CLI passthrough), `/shux-contract`, `/shux-status`, `/shu
 ## ⚡ 1-Minute Quickstart
 
 **Why use superharness?** 
-*   **Prevent Overlaps**: Different agents (Claude, Codex, Gemini, OpenCode) won't edit the same files at the same time.
+*   **Prevent Overlaps**: Different agents (Claude, Codex, Gemini, OpenCode, Pi) won't edit the same files at the same time.
 *   **Persistent State**: If an agent crashes or hits a limit, the next one knows exactly where to pick up.
 *   **Auto-Mode**: Lifecycle rules auto-archive stale tasks, auto-fail deadlines, auto-close consensus discussions, and auto-clean orphans.
 *   **Full Visibility**: `shux status` gives a complete health dashboard in one command.
@@ -106,7 +106,7 @@ shux status --check  # CI mode (exit 1 if issues found)
 
 ## Using superharness
 
-### Via Claude Code or Codex CLI (recommended)
+### Via Claude Code, Codex CLI, or another supported agent (recommended)
 
 **Step 1 — Install superharness once (terminal):**
 ```bash

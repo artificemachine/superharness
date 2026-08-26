@@ -785,14 +785,16 @@ def cmd_delegate(args):
         # Look up owner from SQLite
         target = None
         try:
-            from superharness.engine.db import get_connection, init_db
             from superharness.engine import tasks_dao
+            from superharness.engine.db import get_connection, init_db
 
             _conn = get_connection(project_dir)
             try:
                 init_db(_conn)
                 _row = tasks_dao.get(_conn, task_id)
-                if _row and _row.owner in ("claude-code", "codex-cli"):
+                from superharness.harnesses import KNOWN_HARNESSES
+
+                if _row and _row.owner in KNOWN_HARNESSES:
                     target = _row.owner
             finally:
                 _conn.close()

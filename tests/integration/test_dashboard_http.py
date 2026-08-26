@@ -270,6 +270,46 @@ class TestGetEndpoints:
         assert "summary" in body
         assert isinstance(body["leaderboard"], list)
 
+    def test_api_adapters_uses_canonical_executable_agents(self, server, tmp_path):
+        """Adapters expose executable agents, not arbitrary cache entries."""
+        from datetime import datetime, timezone
+
+        from superharness.engine.model_discovery import (
+            DiscoveredModel,
+            ModelDiscoveryCache,
+        )
+        from superharness.engine.model_router import _model_discovery_cache_path
+
+        cache = ModelDiscoveryCache(_model_discovery_cache_path(str(tmp_path)))
+        cache.set(
+            str(tmp_path),
+            "external-agent",
+            DiscoveredModel(
+                id="external-model",
+                label="External model",
+                source="native",
+                auth_mode="unknown",
+                probed_at=datetime.now(timezone.utc),
+            ),
+        )
+        cache.close()
+
+        base, token = server
+        with patch(
+            "superharness.engine.model_router.detect_auth_mode_for_agent",
+            return_value="unknown",
+        ):
+            status, body = _get(base, "/api/adapters", token)
+
+        assert status == 200
+        assert [adapter["name"] for adapter in body["adapters"]] == list(
+            dashboard_ui.KNOWN_AGENTS
+        )
+        assert all(adapter["available_models"] == [] for adapter in body["adapters"])
+        assert "external-agent" not in {
+            adapter["name"] for adapter in body["adapters"]
+        }
+
     def test_api_task_report_unknown_task_returns_200_with_data(self, server):
         """task-report always returns 200 — unknown tasks get a best-effort response."""
         base, token = server
@@ -421,6 +461,39 @@ class TestSubprocessActions:
         with patch.object(Handler, "_run_cmd", return_value=self._mock_run()):
             status, body = _post_action(base, token, "watcher_restart")
         assert status == 200
+
+    def test_dashboard_actions_accept_pi(self, server, tmp_path):
+        """Dashboard task actions accept every executable Pi target."""
+        base, token = server
+        _insert_task(tmp_path, "t-pi", "todo", owner="pi")
+        with patch.object(
+            Handler, "_run_cmd", return_value=self._mock_run()
+        ) as mock_cmd:
+            status, body = _post_action(base, token, "delegate_plan:t-pi:pi")
+            assert status == 200
+            assert body["target"] == "pi"
+            assert "pi" in mock_cmd.call_args[0][0]
+
+            status, _ = _post_action(base, token, "enqueue_task:t-pi:pi")
+            assert status == 200
+            assert "pi" in mock_cmd.call_args[0][0]
+
+    @pytest.mark.parametrize("action", ["delegate_plan:t-unknown:nope", "enqueue_task:t-unknown:nope"])
+    def test_dashboard_actions_reject_unknown_targets(self, server, tmp_path, action):
+        """Only executable harness targets are accepted by dashboard actions."""
+        base, token = server
+        _insert_task(tmp_path, "t-unknown", "todo")
+
+        status, _ = _post_action(base, token, action)
+
+        assert status == 400
+
+    def test_dashboard_watcher_config_accepts_pi(self, tmp_path):
+        """Pi is an accepted explicit watcher target."""
+        harness = _harness(tmp_path)
+        (harness / "watcher.yaml").write_text("target: pi\n")
+
+        assert dashboard_ui.watcher_config(tmp_path)["target"] == "pi"
 
 
 # ── POST /api/action — logic-bearing (no subprocess mock needed) ──────────────

@@ -32,6 +32,9 @@ def _copy_guard_tree(tmp_path: Path) -> Path:
     for rel in sorted(set(required)):
         copy_from_repo(rel, repo)
 
+    for manifest in (REPO_ROOT / "src/superharness/adapter_manifests").glob("*.yaml"):
+        copy_from_repo(str(manifest.relative_to(REPO_ROOT)), repo)
+
     _init_git_repo(repo)
     run_cmd(["git", "add", "."], cwd=repo)
     return repo
@@ -53,6 +56,42 @@ def test_shell_guard_detects_allowlist_drift(tmp_path) -> None:
     extra.write_text("#!/bin/bash\necho hi\n")
     extra.chmod(0o755)
     run_cmd(["git", "add", str(extra)], cwd=repo)
+
+    result = run_bash(
+        repo / "src/superharness/scripts/check-shell-entrypoints.sh", cwd=repo
+    )
+
+    assert result.returncode == 1
+    assert "missing from ENTRYPOINT_FILES allowlist" in result.stdout
+
+
+def test_delegate_launcher_pattern_is_auto_listed(tmp_path) -> None:
+    repo = _copy_guard_tree(tmp_path)
+    launcher = repo / "src/superharness/scripts/delegate-to-example.sh"
+    launcher.write_text("#!/bin/bash\necho example\n")
+    launcher.chmod(0o755)
+    manifest = repo / "src/superharness/adapter_manifests/example.yaml"
+    manifest.write_text(
+        'name: example\nlauncher_script: "delegate-to-example.sh" # test mapping\n'
+    )
+    run_cmd(["git", "add", str(launcher), str(manifest)], cwd=repo)
+
+    result = run_bash(
+        repo / "src/superharness/scripts/check-shell-entrypoints.sh",
+        cwd=repo,
+        args=["--list-entrypoints"],
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "src/superharness/scripts/delegate-to-example.sh" in result.stdout.splitlines()
+
+
+def test_shell_guard_rejects_unmapped_delegate_launcher(tmp_path) -> None:
+    repo = _copy_guard_tree(tmp_path)
+    launcher = repo / "src/superharness/scripts/delegate-to-unmapped.sh"
+    launcher.write_text("#!/bin/bash\necho unmapped\n")
+    launcher.chmod(0o755)
+    run_cmd(["git", "add", str(launcher)], cwd=repo)
 
     result = run_bash(
         repo / "src/superharness/scripts/check-shell-entrypoints.sh", cwd=repo

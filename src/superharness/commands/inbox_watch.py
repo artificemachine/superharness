@@ -593,6 +593,20 @@ def _run_dispatch_cmd(
     )
 
 
+def _watcher_targets(target: str) -> list[str]:
+    """Expand a watcher target to every registered, executable harness."""
+    if target == "both":
+        from superharness.engine.adapter_registry import list_adapters
+        from superharness.harnesses import KNOWN_HARNESSES
+
+        # The manifest registry discovers new adapters automatically, while the
+        # harness registry excludes manifest-only/inert entries such as
+        # ``prime-agent`` that the watcher cannot execute.
+        executable = set(KNOWN_HARNESSES)
+        return [adapter for adapter in list_adapters() if adapter in executable]
+    return [target]
+
+
 def _run_scripts_heartbeat(project_dir: str) -> None:
     """Write both legacy timestamp and structured heartbeat contract for the watcher."""
     # Legacy: plain timestamp — consumed by existing health checks
@@ -3146,17 +3160,7 @@ def _run_scripts(
         print(f"Warning: undispatchable agent cleanup failed: {e}", file=sys.stderr)
 
     # Dispatch — check budget before launching agents
-    targets = []
-    if target == "both":
-        try:
-            from superharness.engine.adapter_registry import list_adapters
-
-            targets = list_adapters()
-        except Exception as e:
-            logger.warning("inbox_watch unexpected error: %s", e, exc_info=True)
-            targets = ["claude-code", "codex-cli", "gemini-cli", "opencode"]
-    else:
-        targets = [target]
+    targets = _watcher_targets(target)
 
     # Budget gate: skip dispatch if daily budget is exceeded (strict mode)
     try:
@@ -5551,16 +5555,11 @@ def main(argv: list[str] | None = None) -> None:
         except (ValueError, TypeError):
             _abort(f"{name} must be a positive integer", 2)
 
-    if opts.target not in (
-        "both",
-        "claude-code",
-        "codex-cli",
-        "gemini-cli",
-        "opencode",
-    ):
-        _abort(
-            "--to must be one of: both, claude-code, codex-cli, gemini-cli, opencode", 2
-        )
+    from superharness.harnesses import KNOWN_HARNESSES
+
+    valid_targets = ["both", *KNOWN_HARNESSES]
+    if opts.target not in valid_targets:
+        _abort(f"--to must be one of: {', '.join(valid_targets)}", 2)
 
     if opts.recover_action not in ("stale", "retry"):
         _abort("--recover-action must be one of: stale, retry", 2)

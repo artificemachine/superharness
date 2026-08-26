@@ -14,6 +14,7 @@ from typing import Optional
 
 from superharness.engine.taxonomy import VALID_EFFORTS
 from superharness.engine.next_action import ALL_STATUSES
+from superharness.harnesses import KNOWN_HARNESSES
 from superharness.utils.paths import is_project_initialized
 
 import logging
@@ -24,7 +25,7 @@ logger = logging.getLogger(__name__)
 # Validation helpers
 # ---------------------------------------------------------------------------
 
-VALID_OWNERS = {"owner", "claude-code", "codex-cli", "gemini-cli", "opencode"}
+VALID_OWNERS = frozenset(KNOWN_HARNESSES) | {"owner"}
 VALID_CREATE_STATUSES = {"todo", "in_progress", "pending_user_approval", "done"}
 VALID_WORKFLOWS = {
     "implementation",

@@ -1,0 +1,37 @@
+name: pi
+version: "1"
+schema_version: 2
+description: >-
+  Pi coding agent adapter with approved, reproduced worker activation evidence.
+type: external
+launcher_script: delegate-to-pi.sh
+capabilities:
+  - code_generation
+  - file_editing
+strengths: [agent:pi]
+supports_effort: true
+model_tiers:
+  mini:
+    preferred: deepseek/deepseek-v4-flash
+    accept: [deepseek/deepseek-v4-flash]
+    auth_compat:
+      apikey: [deepseek/deepseek-v4-flash]
+    capability_tags: [cost_optimised]
+  standard:
+    preferred: deepseek/deepseek-v4-flash
+    accept: [deepseek/deepseek-v4-flash]
+    auth_compat:
+      apikey: [deepseek/deepseek-v4-flash]
+    capability_tags: [balanced]
+  max:
+    preferred: deepseek/deepseek-v4-pro
+    accept: [deepseek/deepseek-v4-pro]
+    auth_compat:
+      apikey: [deepseek/deepseek-v4-pro]
+    capability_tags: [best_effort]
+requires:
+  bin: pi
+  env: []
+validation:
+  check_bin: false
+  check_env: false
