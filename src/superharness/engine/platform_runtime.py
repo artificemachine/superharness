@@ -37,6 +37,7 @@ import sys
 import tempfile
 import time
 from pathlib import Path
+from typing import TextIO
 
 logger = logging.getLogger(__name__)
 
@@ -316,6 +317,13 @@ def expand_agent_path() -> None:
         os.environ["PATH"] = current + os.pathsep + os.pathsep.join(additions)
 
 
+def _forward_child_output(output: str | None, stream: TextIO) -> None:
+    """Write captured child output to its matching parent stream once."""
+    if output:
+        stream.write(output)
+        stream.flush()
+
+
 def launch_agent(cmd: list[str], *, cwd: str) -> int:
     """Launch *cmd* as a subprocess and return its exit code.
 
@@ -357,6 +365,8 @@ def launch_agent(cmd: list[str], *, cwd: str) -> int:
         text=True,
         errors="replace",
     )
+    _forward_child_output(result.stdout, sys.stdout)
+    _forward_child_output(result.stderr, sys.stderr)
     if result.returncode != 0:
         from superharness.logging_utils import get_audit_logger, redact
 

@@ -50,11 +50,30 @@ def _todo_tasks(contract: dict) -> list[dict]:
     ]
 
 
+def _is_fully_experimental_adapter(agent: str, project_dir: str) -> bool:
+    """Return whether every declared tier for ``agent`` is experimental."""
+    from superharness.engine.smart_dispatch import _load_manifests, _manifests_dir
+
+    for manifest in _load_manifests(_manifests_dir(project_dir)):
+        if manifest.get("name") != agent:
+            continue
+        tiers = manifest.get("model_tiers")
+        if not isinstance(tiers, dict) or not tiers:
+            return False
+        return all(
+            isinstance(tier, dict)
+            and "experimental"
+            in {str(tag).casefold() for tag in tier.get("capability_tags") or []}
+            for tier in tiers.values()
+        )
+    return False
+
+
 def _classify_task(task: dict, project_dir: str) -> tuple[str, str]:
     """Return (agent, model_tier) for a task. Falls back to profile defaults.
 
-    Tier-to-agent heuristic: mini → codex-cli (lightweight), standard/max → claude-code.
-    Override with --agent to route to any registered adapter (gemini-cli, opencode, etc.).
+    Tier classification remains the fallback; smart routing may select a manifest-matched
+    non-experimental adapter.  Explicit --agent overrides happen in run_auto_dispatch.
     """
     try:
         from superharness.engine.model_router import classify_task
@@ -69,7 +88,20 @@ def _classify_task(task: dict, project_dir: str) -> tuple[str, str]:
             project_dir=project_dir,
         )
         # Heuristic default: mini tasks go to codex-cli, heavier tasks to claude-code.
-        agent = "codex-cli" if tier == "mini" else "claude-code"
+        fallback_agent = "codex-cli" if tier == "mini" else "claude-code"
+
+        from superharness.engine.smart_dispatch import choose_agent
+
+        agent = choose_agent(task, project_dir=project_dir)
+        if _is_fully_experimental_adapter(agent, project_dir):
+            # Keep experimental workers available to an explicit --agent request,
+            # but never promote them through automatic scoring.
+            owner = str(task.get("owner") or "")
+            agent = (
+                owner
+                if owner and not _is_fully_experimental_adapter(owner, project_dir)
+                else fallback_agent
+            )
         return agent, tier
     except Exception as e:
         logger.warning("auto_dispatch.py unexpected error: %s", e, exc_info=True)

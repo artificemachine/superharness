@@ -13,13 +13,21 @@ claude-code.
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
+import subprocess
 
 import pytest
 
 from superharness.harnesses import KNOWN_HARNESSES, get_harness
 from superharness.engine.adapter_registry import resolve_launcher
 import superharness
+
+
+_REQUIRES_POSIX_FIXTURE = pytest.mark.skipif(
+    os.name != "posix",
+    reason="Pi launcher assertion executes the POSIX delegate-to-pi.sh script",
+)
 
 
 def _scripts_dir() -> str:
@@ -91,12 +99,135 @@ def test_opencode_invocation_parity():
     assert invocation.cwd == "/tmp/proj"
 
 
+def test_pi_invocation_parity():
+    launcher = resolve_launcher("pi", _scripts_dir())
+    invocation = get_harness("pi").build_invocation(
+        task={"prompt": "do the thing", "model": "deepseek-v4-flash", "effort": "high"},
+        project_dir="/tmp/proj",
+        non_interactive=True,
+    )
+    assert invocation.argv == (
+        "bash",
+        launcher,
+        "--project",
+        "/tmp/proj",
+        "--prompt",
+        "do the thing",
+        "--non-interactive",
+        "--model",
+        "deepseek/deepseek-v4-flash",
+        "--effort",
+        "high",
+    )
+    assert invocation.argv.count("do the thing") == 1
+    assert invocation.cwd == "/tmp/proj"
+
+
+def test_pi_model_discovery_parses_list_output(monkeypatch: pytest.MonkeyPatch):
+    from superharness.harnesses.pi import PiHarness
+
+    class _FakeResult:
+        returncode = 0
+        stdout = ""
+        stderr = (
+            "provider model context max-out thinking images\n"
+            "provider-b model-b 1M 384K yes no\n"
+            "provider-a model-a 1M 384K yes no\n"
+        )
+
+    calls: list[tuple[tuple[str, ...], dict]] = []
+
+    def _fake_run(argv, **kwargs):
+        calls.append((tuple(argv), kwargs))
+        return _FakeResult()
+
+    monkeypatch.setattr(subprocess, "run", _fake_run)
+
+    models = PiHarness().discover_models(auth_mode="apikey")
+
+    assert [model.id for model in models] == ["provider-a/model-a", "provider-b/model-b"]
+    assert all(model.source == "native" for model in models)
+    assert all(model.auth_mode == "apikey" for model in models)
+    assert calls == [(
+        ("pi", "--offline", "--no-extensions", "--no-skills", "--no-prompt-templates", "--list-models"),
+        {"capture_output": True, "text": True, "timeout": 10, "check": False},
+    )]
+
+
+@pytest.mark.parametrize(
+    "result_or_error",
+    [
+        FileNotFoundError("pi not found"),
+        subprocess.TimeoutExpired(cmd="pi", timeout=10),
+        type("Nonzero", (), {"returncode": 1, "stdout": "provider model context max-out thinking images\nprovider-a model-a 1M 384K yes no\n", "stderr": ""})(),
+        type("Junk", (), {"returncode": 0, "stdout": "not a model table", "stderr": ""})(),
+        type("MissingHeader", (), {"returncode": 0, "stdout": "provider-a model-a 1M 384K yes no", "stderr": ""})(),
+        type("ZeroRows", (), {"returncode": 0, "stdout": "provider model context max-out thinking images\n", "stderr": ""})(),
+        type("SplitStreams", (), {"returncode": 0, "stdout": "provider model context max-out thinking images\n", "stderr": "provider-a model-a 1M 384K yes no\n"})(),
+    ],
+)
+def test_pi_model_discovery_never_raises(
+    monkeypatch: pytest.MonkeyPatch, result_or_error: object
+):
+    from superharness.harnesses.pi import PiHarness
+
+    def _fake_run(*args, **kwargs):
+        if isinstance(result_or_error, BaseException):
+            raise result_or_error
+        return result_or_error
+
+    monkeypatch.setattr(subprocess, "run", _fake_run)
+    assert PiHarness().discover_models() == []
+
+
+@pytest.mark.parametrize(
+    "task",
+    [
+        {"prompt": "--help"},
+        {"prompt": "do the thing", "model": "--help"},
+        {"prompt": "do the thing", "effort": "--help"},
+    ],
+)
+@_REQUIRES_POSIX_FIXTURE
+def test_pi_launcher_rejects_help_like_task_values_without_invoking_pi(
+    tmp_path: Path, task: dict[str, str]
+):
+    """Regression: task data must not be mistaken for a launcher help request."""
+    fake_pi = tmp_path / "pi"
+    sentinel = tmp_path / "pi-was-invoked"
+    fake_pi.write_text('#!/bin/sh\n: > "$PI_SENTINEL"\nexit 99\n')
+    fake_pi.chmod(0o755)
+    invocation = get_harness("pi").build_invocation(
+        task=task,
+        project_dir=str(tmp_path),
+        non_interactive=True,
+    )
+
+    result = subprocess.run(
+        invocation.argv,
+        capture_output=True,
+        text=True,
+        check=False,
+        env={
+            **os.environ,
+            "PATH": f"{tmp_path}{os.pathsep}{os.environ['PATH']}",
+            "PI_SENTINEL": str(sentinel),
+        },
+    )
+
+    assert result.returncode != 0
+    assert "Usage: delegate-to-pi.sh" in result.stderr
+    assert "error:" in result.stderr
+    assert not sentinel.exists()
+
+
 def test_all_known_harnesses_resolve():
     assert set(KNOWN_HARNESSES) == {
         "claude-code",
         "codex-cli",
         "gemini-cli",
         "opencode",
+        "pi",
     }
     for name in KNOWN_HARNESSES:
         invocation = get_harness(name).build_invocation(

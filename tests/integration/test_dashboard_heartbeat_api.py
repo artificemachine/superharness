@@ -115,6 +115,20 @@ def server(tmp_path):
 
 
 class TestHeartbeatEndpoint:
+    def test_empty_dashboard_includes_pi(self, server):
+        """Pi is present and gray before it has emitted a heartbeat."""
+        base, token, _ = server
+        status, body = _get(base, "/api/heartbeats", token)
+
+        assert status == 200
+        assert body["agents"]["pi"] == {
+            "level": "gray",
+            "age_seconds": -1,
+            "status": None,
+            "task_id": None,
+            "updated_at": None,
+        }
+
     def test_returns_200_with_required_keys(self, server):
         base, token, _ = server
         status, body = _get(base, "/api/heartbeats", token)

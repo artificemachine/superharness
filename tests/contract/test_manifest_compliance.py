@@ -8,6 +8,8 @@ Covers:
 
 from __future__ import annotations
 
+import os
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -69,6 +71,100 @@ class TestManifestStructure:
     @pytest.mark.parametrize("name,manifest", _all_manifests())
     def test_has_launcher_script(self, name, manifest):
         assert "launcher_script" in manifest, f"{name}: missing 'launcher_script'"
+
+
+class TestPiManifestContract:
+    """Pi's approved manifest remains schema-compliant and tier-pinned."""
+
+    def test_pi_manifest_is_schema_v2_with_approved_tiers(self):
+        manifest = _load_manifest("pi")
+
+        assert manifest["schema_version"] == 2
+        assert manifest["supports_effort"] is True
+        assert manifest["validation"] == {"check_bin": False, "check_env": False}
+
+        tiers = manifest["model_tiers"]
+        assert set(tiers) == {"mini", "standard", "max"}
+        assert {
+            name: tier["preferred"] for name, tier in tiers.items()
+        } == {
+            "mini": "deepseek/deepseek-v4-flash",
+            "standard": "deepseek/deepseek-v4-flash",
+            "max": "deepseek/deepseek-v4-pro",
+        }
+        assert all("experimental" not in tier["capability_tags"] for tier in tiers.values())
+
+
+class TestPiLauncherArgumentSafety:
+    """Pi launcher help and invalid arguments must not invoke Pi."""
+
+    @staticmethod
+    def _launcher() -> Path:
+        return MANIFEST_DIR.parent / "scripts" / "delegate-to-pi.sh"
+
+    @classmethod
+    def _run_launcher(cls, *args: str, env: dict[str, str] | None = None):
+        return subprocess.run(
+            [str(cls._launcher()), *args],
+            capture_output=True,
+            text=True,
+            check=False,
+            env=env,
+        )
+
+    @staticmethod
+    def _fake_pi_environment(tmp_path: Path) -> tuple[dict[str, str], Path]:
+        sentinel = tmp_path / "pi-invoked"
+        fake_pi = tmp_path / "pi"
+        fake_pi.write_text("#!/bin/bash\nprintf invoked > \"$PI_SENTINEL\"\n")
+        fake_pi.chmod(fake_pi.stat().st_mode | os.X_OK)
+        environment = {
+            **os.environ,
+            "PATH": f"{tmp_path}{os.pathsep}{os.environ['PATH']}",
+            "PI_SENTINEL": str(sentinel),
+        }
+        assert environment["HOME"] == os.environ["HOME"]
+        assert environment["PATH"].split(os.pathsep)[0] == str(tmp_path)
+        assert os.environ["PATH"] in environment["PATH"]
+        return environment, sentinel
+
+    @pytest.mark.parametrize("help_flag", ["--help", "-h"])
+    def test_pi_launcher_help_succeeds_without_invoking_pi(self, tmp_path, help_flag):
+        env, sentinel = self._fake_pi_environment(tmp_path)
+        result = self._run_launcher(help_flag, env=env)
+
+        assert result.returncode == 0
+        assert "Usage: delegate-to-pi.sh" in result.stdout
+        assert not sentinel.exists(), "help path unexpectedly invoked pi"
+
+    @pytest.mark.parametrize(
+        "args",
+        [
+            (),
+            ("--project",),
+            ("--bogus",),
+            ("--project", "{project}", "--prompt", "--help"),
+            ("--project", "{project}", "--prompt", "-h"),
+            ("--project", "{project}", "--prompt", "x", "--model", "--help"),
+            ("--project", "{project}", "--prompt", "x", "--model", "-h"),
+            ("--project", "{project}", "--prompt", "x", "--effort", "--help"),
+            ("--project", "{project}", "--prompt", "x", "--effort", "-h"),
+        ],
+    )
+    def test_pi_launcher_rejects_invalid_arguments_without_invoking_pi(
+        self, tmp_path, args
+    ):
+        env, sentinel = self._fake_pi_environment(tmp_path)
+        args = tuple(arg.format(project=tmp_path) for arg in args)
+        result = self._run_launcher(
+            *args,
+            env=env,
+        )
+
+        assert result.returncode != 0
+        assert "Usage: delegate-to-pi.sh" in result.stderr
+        assert "error:" in result.stderr
+        assert not sentinel.exists(), "argument rejection unexpectedly invoked pi"
 
 
 # ── Model resolution ──────────────────────────────────────────────────────────
@@ -137,6 +233,11 @@ class TestOrchestratorChain:
             "opencode": "opencode",
         }
 
+        assert "pi" in owners_in_chain, (
+            "Pi has approved live decomposition evidence and must remain in "
+            "the orchestrator chain."
+        )
+
         def _is_experimental(name: str) -> bool:
             manifest = _load_manifest(name)
             tiers = manifest.get("model_tiers") or {}
@@ -151,7 +252,10 @@ class TestOrchestratorChain:
         missing = [
             o
             for o in all_owners
-            if name_map.get(o, o) not in owners_in_chain and not _is_experimental(o)
+            if (
+                name_map.get(o, o) not in owners_in_chain
+                and not _is_experimental(o)
+            )
         ]
         assert not missing, (
             f"Owners missing from orchestrator chain: {missing}. "

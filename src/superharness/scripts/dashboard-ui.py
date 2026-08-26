@@ -28,6 +28,7 @@ from superharness import __version__
 from superharness.engine import db, dashboard_presenter
 from superharness.engine.langfuse_telemetry import load_settings as load_langfuse_settings
 from superharness.engine.process import pid_alive
+from superharness.harnesses import KNOWN_HARNESSES
 
 
 def _ensure_python_with_yaml() -> None:
@@ -86,8 +87,10 @@ def render_dashboard_html(langfuse_base_url: str) -> str:
     )
     return HTML.replace("__LANGFUSE_LINK__", link)
 
-# Registry of known agent names — add new agents here as the ecosystem grows.
-KNOWN_AGENTS: list[str] = ["claude-code", "codex-cli", "gemini-cli", "opencode"]
+# Executable dashboard targets are the registered harness adapters. Keep this a
+# local immutable snapshot because this packaged script is imported directly by
+# integration tests as well as run through the installed package.
+KNOWN_AGENTS: tuple[str, ...] = tuple(sorted(KNOWN_HARNESSES))
 
 # Inbox item statuses that mean "still in flight or queued" (not terminal).
 INBOX_ACTIVE_STATUSES: frozenset[str] = frozenset(
@@ -1959,7 +1962,7 @@ def _adapter_models_data(project_dir: Path) -> dict:
 
             cache = ModelDiscoveryCache(db_path)
             rows = []
-            for name in ("claude-code", "codex-cli", "gemini-cli", "opencode"):
+            for name in KNOWN_AGENTS:
                 auth_mode = detect_auth_mode_for_agent(name)
                 cached = cache.get(str(project_dir), name, auth_mode)
                 rows.append(
@@ -3493,7 +3496,6 @@ class Handler(BaseHTTPRequestHandler):
         if p == "/api/heartbeats":
             now_utc = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
             now_ts = time.time()
-            _KNOWN_AGENTS = ["claude-code", "codex-cli", "gemini-cli", "opencode"]
             agents: dict = {
                 a: {
                     "level": "gray",
@@ -3502,7 +3504,7 @@ class Handler(BaseHTTPRequestHandler):
                     "task_id": None,
                     "updated_at": None,
                 }
-                for a in _KNOWN_AGENTS
+                for a in KNOWN_AGENTS
             }
             try:
                 from superharness.engine import heartbeat_dao as _hb_dao
