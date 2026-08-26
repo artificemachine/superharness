@@ -12,6 +12,10 @@ from pathlib import Path
 
 import pytest
 
+_POSIX_TERMINATION_SIGNALS = (
+    (signal.SIGTERM, signal.SIGKILL) if os.name == "posix" else (signal.SIGTERM,)
+)
+
 SUCCESS_LINES = (
     '{"type":"session","version":3,"id":"fixture-session"}\n'
     '{"type":"message_end","message":{"role":"assistant","content":'
@@ -623,7 +627,7 @@ def test_already_reaped_process_never_reuses_numeric_identity(
     os.name != "posix",
     reason="POSIX process-group termination is covered through the process seam",
 )
-@pytest.mark.parametrize("denied_signal", [signal.SIGTERM, signal.SIGKILL])
+@pytest.mark.parametrize("denied_signal", _POSIX_TERMINATION_SIGNALS)
 def test_process_group_signal_failures_are_contained_by_the_process_seam(
     monkeypatch: pytest.MonkeyPatch,
     denied_signal: int,
