@@ -19,6 +19,7 @@ import subprocess
 from dataclasses import dataclass, field
 from typing import Any
 
+from superharness.engine import pi_runtime
 from superharness.engine.adapter_registry import fallback_flagship, flagship
 from superharness.engine.cost_estimator import (
     estimate_task_cost,
@@ -41,6 +42,7 @@ _ORCHESTRATOR_CHAIN: list[tuple[str, str, str]] = [
     ("codex", "gpt-5.5", "Codex GPT-5.5 (max)"),
     ("gemini", "gemini-3.1-pro-preview", "Gemini 3.1 Pro (max)"),
     ("opencode", "deepseek/deepseek-v4-pro", "DeepSeek V4 Pro (max)"),
+    ("pi", "deepseek/deepseek-v4-pro", "Pi DeepSeek V4 Pro (max)"),
 ]
 
 
@@ -59,14 +61,113 @@ def _build_agent_argv(binary: str, model: str, prompt: str) -> list[str]:
         return [binary, "run", "-m", model, prompt]
     if binary == "gemini":
         return [binary, "-m", model, "-p", prompt]
+    if binary == "pi":
+        return pi_runtime.build_command(
+            prompt,
+            model=model,
+            pi_binary=binary,
+            no_tools=True,
+        )
     # claude (and any unknown binary): Claude-style flags
     return [binary, "--model", model, "-p", prompt]
 
 
-# Quality scores per model: {model_id: {successes: int, failures: int, last_used: iso}}
+def _normalize_orchestrator_stdout(binary: str, stdout: str) -> str:
+    """Normalize one runtime's successful stdout to its JSON response text."""
+    if binary == "pi":
+        terminal_text = pi_runtime.extract_terminal_text(stdout)
+        try:
+            decomposition = json.loads(terminal_text)
+        except json.JSONDecodeError as exc:
+            raise ValueError("Pi terminal text was not valid JSON") from exc
+        if not isinstance(decomposition, dict):
+            raise ValueError("Pi terminal JSON was not an object")
+        _validate_pi_orchestrator_payload(decomposition)
+        return terminal_text
+    return stdout.strip()
+
+
+def _validate_pi_orchestrator_payload(payload: dict[str, Any]) -> None:
+    """Fail closed unless Pi returned the routing schema requested by the prompt."""
+    owners = {"claude-code", "codex-cli", "gemini-cli", "opencode", "pi"}
+    tiers = {"mini", "standard", "max"}
+    efforts = {"low", "medium", "high", "xhigh"}
+    required = {"owner", "tier", "effort", "decompose", "rationale", "subtasks"}
+    if not required.issubset(payload):
+        raise ValueError("Pi routing payload omitted required fields")
+    if not isinstance(payload["owner"], str) or payload["owner"] not in owners:
+        raise ValueError("Pi routing payload had an invalid owner")
+    if not isinstance(payload["tier"], str) or payload["tier"] not in tiers:
+        raise ValueError("Pi routing payload had an invalid tier")
+    if not isinstance(payload["effort"], str) or payload["effort"] not in efforts:
+        raise ValueError("Pi routing payload had an invalid effort")
+    if not isinstance(payload["decompose"], bool):
+        raise ValueError("Pi routing payload decompose was not boolean")
+    if not isinstance(payload["rationale"], str):
+        raise ValueError("Pi routing payload rationale was not text")
+    subtasks = payload["subtasks"]
+    if not isinstance(subtasks, list):
+        raise ValueError("Pi routing payload subtasks was not a list")
+    if not payload["decompose"]:
+        if subtasks:
+            raise ValueError("Pi non-decomposition payload contained subtasks")
+        return
+    if not subtasks:
+        raise ValueError("Pi decomposition payload contained no subtasks")
+
+    subtask_required = {
+        "id",
+        "title",
+        "owner",
+        "tier",
+        "effort",
+        "blocked_by",
+        "estimated_tokens",
+    }
+    for subtask in subtasks:
+        if not isinstance(subtask, dict) or not subtask_required.issubset(subtask):
+            raise ValueError("Pi decomposition contained an invalid subtask")
+        if not isinstance(subtask["id"], str) or not subtask["id"]:
+            raise ValueError("Pi decomposition subtask had an invalid id")
+        if not isinstance(subtask["title"], str) or not subtask["title"]:
+            raise ValueError("Pi decomposition subtask had an invalid title")
+        if (
+            not isinstance(subtask["owner"], str)
+            or subtask["owner"] not in owners
+        ):
+            raise ValueError("Pi decomposition subtask had an invalid owner")
+        if not isinstance(subtask["tier"], str) or subtask["tier"] not in tiers:
+            raise ValueError("Pi decomposition subtask had an invalid tier")
+        if (
+            not isinstance(subtask["effort"], str)
+            or subtask["effort"] not in efforts
+        ):
+            raise ValueError("Pi decomposition subtask had an invalid effort")
+        blocked_by = subtask["blocked_by"]
+        if blocked_by is not None and (
+            not isinstance(blocked_by, str) or not blocked_by
+        ):
+            raise ValueError("Pi decomposition subtask had invalid blocked_by")
+        estimated_tokens = subtask["estimated_tokens"]
+        if (
+            isinstance(estimated_tokens, bool)
+            or not isinstance(estimated_tokens, int)
+            or estimated_tokens < 0
+        ):
+            raise ValueError("Pi decomposition subtask had invalid estimated_tokens")
+
+
+def _pi_is_explicitly_requested(task: dict[str, Any]) -> bool:
+    """Return whether a task includes the exact opt-in tag for Pi execution."""
+    from superharness.engine.smart_dispatch import _task_keywords
+
+    return "agent:pi" in _task_keywords(task)
+
+
+# Quality scores per runtime/model pair.
 # Higher success rate = higher selection weight for future decompositions.
 # Initialized with neutral scores so new models get a fair chance.
-_orchestrator_scores: dict[str, dict[str, Any]] = {}
+_orchestrator_scores: dict[tuple[str, str], dict[str, Any]] = {}
 
 
 def _shuffle_chain() -> list[tuple[str, str, str]]:
@@ -79,7 +180,7 @@ def _shuffle_chain() -> list[tuple[str, str, str]]:
     pool: list[tuple[str, str, str]] = []
     for entry in _ORCHESTRATOR_CHAIN:
         binary, model, label = entry
-        score = _orchestrator_scores.get(model, {})
+        score = _orchestrator_scores.get((binary, model), {})
         successes = score.get("successes", 0)
         failures = score.get("failures", 0)
         total = successes + failures
@@ -91,21 +192,24 @@ def _shuffle_chain() -> list[tuple[str, str, str]]:
             weight = 1 + int(rate * 4)  # 1-5 entries
         pool.extend([entry] * weight)
     random.shuffle(pool)
-    # Deduplicate: keep first occurrence of each model
-    seen: set[str] = set()
+    # Deduplicate: keep first occurrence of each runtime/model pair.
+    seen: set[tuple[str, str]] = set()
     result: list[tuple[str, str, str]] = []
     for entry in pool:
-        if entry[1] not in seen:
-            seen.add(entry[1])
+        runtime_model = (entry[0], entry[1])
+        if runtime_model not in seen:
+            seen.add(runtime_model)
             result.append(entry)
     return result
 
 
-def _record_orchestrator_score(model: str, success: bool) -> None:
-    """Update quality score for an orchestrator model."""
+def _record_orchestrator_score(binary: str, model: str, success: bool) -> None:
+    """Update quality score for one runtime/model identity."""
     from datetime import datetime, timezone
 
-    score = _orchestrator_scores.setdefault(model, {"successes": 0, "failures": 0})
+    score = _orchestrator_scores.setdefault(
+        (binary, model), {"successes": 0, "failures": 0}
+    )
     if success:
         score["successes"] += 1
     else:
@@ -174,11 +278,18 @@ Available executors:
     mini:     deepseek-chat                    — cheapest
     effort:   unsupported (opencode CLI has no effort flag)
 
+  pi:
+    max:      deepseek/deepseek-v4-pro         — approved best-effort worker
+    standard: deepseek/deepseek-v4-flash       — approved balanced worker
+    mini:     deepseek/deepseek-v4-flash       — approved cost-optimised worker
+    effort:   low | medium | high | xhigh      (thinking level)
+
 Owner selection rules:
   - Architecture, system design, safety, security   → claude-code
   - Heavy implementation, code generation           → codex-cli
   - Fast turnaround, large-context processing       → gemini-cli
   - Budget-constrained, non-critical                → opencode
+  - Explicit Pi-specialized worker task             → pi
   - Cross-cutting concerns                          → claude-code (orchestrates), codex-cli (builds)
 
 Tier selection rules:
@@ -188,7 +299,7 @@ Tier selection rules:
   - Discussion topic (design/architecture)          → max (needs deep reasoning)
   - Previously failed task                          → escalate one tier up
 
-Effort selection rules (only for claude-code and codex-cli):
+Effort selection rules (only for claude-code, codex-cli, and pi):
   - Safety, security, complex architecture          → high
   - Feature implementation, test writing            → medium
   - Chore, refactor, doc update                     → low
@@ -213,7 +324,7 @@ Task:
 
 Reply with JSON only (no markdown fences):
 {{
-  "owner": "claude-code | codex-cli | gemini-cli | opencode",
+  "owner": "claude-code | codex-cli | gemini-cli | opencode | pi",
   "tier": "mini | standard | max",
   "effort": "low | medium | high | xhigh",
   "decompose": true,
@@ -222,7 +333,7 @@ Reply with JSON only (no markdown fences):
     {{
       "id": "<parent_id>.st<N>",
       "title": "...",
-      "owner": "claude-code | codex-cli | gemini-cli | opencode",
+      "owner": "claude-code | codex-cli | gemini-cli | opencode | pi",
       "tier": "mini | standard | max",
       "effort": "low | medium | high | xhigh",
       "blocked_by": "<parent_id>.st<N-1>" | null,
@@ -362,12 +473,23 @@ class Orchestrator:
         decompose = bool(data.get("decompose", False))
         rationale = str(data.get("rationale") or "")
         raw_subtasks = data.get("subtasks") or []
+        pi_requested = _pi_is_explicitly_requested(task)
+        fallback_owner = str(task.get("owner") or "claude-code")
+
+        if owner == "pi" and not pi_requested:
+            owner = fallback_owner
+            rationale = (
+                f"{rationale} Pi routing ignored because the task lacks the exact "
+                "agent:pi opt-in."
+            ).strip()
 
         subtasks: list[dict[str, Any]] = []
         if decompose and isinstance(raw_subtasks, list):
             for st in raw_subtasks:
                 if isinstance(st, dict):
                     st_owner = st.get("owner", owner)
+                    if st_owner == "pi" and not pi_requested:
+                        st_owner = owner
                     st_tier = st.get("tier", tier)
                     st_effort = st.get("effort", effort)
                     subtasks.append(
@@ -460,32 +582,80 @@ class Orchestrator:
         chain = _shuffle_chain()
         for binary, model, label in chain:
             try:
-                result = subprocess.run(
-                    _build_agent_argv(binary, model, prompt),
-                    capture_output=True,
-                    text=True,
-                    timeout=_ORCHESTRATOR_TIMEOUT,
-                    check=False,
-                )
-                success = result.returncode == 0 and bool(result.stdout.strip())
-                _record_orchestrator_score(model, success)
+                command = _build_agent_argv(binary, model, prompt)
+                if binary == "pi":
+                    result = pi_runtime.capture_pi_command(
+                        command,
+                        cwd=self.project_dir,
+                        timeout_seconds=_ORCHESTRATOR_TIMEOUT,
+                    )
+                else:
+                    result = subprocess.run(
+                        command,
+                        cwd=self.project_dir,
+                        capture_output=True,
+                        text=True,
+                        timeout=_ORCHESTRATOR_TIMEOUT,
+                        check=False,
+                    )
+                normalized = ""
+                if result.returncode == 0 and result.stdout.strip():
+                    try:
+                        normalized = _normalize_orchestrator_stdout(
+                            binary, result.stdout
+                        )
+                    except ValueError:
+                        logger.debug(
+                            "Orchestrator: %s (%s) returned invalid structured output",
+                            label,
+                            model,
+                        )
+                success = bool(normalized)
+                _record_orchestrator_score(binary, model, success)
 
                 if success:
                     logger.info("Orchestrator: %s (%s) succeeded", label, model)
-                    return result.stdout.strip()
+                    return normalized
+                stderr_detail = (
+                    "<suppressed for structured runtime>"
+                    if binary == "pi"
+                    else result.stderr
+                )
                 logger.debug(
                     "Orchestrator: %s (%s) failed (rc=%d): %.200s",
                     label,
                     model,
                     result.returncode,
-                    result.stderr,
+                    stderr_detail,
                 )
             except FileNotFoundError:
-                _record_orchestrator_score(model, False)
+                _record_orchestrator_score(binary, model, False)
                 logger.debug("Orchestrator: %s binary not found, skipping", binary)
-            except (subprocess.TimeoutExpired, OSError) as e:
-                _record_orchestrator_score(model, False)
-                logger.debug("Orchestrator: %s (%s) error: %s", label, model, e)
+            except pi_runtime.PiCaptureError:
+                _record_orchestrator_score(binary, model, False)
+                logger.debug(
+                    "Orchestrator: %s (%s) bounded capture failed", label, model
+                )
+            except subprocess.TimeoutExpired as exc:
+                _record_orchestrator_score(binary, model, False)
+                if binary == "pi":
+                    logger.debug(
+                        "Orchestrator: %s (%s) timed out", label, model
+                    )
+                else:
+                    logger.debug(
+                        "Orchestrator: %s (%s) error: %s", label, model, exc
+                    )
+            except OSError as exc:
+                _record_orchestrator_score(binary, model, False)
+                if binary == "pi":
+                    logger.debug(
+                        "Orchestrator: %s (%s) execution failed", label, model
+                    )
+                else:
+                    logger.debug(
+                        "Orchestrator: %s (%s) error: %s", label, model, exc
+                    )
 
         logger.warning("Orchestrator: all models failed — decomposition skipped")
         _log_orchestrator_error("all models failed for decomposition")
@@ -525,10 +695,17 @@ class Orchestrator:
         valid_tiers = {"mini", "standard", "max"}
         valid_efforts = set(VALID_EFFORTS)
         for st in subtasks:
-            # v2 schema: synthesize model_tier from full model ID
-            if "model" in st and "model_tier" not in st:
-                st["model_tier"] = _MODEL_TO_TIER.get(st["model"], "standard")
-            elif st.get("model_tier") not in valid_tiers:
+            if "model_tier" not in st:
+                # v2 model IDs take precedence over runtime-native tier fields.
+                if "model" in st:
+                    st["model_tier"] = _MODEL_TO_TIER.get(
+                        st["model"], "standard"
+                    )
+                elif st.get("tier") in valid_tiers:
+                    st["model_tier"] = st["tier"]
+                else:
+                    st["model_tier"] = "standard"
+            elif st["model_tier"] not in valid_tiers:
                 st["model_tier"] = "standard"
 
             if "estimated_tokens" not in st:

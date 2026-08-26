@@ -880,3 +880,6 @@ chore: submitted gemini-cli round 1 position for gap analysis discussion
 - 2026-08-24: chore(release): bump version to 1.83.0 (minor, typed boundaries + context components).
 - 2026-08-24: fix(scripts): dev-reinstall.sh now targets the repo-local .venv exclusively instead of a bare python3/pip off PATH, falling back to uv pip install when the uv-created .venv has no pip; prevents the shared pyenv interpreter contamination incident from this session.
 - 2026-08-24: chore(release): bump version to 1.83.1 (patch, dev-reinstall.sh interpreter-safety fix).
+- 2026-08-26 (v1.84.0): feat(pi): add the Pi adapter with safe ephemeral worker dispatch, model discovery, lifecycle/dashboard/smart-routing support, bounded JSONL orchestration, and independently reviewed live activation evidence.
+- 2026-08-26: fix(ci): install the wheel builder in integration CI and keep Pi runtime tests importable on Windows.
+- 2026-08-26: test(pi): mark POSIX fixture-launcher coverage as unsupported on Windows.

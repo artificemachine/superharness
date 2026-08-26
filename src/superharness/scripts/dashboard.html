@@ -544,8 +544,8 @@ themeSelect.addEventListener('change', () => {
   try { localStorage.setItem('superharness-theme', theme); } catch (_) {}
 });
 
-// Single source of truth for known agents — extended from API data on first refresh.
-let KNOWN_AGENTS = ['claude-code', 'codex-cli', 'gemini-cli', 'opencode'];
+// Filled from the backend's executable-agent registry on each refresh.
+let KNOWN_AGENTS = [];
 
 // Map each agent to the default model shown in the enqueue dialog.
 const AGENT_MODEL_DEFAULTS = {
@@ -992,8 +992,8 @@ async function refresh() {
       const dirty = gc.dirty_count > 0 ? ` <span style="color:var(--warn)">${gc.dirty_count} dirty</span>` : ' <span style="color:var(--ok)">clean</span>';
       gitEl.innerHTML = `<b>${gc.branch}</b>${dirty} · <span style="color:var(--muted)">${(gc.last_commit||'').slice(0,50)}</span>`;
     }
-    // Extend KNOWN_AGENTS from live API data so dynamically added agents appear everywhere.
-    KNOWN_AGENTS = [...new Set([...KNOWN_AGENTS, ...(d.all_task_owners || [])])];
+    // The backend supplies the executable-agent registry; a missing response is safe.
+    KNOWN_AGENTS = Array.isArray(d.all_task_owners) ? d.all_task_owners : [];
     renderOwnersList(d.contract_owners || [], d.all_task_owners || []);
     // Apply review mode filter
     const filteredTasks = filterByReviewMode(d.contract_tasks || []);
@@ -2167,7 +2167,7 @@ function renderContractTasks(tasks, activeInboxTasks, doneInboxTasks, pausedInbo
           const blockHint = `Blocked by: ${blockers.join(', ')}`;
           actionButtons.push(`<button disabled title="${blockHint}">${btnLabel} ⛔</button>`);
         } else {
-          const currentOwnerEsc = (t.owner || KNOWN_AGENTS[0]).replace(/'/g, "\\\\'");
+          const currentOwnerEsc = (t.owner || KNOWN_AGENTS[0] || '').replace(/'/g, "\\\\'");
           actionButtons.push(`<button onclick="enqueueTask('${tid}', '${currentOwnerEsc}', '${btnLabel}')">${btnLabel}</button>`);
         }
       } else if (st !== 'done' && st !== 'todo') {

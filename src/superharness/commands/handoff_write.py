@@ -48,9 +48,10 @@ except ImportError:
 
 from superharness.engine.handoffs_dao import VALID_PHASES
 from superharness.engine.state_errors import BoundaryError
+from superharness.harnesses import KNOWN_HARNESSES
 
-VALID_FROM = {"claude-code", "codex-cli", "gemini-cli", "opencode", "owner"}
-VALID_TO = {"claude-code", "codex-cli", "gemini-cli", "opencode", "owner"}
+VALID_FROM = frozenset(KNOWN_HARNESSES) | {"owner"}
+VALID_TO = frozenset(KNOWN_HARNESSES) | {"owner"}
 _ID_RE = re.compile(r"^[A-Za-z0-9._-]+$")
 
 

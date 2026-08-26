@@ -4,11 +4,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from superharness.harnesses import KNOWN_HARNESSES
 from superharness.ui.prompts import print_header, print_info
 from superharness.ui.sections.base import run_section
 
 _AUTONOMY_CHOICES = ["ai_driven"]
-_AGENT_CHOICES = ["claude-code", "codex-cli", "gemini-cli", "opencode"]
+_AGENT_CHOICES = list(KNOWN_HARNESSES)
 
 
 def run(project_dir: Path, non_interactive: bool = False) -> None:
@@ -22,6 +23,7 @@ def run(project_dir: Path, non_interactive: bool = False) -> None:
 
     print_info(f"Autonomy:      {current_autonomy}")
     print_info(f"Primary agent: {current_agent}")
+    print_info(f"Available agents: {', '.join(_AGENT_CHOICES)}")
 
     # Autonomy — choose from list
     run_section(

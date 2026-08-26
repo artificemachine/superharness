@@ -15,10 +15,12 @@ from datetime import datetime, timezone
 
 import logging
 
+from superharness.harnesses import KNOWN_HARNESSES
+
 logger = logging.getLogger(__name__)
 
 TOKEN_RE = re.compile(r"^[A-Za-z0-9._/-]+$")
-VALID_TARGETS = {"claude-code", "codex-cli", "gemini-cli", "opencode"}
+VALID_TARGETS = frozenset(KNOWN_HARNESSES)
 
 
 _JSON_MODE = False

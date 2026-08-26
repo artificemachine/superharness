@@ -19,7 +19,25 @@ from pathlib import Path
 import pytest
 
 REPO_ROOT = Path(__file__).parent.parent.parent
-EXPECTED_ADAPTERS = {"claude-code", "codex-cli", "gemini-cli", "opencode"}
+
+
+def _manifest_names(manifests: Path) -> list[str]:
+    return sorted(path.stem for path in manifests.glob("*.yaml"))
+
+
+def _bundled_manifest_names() -> list[str]:
+    return _manifest_names(REPO_ROOT / "src/superharness/adapter_manifests")
+
+
+def test_expected_adapters_match_bundled_manifests(tmp_path) -> None:
+    manifests = tmp_path / "adapter_manifests"
+    manifests.mkdir()
+    (manifests / "stable.yaml").write_text("name: stable\n")
+    (manifests / "experimental-pi.yaml").write_text("name: experimental-pi\n")
+    (manifests / "README.md").write_text("not a manifest\n")
+
+    assert _manifest_names(manifests) == ["experimental-pi", "stable"]
+    assert _bundled_manifest_names()
 
 
 @pytest.fixture(scope="module")
@@ -27,17 +45,25 @@ def built_wheel(tmp_path_factory) -> Path:
     """Build a wheel of the repo into a temp dir."""
     out = tmp_path_factory.mktemp("wheel")
     res = subprocess.run(
-        [sys.executable, "-m", "build", "--wheel", "--outdir", str(out)],
-        cwd=str(REPO_ROOT),
+        [
+            sys.executable,
+            "-m",
+            "build",
+            "--wheel",
+            "--outdir",
+            str(out),
+            str(REPO_ROOT),
+        ],
+        # Run outside the source tree: a prior setuptools build may leave an
+        # ignored ``build/`` directory that shadows the third-party ``build``
+        # module when Python is invoked from the repository root.
+        cwd=str(out),
         capture_output=True,
         text=True,
         check=False,
         timeout=180,
     )
-    if res.returncode != 0:
-        pytest.skip(
-            f"wheel build failed (build module may be missing): {res.stderr[:500]}"
-        )
+    assert res.returncode == 0, f"wheel build failed: {res.stderr[:500]}"
     wheels = list(out.glob("superharness-*.whl"))
     assert wheels, f"no wheel produced in {out}"
     return wheels[0]
@@ -49,7 +75,7 @@ def test_built_wheel_contains_adapter_manifests(built_wheel: Path):
 
     with zipfile.ZipFile(built_wheel) as z:
         names = set(z.namelist())
-    for adapter in EXPECTED_ADAPTERS:
+    for adapter in _bundled_manifest_names():
         path = f"superharness/adapter_manifests/{adapter}.yaml"
         assert path in names, (
             f"wheel is missing {path}.\n"
@@ -98,28 +124,26 @@ def test_installed_wheel_list_adapters_returns_all_supported(
     import json
 
     adapters = set(json.loads(res.stdout.strip()))
-    assert adapters == EXPECTED_ADAPTERS, (
-        f"Installed wheel exposes adapters={adapters}, expected {EXPECTED_ADAPTERS}. "
-        f"Missing: {EXPECTED_ADAPTERS - adapters}"
+    expected_adapters = set(_bundled_manifest_names())
+    assert adapters == expected_adapters, (
+        f"Installed wheel exposes adapters={adapters}, expected {expected_adapters}. "
+        f"Missing: {expected_adapters - adapters}"
     )
 
 
 # ---------------------------------------------------------------------------
-# All 4 supported agents are shipped in the wheel
+# All bundled adapters are shipped in the wheel
 # ---------------------------------------------------------------------------
 
 
-def test_wheel_includes_all_four_agent_manifests(built_wheel):
-    """All 4 owners listed in VALID_OWNERS that map to real agents must
-    have a manifest in the wheel: claude-code, codex-cli, gemini-cli, opencode."""
+def test_wheel_includes_all_bundled_manifests(built_wheel):
+    """Every repository manifest, including experimental adapters, ships in the wheel."""
     import zipfile
 
-    expected = {"claude-code", "codex-cli", "gemini-cli", "opencode"}
     with zipfile.ZipFile(built_wheel) as z:
         names = set(z.namelist())
-    for adapter in expected:
+    for adapter in _bundled_manifest_names():
         assert f"superharness/adapter_manifests/{adapter}.yaml" in names, (
             f"wheel missing manifest for {adapter}. "
-            f"VALID_OWNERS in task.py advertises this owner but the wheel "
-            f"can't dispatch it."
+            f"Repository adapters must be installable from the wheel."
         )

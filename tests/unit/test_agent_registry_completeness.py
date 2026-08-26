@@ -27,8 +27,14 @@ CANONICAL_AGENTS: frozenset[str] = frozenset(
         "codex-cli",
         "gemini-cli",
         "opencode",
+        "pi",
     }
 )
+
+
+def test_pi_is_canonical():
+    """Pi is a canonical executable agent once its harness is registered."""
+    assert "pi" in CANONICAL_AGENTS
 
 
 # ---------------------------------------------------------------------------
@@ -90,56 +96,67 @@ class TestStaticAllowLists:
             / "dashboard-ui.py"
         )
         text = src.read_text(encoding="utf-8")
-        m = re.search(r"KNOWN_AGENTS\s*(?::\s*\S+)?\s*=\s*\[([^\]]+)\]", text)
-        assert m, "Could not find KNOWN_AGENTS in dashboard-ui.py"
-        found = {s.strip().strip("'\"") for s in m.group(1).split(",")}
+        assert "from superharness.harnesses import KNOWN_HARNESSES" in text
+        assert "KNOWN_AGENTS: tuple[str, ...] = tuple(sorted(KNOWN_HARNESSES))" in text
+        from superharness.harnesses import KNOWN_HARNESSES
+
+        found = set(KNOWN_HARNESSES)
         missing = _missing(found)
         assert not missing, f"dashboard-ui.py KNOWN_AGENTS is missing: {missing}."
 
     def test_dashboard_wizard_all_agents(self):
-        from superharness.commands.dashboard_wizard import _ALL_AGENTS
+        from superharness.commands.dashboard_wizard import _AGENT_LABELS, _ALL_AGENTS
+        from superharness.harnesses import KNOWN_HARNESSES
 
         missing = _missing(set(_ALL_AGENTS))
         assert not missing, f"dashboard_wizard._ALL_AGENTS is missing: {missing}."
+        assert _ALL_AGENTS == KNOWN_HARNESSES
+        assert set(_AGENT_LABELS) == set(_ALL_AGENTS)
+        assert "prime-agent" not in _ALL_AGENTS
 
     def test_ui_sections_agent_choices(self):
         from superharness.ui.sections.agent import _AGENT_CHOICES
+        from superharness.harnesses import KNOWN_HARNESSES
 
         missing = _missing(set(_AGENT_CHOICES))
         assert not missing, (
             f"ui/sections/agent.py _AGENT_CHOICES is missing: {missing}."
         )
+        assert _AGENT_CHOICES == KNOWN_HARNESSES
+        assert "prime-agent" not in _AGENT_CHOICES
 
 
 # ===========================================================================
-# dashboard.html JS constant (text scan — not importable)
+# dashboard.html selector contract (text scan — not importable)
 # ===========================================================================
 
 
-class TestDashboardHtml:
-    """The JS KNOWN_AGENTS array in dashboard.html must list all canonical agents."""
+def _read_dashboard_html() -> str:
+    html = (
+        Path(__file__).resolve().parent.parent.parent
+        / "src"
+        / "superharness"
+        / "scripts"
+        / "dashboard.html"
+    )
+    return html.read_text(encoding="utf-8")
 
-    def _read_html(self) -> str:
-        html = (
-            Path(__file__).resolve().parent.parent.parent
-            / "src"
-            / "superharness"
-            / "scripts"
-            / "dashboard.html"
-        )
-        return html.read_text(encoding="utf-8")
 
-    def _extract_js_known_agents(self, html: str) -> set[str]:
-        """Parse:  let KNOWN_AGENTS = ['a', 'b', ...];"""
-        m = re.search(r"let KNOWN_AGENTS\s*=\s*\[([^\]]+)\]", html)
-        assert m, "Could not find KNOWN_AGENTS in dashboard.html"
-        return {s.strip().strip("'\"") for s in m.group(1).split(",")}
+def test_dashboard_html_uses_backend_agent_list():
+    """Selectors take their choices from the executable-agent API payload."""
+    html = _read_dashboard_html()
+    assert re.search(
+        r"KNOWN_AGENTS\s*=\s*Array\.isArray\(d\.all_task_owners\)"
+        r"\s*\?\s*d\.all_task_owners\s*:\s*\[\]",
+        html,
+    )
 
-    def test_known_agents_complete(self):
-        html = self._read_html()
-        found = self._extract_js_known_agents(html)
-        missing = _missing(found)
-        assert not missing, f"dashboard.html JS KNOWN_AGENTS is missing: {missing}."
+
+def test_dashboard_html_empty_backend_agents_fallback():
+    """An empty or absent backend list leaves selectors safe to render."""
+    html = _read_dashboard_html()
+    assert "let KNOWN_AGENTS = [];" in html
+    assert "KNOWN_AGENTS[0] || ''" in html
 
 
 # ===========================================================================
@@ -148,7 +165,7 @@ class TestDashboardHtml:
 
 
 class TestInboxWatchValidation:
-    """The inline --to validation tuple in inbox_watch.py must cover all agents."""
+    """Watcher target validation must derive from the canonical harness registry."""
 
     def _read_source(self) -> str:
         src = (
@@ -162,10 +179,11 @@ class TestInboxWatchValidation:
 
     def test_cli_target_validation_tuple(self):
         src = self._read_source()
-        # Find:  opts.target not in ("both", "claude-code", ...)
-        m = re.search(r"opts\.target not in \(([^)]+)\)", src)
-        assert m, "Could not find opts.target validation in inbox_watch.py"
-        found = {s.strip().strip("'\"") for s in m.group(1).split(",")} - {"both"}
+        assert "from superharness.harnesses import KNOWN_HARNESSES" in src
+        assert 'valid_targets = ["both", *KNOWN_HARNESSES]' in src
+        from superharness.harnesses import KNOWN_HARNESSES
+
+        found = set(KNOWN_HARNESSES)
         missing = _missing(found)
         assert not missing, (
             f"inbox_watch.py --to validation tuple is missing: {missing}. "
@@ -173,11 +191,9 @@ class TestInboxWatchValidation:
         )
 
     def test_fallback_targets_list(self):
-        src = self._read_source()
-        # Find the fallback:  targets = ["claude-code", ...]
-        m = re.search(r"targets\s*=\s*\[([^\]]+)\]", src)
-        assert m, "Could not find fallback targets list in inbox_watch.py"
-        found = {s.strip().strip("'\"") for s in m.group(1).split(",")}
+        from superharness.commands.inbox_watch import _watcher_targets
+
+        found = set(_watcher_targets("both"))
         missing = _missing(found)
         assert not missing, (
             f"inbox_watch.py fallback targets list is missing: {missing}."

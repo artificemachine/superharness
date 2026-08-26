@@ -6,6 +6,7 @@ from typing import Any
 from collections import defaultdict
 
 from superharness.engine import failures_dao, decisions_dao, state_reader
+from superharness.harnesses import KNOWN_HARNESSES
 
 import logging
 
@@ -167,11 +168,10 @@ def get_dashboard_status_snapshot(
     ]
 
     # All task owners
-    KNOWN_AGENTS = ["claude-code", "codex-cli", "gemini-cli", "opencode"]
-    all_task_owners = list(
-        set(KNOWN_AGENTS)
-        | set(str(t.get("owner", "")) for t in tasks_as_dict if t.get("owner"))
-        | set(str(i.get("to", "")) for i in inbox_as_dict if i.get("to"))
+    all_task_owners = sorted(
+        set(KNOWN_HARNESSES)
+        | {str(t.get("owner", "")) for t in tasks_as_dict if t.get("owner")}
+        | {str(i.get("to", "")) for i in inbox_as_dict if i.get("to")}
     )
 
     # Active dispatch worktrees — tasks with a worktree_path where the directory

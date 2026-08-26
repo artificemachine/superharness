@@ -1,12 +1,21 @@
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 import sys
 from pathlib import Path
 
-from tests.helpers import REPO_ROOT
 import pytest
+from click.testing import CliRunner
+
+from tests.helpers import REPO_ROOT
+
+
+_REQUIRES_POSIX_FIXTURE = pytest.mark.skipif(
+    os.name != "posix",
+    reason="Pi delegate integration fixture uses a POSIX shebang executable",
+)
 
 
 def _run_delegate_py(cwd, args: list[str] | None = None, env: dict | None = None):
@@ -54,6 +63,279 @@ def _fake_bin(tmp_path: Path, *names: str) -> Path:
         binary.write_text(f"#!/bin/bash\necho fake-{name}\n")
         binary.chmod(0o755)
     return bin_dir
+
+
+def test_delegate_shorthand_preserves_pi_owner(monkeypatch, tmp_path: Path) -> None:
+    """A SQLite-owned Pi task reaches the Pi delegate lane in print-only mode."""
+    from superharness import cli
+    from superharness.engine.db import get_connection, init_db
+
+    project = tmp_path / "project"
+    (project / ".superharness").mkdir(parents=True)
+    conn = get_connection(str(project))
+    init_db(conn)
+    conn.execute(
+        "INSERT INTO tasks (id, title, owner, status, created_at) VALUES (?, ?, ?, ?, ?)",
+        ("pi-task", "Pi task", "pi", "plan_approved", "2026-08-26T00:00:00Z"),
+    )
+    conn.commit()
+    conn.close()
+
+    received: list[tuple[str, tuple[str, ...]]] = []
+    monkeypatch.setattr(
+        cli, "_run_module", lambda module, args: received.append((module, args))
+    )
+
+    result = CliRunner().invoke(
+        cli.main, ["delegate", "pi-task", "--project", str(project), "--print-only"]
+    )
+
+    assert result.exit_code == 0, result.output
+    assert received == [
+        (
+            "superharness.commands.delegate",
+            ("--to", "pi", "--task", "pi-task", "--project", str(project), "--print-only"),
+        )
+    ]
+
+
+@_REQUIRES_POSIX_FIXTURE
+def test_delegate_shorthand_runs_fake_pi_with_target_correct_prompt(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """The real shorthand path reaches Pi through its fixture-only launcher."""
+    isolated_home = tmp_path / "isolated-home"
+    isolated_config = isolated_home / ".config"
+    isolated_state = isolated_home / ".local" / "state"
+    isolated_home.mkdir()
+    monkeypatch.setenv("HOME", str(isolated_home))
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(isolated_config))
+    monkeypatch.setenv("XDG_STATE_HOME", str(isolated_state))
+    monkeypatch.setenv("SUPERHARNESS_TEST_OFFLINE", "1")
+
+    from superharness.engine.db import get_connection, init_db
+
+    project = tmp_path / "project"
+    (project / ".superharness" / "handoffs").mkdir(parents=True)
+    (project / ".git").mkdir()
+    conn = get_connection(str(project))
+    init_db(conn)
+    conn.execute(
+        "INSERT INTO tasks (id, title, owner, status, context, created_at) "
+        "VALUES (?, ?, ?, ?, ?, ?)",
+        (
+            "pi-task",
+            "Pi task",
+            "pi",
+            "plan_approved",
+            "fixture-only task context",
+            "2026-08-26T00:00:00Z",
+        ),
+    )
+    conn.commit()
+    conn.close()
+
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    record = tmp_path / "pi-record.json"
+    fake_pi = fake_bin / "pi"
+    fake_pi.write_text(
+        f"#!{sys.executable}\n"
+        "import json, os, sys\n"
+        f"with open({str(record)!r}, 'w', encoding='utf-8') as stream:\n"
+        "    json.dump({'argv': sys.argv[1:], 'cwd': os.getcwd()}, stream)\n"
+        "sys.stdout.write('{\"type\":\"session\",\"version\":3,\"id\":\"fixture-session\"}\\n')\n"
+        "sys.stdout.write('{\"type\":\"message_end\",\"message\":{\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"fixture result\"}],\"provider\":\"provider-a\",\"model\":\"model-a\",\"usage\":{},\"cost\":{},\"stopReason\":\"stop\"}}\\n')\n"
+        "sys.stdout.write('{\"type\":\"agent_end\",\"messages\":[]}\\n')\n",
+        encoding="utf-8",
+    )
+    fake_pi.chmod(0o755)
+
+    env = os.environ.copy()
+    env["PYTHONPATH"] = str(REPO_ROOT / "src")
+    env["PATH"] = f"{fake_bin}{os.pathsep}{env['PATH']}"
+    env["HOME"] = str(isolated_home)
+    env["XDG_CONFIG_HOME"] = str(isolated_config)
+    env["XDG_STATE_HOME"] = str(isolated_state)
+    env["SUPERHARNESS_TEST_OFFLINE"] = "1"
+    env["SUPERHARNESS_CONFIRM_NON_INTERACTIVE"] = "YES"
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "import superharness.engine.osm as osm; "
+            "osm.vault_search = lambda *_args, **_kwargs: []; "
+            "from superharness.cli import main; main()",
+            "delegate",
+            "pi-task",
+            "--project",
+            str(project),
+            "--non-interactive",
+            "--no-auto-model",
+        ],
+        text=True,
+        capture_output=True,
+        env=env,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert record.exists(), result.stdout
+    invocation = json.loads(record.read_text(encoding="utf-8"))
+    prompt = invocation["argv"][invocation["argv"].index("-p") + 1]
+    assert invocation["cwd"] == str(project)
+    assert invocation["argv"].count(prompt) == 1
+    assert "you are pi" in prompt
+    assert "codex-cli" not in prompt
+    assert str(isolated_home) not in prompt
+
+
+def test_pi_prompt_names_pi_not_codex() -> None:
+    """The common prompt identifies Pi by its actual target name."""
+    from superharness.commands.delegate import _build_task_execution_prompt
+
+    prompt = _build_task_execution_prompt(
+        target="pi",
+        task_id="pi-task",
+        contract_id="contract",
+        latest_handoff=False,
+        acceptance_criteria="",
+        context_hint="",
+        user_instructions="",
+        auto_directive="",
+    )
+
+    assert "you are pi" in prompt
+    assert "codex-cli" not in prompt
+
+
+@pytest.mark.parametrize("target", ["claude-code", "codex-cli", "gemini-cli", "opencode"])
+def test_task_prompt_names_each_existing_target(target: str) -> None:
+    """Existing harnesses retain target-correct task prompt addressing."""
+    from superharness.commands.delegate import _build_task_execution_prompt
+
+    prompt = _build_task_execution_prompt(
+        target=target,
+        task_id="existing-task",
+        contract_id="contract",
+        latest_handoff=True,
+        acceptance_criteria="",
+        context_hint="",
+        user_instructions="",
+        auto_directive="",
+    )
+
+    assert f"addressed to {target}" in prompt
+
+
+def test_inbox_watch_accepts_pi_target(monkeypatch, tmp_path: Path) -> None:
+    """The watcher CLI accepts Pi without launching it."""
+    from superharness.commands import inbox_watch
+
+    watch_kwargs: dict[str, object] = {}
+    monkeypatch.setattr(
+        inbox_watch, "watch", lambda **kwargs: watch_kwargs.update(kwargs) or 0
+    )
+
+    monkeypatch.setattr(sys, "argv", ["inbox_watch", "--project", str(tmp_path), "--to", "pi"])
+    with pytest.raises(SystemExit) as exc_info:
+        inbox_watch.main()
+
+    assert exc_info.value.code == 0
+    assert watch_kwargs["target"] == "pi"
+
+
+def test_inbox_watch_both_targets_known_harnesses_once() -> None:
+    """The ordinary polling expansion follows the harness registry exactly once."""
+    from superharness.commands.inbox_watch import _watcher_targets
+    from superharness.harnesses import KNOWN_HARNESSES
+
+    assert _watcher_targets("both") == KNOWN_HARNESSES
+    assert _watcher_targets("both").count("pi") == 1
+
+
+def test_inbox_watch_both_dispatches_each_known_harness_once(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """A watcher cycle dispatches the registry lanes once, without a launcher."""
+    from superharness.commands import inbox_watch
+    from superharness.engine import agent_memory, behavioral
+    from superharness.harnesses import KNOWN_HARNESSES
+
+    project = tmp_path / "project"
+    (project / ".superharness").mkdir(parents=True)
+    dispatched: list[str] = []
+
+    # Counter-driven maintenance may write user-global behavioral and memory
+    # files. Keep this fixture cycle out of those branches and stub the
+    # imported call targets as a second fence against future control-flow edits.
+    monkeypatch.setattr(inbox_watch, "_watcher_cycle_count", [1])
+    monkeypatch.setattr(behavioral, "refresh_behavioral_profile", lambda *_: False)
+    monkeypatch.setattr(behavioral, "evaluate_all_open_trials", lambda *_: 0)
+    monkeypatch.setattr(agent_memory, "promote_all_project_memory", lambda *_: 0)
+
+    for name in (
+        "_self_diagnosis",
+        "_rotate_launcher_logs_if_needed",
+        "_sqlite_tick",
+        "_poll_operator_commands",
+        "_run_scripts_heartbeat",
+        "_auto_advance_orphaned_rounds",
+        "_auto_close_consensus_discussions",
+        "_auto_archive_stale_tasks",
+        "_reconcile_zombies",
+        "_analyze_task_logs",
+        "_run_transcript_tail_if_enabled",
+        "_run_gc_if_due",
+        "_auto_delete_stale_inbox",
+        "_comprehensive_gc",
+        "_cancel_undispatchable_agents",
+    ):
+        monkeypatch.setattr(inbox_watch, name, lambda *args, **kwargs: None)
+    monkeypatch.setattr(inbox_watch, "_find_scripts_dir", lambda: str(tmp_path))
+    monkeypatch.setattr(inbox_watch, "_should_run", lambda *args, **kwargs: False)
+    monkeypatch.setattr(
+        inbox_watch,
+        "_run_dispatch_cmd",
+        lambda **kwargs: dispatched.append(kwargs["target"]),
+    )
+
+    inbox_watch._run_scripts(
+        str(project),
+        target="both",
+        print_only=True,
+        non_interactive=True,
+        codex_bypass=False,
+        launcher_timeout=0,
+        recover_timeout_minutes=20,
+        recover_action="stale",
+    )
+
+    assert dispatched == KNOWN_HARNESSES
+    assert dispatched.count("pi") == 1
+
+
+def test_watcher_peer_fallback_health_and_retry_order_are_unchanged() -> None:
+    """Pi does not perturb established peer, fallback, health, or retry policy."""
+    from superharness.commands.inbox_watch import (
+        _AGENT_CLI_BINARY,
+        _AGENT_FALLBACK,
+        _FALLBACK_ORDER,
+        _PEER_AGENTS,
+    )
+
+    assert _PEER_AGENTS == {
+        "claude-code": "gemini-cli",
+        "gemini-cli": "codex-cli",
+        "codex-cli": "claude-code",
+    }
+    assert _FALLBACK_ORDER == ["claude-code", "codex-cli", "gemini-cli", "opencode"]
+    assert _AGENT_FALLBACK["codex-cli"] == ["claude-code", "gemini-cli", "opencode"]
+    assert _AGENT_CLI_BINARY == {
+        "claude-code": "claude",
+        "codex-cli": "codex",
+        "gemini-cli": "gemini",
+    }
 
 
 @pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")

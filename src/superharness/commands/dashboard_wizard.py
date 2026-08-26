@@ -11,6 +11,7 @@ Follows the setup-wizard-pattern (see vault: notes/1_ai/wizard_and_demo/setup-wi
 
 from __future__ import annotations
 
+import logging
 import os
 import subprocess
 import sys
@@ -19,7 +20,7 @@ from typing import Callable
 
 import yaml
 
-import logging
+from superharness.harnesses import KNOWN_HARNESSES
 
 logger = logging.getLogger(__name__)
 
@@ -392,12 +393,13 @@ def setup_workflow(project_dir: str) -> None:
 # Section 3 — Agents
 # ---------------------------------------------------------------------------
 
-_ALL_AGENTS = ["claude-code", "codex-cli", "gemini-cli", "opencode"]
+_ALL_AGENTS = list(KNOWN_HARNESSES)
 _AGENT_LABELS = {
     "claude-code": "Claude Code (Anthropic)",
     "codex-cli": "Codex CLI (OpenAI)",
     "gemini-cli": "Gemini CLI (Google)",
     "opencode": "opencode (open-source)",
+    "pi": "Pi (experimental)",
 }
 
 

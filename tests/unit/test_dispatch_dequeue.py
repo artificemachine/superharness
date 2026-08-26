@@ -120,7 +120,7 @@ def _run_dispatch(
 # the real binary. Stubbing only claude and codex let the orchestrator reach a real
 # `opencode run -m deepseek/...`, which blocked the suite on a live LLM API call —
 # indefinitely, because the pre-commit hook that runs it has no timeout.
-_AGENT_CLIS = ("claude", "codex", "gemini", "opencode")
+_AGENT_CLIS = ("claude", "codex", "gemini", "opencode", "pi")
 
 
 def _stub_agent_bins(

@@ -15,11 +15,6 @@ ENTRYPOINT_FILES=(
   "src/superharness/scripts/check-contract-hygiene.sh"
   "src/superharness/scripts/contract-today.sh"
   "src/superharness/scripts/delegate-task.sh"
-  "src/superharness/scripts/delegate-to-claude.sh"
-  "src/superharness/scripts/delegate-to-codex.sh"
-  "src/superharness/scripts/delegate-to-gemini.sh"
-  "src/superharness/scripts/delegate-to-opencode.sh"
-  "src/superharness/scripts/delegate-to-prime-agent.sh"
   "src/superharness/scripts/ensure-launchd-inbox-watcher.sh"
   "src/superharness/scripts/inbox-dispatch.sh"
   "src/superharness/scripts/inbox-deadline-check.sh"
@@ -53,6 +48,34 @@ ENTRYPOINT_FILES=(
   "src/superharness/adapters/claude-code/hooks/session-exit.sh"
   "src/superharness/adapters/opencode/hooks/session-inject.sh"
 )
+
+
+manifest_delegate_launchers() {
+  local manifest launcher_script
+
+  shopt -s nullglob
+  for manifest in src/superharness/adapter_manifests/*.yaml; do
+    launcher_script=$(awk '
+      /^launcher_script:[[:space:]]*/ {
+        sub(/^[^:]*:[[:space:]]*/, "")
+        sub(/[[:space:]]+#.*/, "")
+        gsub(/^[[:space:]]+|[[:space:]]+$/, "")
+        if (($0 ~ /^".*"$/) || ($0 ~ /^\047.*\047$/)) {
+          $0 = substr($0, 2, length($0) - 2)
+        }
+        print
+        exit
+      }
+    ' "$manifest")
+    if [[ "$launcher_script" == delegate-to-*.sh ]]; then
+      echo "src/superharness/scripts/$launcher_script"
+    fi
+  done
+}
+
+while IFS= read -r launcher; do
+  ENTRYPOINT_FILES+=("$launcher")
+done < <(manifest_delegate_launchers)
 
 
 HOOK_FILES=(
