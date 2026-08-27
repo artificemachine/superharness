@@ -73,6 +73,7 @@ dev = [
     "build>=1.2,<2",
     "pytest>=9.0,<10",
     "pytest-cov>=7.0.0",
+    "pytest-xdist>=3.8,<4",
     # Required by the Linux/macOS unit job in .github/workflows/tests.yml,
     # which passes --timeout=120. CI installed it ad hoc via pip while it was
     # declared nowhere, so a local `uv sync` produced an environment that

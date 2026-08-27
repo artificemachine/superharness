@@ -883,3 +883,4 @@ chore: submitted gemini-cli round 1 position for gap analysis discussion
 - 2026-08-26 (v1.84.0): feat(pi): add the Pi adapter with safe ephemeral worker dispatch, model discovery, lifecycle/dashboard/smart-routing support, bounded JSONL orchestration, and independently reviewed live activation evidence.
 - 2026-08-26: fix(ci): install the wheel builder in integration CI and keep Pi runtime tests importable on Windows.
 - 2026-08-26: test(pi): mark POSIX fixture-launcher coverage as unsupported on Windows.
+- 2026-08-27: perf(ci): promote the proven pytest-xdist path to the required unit-test matrix with `--dist loadfile`, run timing-sensitive tests serially, remove the duplicate trial job, and declare pytest-xdist in dev dependencies; reduces unit-test wall time while preserving coverage and platform gates.
