@@ -81,21 +81,13 @@ jobs:
   unit-tests:
     name: Unit Tests (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
-    # 40, not 30: the same variance-vs-ceiling pattern that first forced 20->30
-    # recurred on 2026-08-11 (PR #117) as tests/unit grew by four files. The
-    # Windows leg was killed at 30m08s wall-clock while genuinely still
-    # executing (no hang, no failing test up to that point); a same-commit
-    # rerun then completed in 28m29s, comfortably below 30 but too close to be
-    # a durable margin as the suite keeps growing. Historical Windows-leg
-    # durations on main sit around 18-22.5m, so 40 restores a real buffer
-    # rather than chasing the ceiling one bump behind actual growth. The
-    # xdist trial job (see below) is the eventual fix for Windows unit-test
-    # wall-clock, but it is not yet reliable enough to replace this job: it
-    # was cancelled on the 2026-08-11 main run and failed on the run before
-    # that. A genuine hang is still caught here, and this is the only
-    # backstop on Windows because the per-test pytest-timeout is disabled
-    # below.
-    timeout-minutes: 40
+    # Three consecutive green main runs on 2026-08-24/26 established the
+    # loadfile xdist path as stable. On Windows it completed in 13-14 minutes
+    # versus 17-25 minutes serial; Ubuntu completed in about 2 minutes versus
+    # 5-6 minutes serial. Keep loadfile: tests in some files kill child PIDs
+    # and must not be split across workers. The job timeout remains the only
+    # Windows hang backstop because pytest-timeout is disabled there.
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -109,92 +101,29 @@ jobs:
           python-version: "3.11"
 
       - name: Install dependencies
-        run: pip install pytest pytest-cov pytest-timeout pyyaml click ruamel.yaml && pip install -e .
-
-      - name: Run unit tests (Linux / macOS)
-        if: runner.os != 'Windows'
-        run: python3 -m pytest tests/unit -q --timeout=120 --full-trace --cov=superharness --cov-fail-under=56
-        env:
-          PYTHONPATH: src
-          PYTHONUTF8: "1"
-
-      - name: Run unit tests (Windows — no per-test timeout)
-        if: runner.os == 'Windows'
-        # pytest-timeout creates one threading.Timer (OS thread) per test.
-        # After ~1900 cumulative thread creations the Windows scheduler saturates
-        # and Timer.start() blocks at _started.wait() for the full timeout interval
-        # before firing — causing a spurious KeyboardInterrupt in a later test.
-        # The job-level timeout-minutes above still catches any genuinely hung test.
-        run: python3 -m pytest tests/unit -q --full-trace --cov=superharness --cov-fail-under=56
-        env:
-          PYTHONPATH: src
-          PYTHONUTF8: "1"
-
-  # ---------------------------------------------------------------------------
-  # TRIAL, NON-BLOCKING. Deliberately absent from qa-gate's `needs` list below,
-  # so it reports but cannot gate a merge. Branch protection requires only
-  # "QA Gate" and "Windows-Native Release Gate".
-  #
-  # Purpose: gather a track record for pytest-xdist before adopting it. Measured
-  # once on macOS 10-core (serial 12:48 -> 4:53, 2.6x, zero parallel-induced
-  # failures), and one green run is not a track record. Windows is the real
-  # target: that leg runs 17-19 min and is spawn-bound on ~199 real subprocess
-  # spawns, so it should benefit most.
-  #
-  # --dist loadfile is NOT optional. Bare `-n auto` CRASHES this suite with
-  # INTERNALERROR/worker death, because tests here kill PIDs and a bare
-  # distribution can schedule a killer and its victim into different workers.
-  # loadfile pins every test in a file to one worker, which keeps those pairs
-  # together. If this job is ever promoted to required, keep the flag.
-  #
-  # No --cov here, unlike the serial job. That is deliberate but it means the
-  # WALL-CLOCK NUMBERS ARE NOT DIRECTLY COMPARABLE to the serial job, which
-  # pays coverage overhead. The primary signal being gathered is CORRECTNESS
-  # (does the suite pass under parallel execution, repeatedly), not a precise
-  # speedup figure. Coverage is omitted because pytest-cov under xdist writes
-  # one parallel data file per worker, and a coverage-data-file corruption
-  # (`no such table: file`) is exactly what produced a spurious INTERNALERROR
-  # on the serial ubuntu leg on 2026-08-02 — mixing that in would confound the
-  # very thing this job is meant to measure. Add --cov before promoting.
-  #
-  # pytest-xdist is deliberately NOT added to pyproject.toml's dev group: it is
-  # installed here explicitly so the trial leaves no trace to unwind. Declaring
-  # it is the adoption step, not the trial step.
-  #
-  # Promote or delete after ~1 week of signal — a permanently-ignored red job
-  # is worse than no job.
-  # ---------------------------------------------------------------------------
-  unit-tests-parallel:
-    name: "Unit Tests — xdist trial, non-blocking (${{ matrix.os }})"
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 30
-    strategy:
-      fail-fast: false
-      matrix:
-        # ubuntu = cheap correctness signal, windows = the leg the speedup is for.
-        os: [ubuntu-latest, windows-latest]
-    steps:
-      - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
-        with:
-          python-version: "3.11"
-
-      - name: Install dependencies
         run: pip install pytest pytest-cov pytest-timeout pytest-xdist pyyaml click ruamel.yaml && pip install -e .
 
-      - name: Run unit tests in parallel (Linux)
+      - name: Run unit tests in parallel (Linux / macOS)
         if: runner.os != 'Windows'
-        run: python3 -m pytest tests/unit -q --timeout=120 -n auto --dist loadfile
+        run: python3 -m pytest tests/unit -q --timeout=120 -n auto --dist loadfile --deselect=tests/unit/test_manifest_schema_v2.py::test_perf_parse_under_10ms --deselect=tests/unit/db/test_migration.py::test_large_project_performance --full-trace --cov=superharness --cov-fail-under=56
         env:
           PYTHONPATH: src
           PYTHONUTF8: "1"
 
       - name: Run unit tests in parallel (Windows — no per-test timeout)
         if: runner.os == 'Windows'
-        # Same pytest-timeout/Windows-scheduler reason as the serial job above.
-        run: python3 -m pytest tests/unit -q -n auto --dist loadfile
+        # pytest-timeout creates one threading.Timer (OS thread) per test.
+        # After ~1900 cumulative thread creations the Windows scheduler saturates
+        # and Timer.start() blocks at _started.wait() for the full timeout interval
+        # before firing — causing a spurious KeyboardInterrupt in a later test.
+        # The job-level timeout-minutes above still catches any genuinely hung test.
+        run: python3 -m pytest tests/unit -q -n auto --dist loadfile --deselect=tests/unit/test_manifest_schema_v2.py::test_perf_parse_under_10ms --deselect=tests/unit/db/test_migration.py::test_large_project_performance --full-trace --cov=superharness --cov-fail-under=56
+        env:
+          PYTHONPATH: src
+          PYTHONUTF8: "1"
+
+      - name: Run timing-sensitive unit tests serially
+        run: python3 -m pytest tests/unit/test_manifest_schema_v2.py::test_perf_parse_under_10ms tests/unit/db/test_migration.py::test_large_project_performance -q
         env:
           PYTHONPATH: src
           PYTHONUTF8: "1"

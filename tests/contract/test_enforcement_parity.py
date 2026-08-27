@@ -167,6 +167,50 @@ def test_ci_unit_job_runs_full_unit_suite():
     )
 
 
+def test_ci_unit_job_uses_safe_parallel_distribution():
+    """The required unit-test matrix must use the proven xdist configuration.
+
+    ``loadfile`` is a correctness constraint: some test files kill child PIDs,
+    so their tests must stay on the same worker.  The old non-blocking trial job
+    must disappear once this is promoted, otherwise CI pays for both paths.
+    """
+    workflow = _ci_workflow()
+    run_text = _ci_unit_run_text()
+    coverage_runs = [
+        line.strip()
+        for line in run_text.splitlines()
+        if "pytest tests/unit" in line and "--cov=superharness" in line
+    ]
+
+    assert coverage_runs, "unit-tests job has no coverage-bearing unit invocation"
+    assert all("-n auto" in line for line in coverage_runs), coverage_runs
+    assert all("--dist loadfile" in line for line in coverage_runs), coverage_runs
+    assert "unit-tests-parallel" not in workflow["jobs"], (
+        "the obsolete xdist trial duplicates the promoted required unit job"
+    )
+
+
+def test_ci_isolates_timing_sensitive_tests_from_parallel_workers():
+    """Wall-clock assertions must not compete with the xdist worker pool."""
+    run_text = _ci_unit_run_text()
+    timing_nodes = (
+        "tests/unit/test_manifest_schema_v2.py::test_perf_parse_under_10ms",
+        "tests/unit/db/test_migration.py::test_large_project_performance",
+    )
+
+    for node in timing_nodes:
+        assert f"--deselect={node}" in run_text
+
+    serial_runs = [
+        line.strip()
+        for line in run_text.splitlines()
+        if "pytest" in line and any(node in line for node in timing_nodes)
+        and "--deselect=" not in line
+    ]
+    assert serial_runs, "timing-sensitive tests have no serial pytest invocation"
+    assert all("-n auto" not in line for line in serial_runs), serial_runs
+
+
 def test_ci_coverage_floor_matches_pyproject():
     """The --cov-fail-under value in CI's unit-tests job must equal
     [tool.coverage.report].fail_under in pyproject.toml — pinning the
