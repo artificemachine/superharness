@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "superharness"
-version = "1.84.0"
+version = "1.84.1"
 description = "Multi-agent session handoff framework for AI coding agents"
 readme = "README.md"
 license = "Apache-2.0"
