@@ -38,6 +38,37 @@ def test_session_start_outputs_json_with_context(repo_root, tmp_path) -> None:
     assert "Pending handoff for you" in context
 
 
+def test_session_start_context_preserves_literal_backtick_commands(repo_root, tmp_path) -> None:
+    """Regression: CONTEXT is a double-quoted bash string, so backtick spans like
+    `shux contract` are executed as command substitution instead of staying literal.
+
+    This splices live command output (a box-drawing contract table, or
+    "(no results for: keywords)" from `shux recall`) into the injected instructions,
+    instead of showing the agent the literal command names to run.
+    """
+    project = tmp_path / "proj"
+    project.mkdir()
+    superharness = project / ".superharness"
+    (superharness / "handoffs").mkdir(parents=True)
+    (superharness / "contract.yaml").write_text("id: x\n")
+    (superharness / "handoffs/2026-01-demo.yaml").write_text("to: claude-code\n")
+    from tests.helpers import seed_sqlite_from_yaml
+
+    seed_sqlite_from_yaml(project)
+
+    script = repo_root / "adapters" / "claude-code" / "hooks" / "session-start.sh"
+    result = run_bash(script, cwd=project)
+
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    context = payload["additionalContext"]
+
+    assert "run `shux contract`" in context
+    assert "`shux recall KEYWORDS`" in context
+    assert "┌" not in context
+    assert "(no results for" not in context
+
+
 def test_session_start_ensure_watcher_path_is_correct(repo_root: Path) -> None:
     """Regression: ensure-launchd-inbox-watcher.sh lives under src/superharness/scripts/, not scripts/.
 
