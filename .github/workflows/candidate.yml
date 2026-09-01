@@ -1,0 +1,115 @@
+name: Release Candidate
+
+# Builds dist/ exactly once, checksums it (candidate-manifest.json +
+# SHA256SUMS + SBOM), install-tests the wheel, attests the package files,
+# and stores the whole bundle as assets of a GitHub DRAFT release named
+# candidate-<full-commit-sha>. Nothing is published anywhere; promotion
+# (tag/release, TestPyPI, PyPI) happens only in release.yml/publish.yml,
+# which consume this draft via its numeric release ID and recompute every
+# checksum before uploading.
+#
+# Candidate drafts remain for 30 days (operator GC after the promotion
+# decision); GitHub's public-release asset retention rules never delete
+# draft releases.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write   # create the draft release and upload its assets
+  id-token: write   # actions/attest-build-provenance
+  checks: read      # required-check gate lookup
+
+jobs:
+  verify-ci:
+    name: Verify required checks passed on this commit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Require branch-protection checks to be green on this commit
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: scripts/required_checks_gate.sh "${{ github.sha }}"
+
+  candidate:
+    name: Build and store checksumed candidate
+    needs: verify-ci
+    runs-on: ubuntu-latest
+    outputs:
+      candidate_release_id: ${{ steps.candidate.outputs.candidate_release_id }}
+    env:
+      CANDIDATE_TAG: candidate-${{ github.sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11"
+
+      - name: Build sdist and wheel (the only build in this release flow)
+        run: |
+          pip install build
+          python -m build
+
+      - name: Verify dist contents
+        run: |
+          ls -la dist/
+          tar -tzf dist/*.tar.gz | head -20
+
+      - name: Build candidate manifest, SHA256SUMS, and SBOM
+        run: |
+          VERSION="$(python3 -c "import tomllib; print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])")"
+          python3 src/superharness/release_candidate.py build \
+            --dist dist \
+            --commit "${GITHUB_SHA}" \
+            --version "${VERSION}"
+          # Self-check: the manifest and SHA256SUMS just written must verify.
+          python3 src/superharness/release_candidate.py verify --dist dist
+
+      - name: Install-test the candidate wheel from dist/
+        run: |
+          python -m venv .candidate-venv
+          .candidate-venv/bin/pip install dist/*.whl
+          .candidate-venv/bin/python -m superharness demo
+
+      - name: Attest the package files
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: |
+            dist/*.whl
+            dist/*.tar.gz
+
+      - name: Create candidate draft release
+        id: candidate
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          if gh release view "${CANDIDATE_TAG}" >/dev/null 2>&1; then
+            echo "Candidate draft ${CANDIDATE_TAG} already exists — refusing to overwrite." >&2
+            exit 1
+          fi
+          gh release create "${CANDIDATE_TAG}" \
+            --draft \
+            --target "${GITHUB_SHA}" \
+            --title "Release candidate ${GITHUB_SHA}" \
+            --notes "Immutable candidate bundle for commit ${GITHUB_SHA}. Promote via release.yml with candidate_release_id."
+          RELEASE_ID="$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${CANDIDATE_TAG}" --jq '.id')"
+          echo "candidate_release_id=${RELEASE_ID}" >> "$GITHUB_OUTPUT"
+          echo "Candidate draft release id: ${RELEASE_ID}"
+
+      - name: Attach exact bundle as draft assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh release upload "${CANDIDATE_TAG}" dist/*
+          gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${CANDIDATE_TAG}" \
+            --jq '.assets[].name'
+
+      - uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808 # v4.3.3
+        with:
+          name: candidate-dist
+          path: dist/
+          retention-days: 30
