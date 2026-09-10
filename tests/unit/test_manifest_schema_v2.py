@@ -260,12 +260,29 @@ model_tiers:
 def test_perf_parse_under_10ms() -> None:
     """Performance: parsing the largest bundled manifest is fast.
 
-    Threshold 50ms, not 10ms: CI runners (ubuntu) measured 11ms for the
-    codex manifest; a tight 10ms bound is a flake on slower runners while
-    50ms still proves parsing is not a hot-path concern.
+    Best of five cold samples, asserted after a warm-up parse.
+
+    A single sample measures runner scheduling as much as parsing, and the
+    bound has already lost to that twice: 10ms was raised to 50ms after
+    ubuntu measured 11ms, then a macOS runner measured 253ms on one sample
+    while the parse itself costs ~2ms locally. Best-of-five keeps the bound
+    meaningful (a genuinely slow parse is slow in every sample) without
+    asserting on one stall.
+
+    The warm-up also keeps the measurement honest: load_manifest caches by
+    name, so without clearing it this test measured whatever the previous
+    test in the worker had already loaded -- a dict hit, not a parse.
     """
-    start = time.perf_counter()
-    m = load_manifest("codex-cli")
-    elapsed_ms = (time.perf_counter() - start) * 1000
-    assert m.name == "codex-cli"
-    assert elapsed_ms < 50
+    from superharness.engine.adapter_registry import clear_manifest_cache
+
+    assert load_manifest("codex-cli").name == "codex-cli"
+
+    samples: list[float] = []
+    for _ in range(5):
+        clear_manifest_cache()
+        start = time.perf_counter()
+        load_manifest("codex-cli")
+        samples.append((time.perf_counter() - start) * 1000)
+
+    best = min(samples)
+    assert best < 50, f"fastest cold parse was {best:.1f}ms of {samples}"
