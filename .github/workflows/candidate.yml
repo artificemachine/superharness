@@ -18,6 +18,7 @@ on:
 permissions:
   contents: write   # create the draft release and upload its assets
   id-token: write   # actions/attest-build-provenance
+  attestations: write   # persist the build-provenance attestation
   checks: read      # required-check gate lookup
 
 jobs:
