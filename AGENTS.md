@@ -109,6 +109,7 @@ If a task has **>3 acceptance criteria** or touches **>4 files**, decompose into
 
 ## Branch and Release Policy
 
+- **Keep the last 10 release tags.** Never delete or prune the most recent 10 `v*` tags; release history must stay recoverable. Pruning older tags needs explicit owner approval.
 - **Never merge to `main` or push without explicit owner instruction.**
 - **⛔ NO RELEASE** — no version tags, PyPI publish, or `/ship-release` without owner approval.
 - Work on feature branches (`feat/...`, `fix/...`, `chore/...`).
