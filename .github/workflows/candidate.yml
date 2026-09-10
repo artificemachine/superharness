@@ -96,7 +96,7 @@ jobs:
             --target "${GITHUB_SHA}" \
             --title "Release candidate ${GITHUB_SHA}" \
             --notes "Immutable candidate bundle for commit ${GITHUB_SHA}. Promote via release.yml with candidate_release_id."
-          RELEASE_ID="$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${CANDIDATE_TAG}" --jq '.id')"
+          RELEASE_ID="$(gh release view "${CANDIDATE_TAG}" --json databaseId --jq '.databaseId')"
           echo "candidate_release_id=${RELEASE_ID}" >> "$GITHUB_OUTPUT"
           echo "Candidate draft release id: ${RELEASE_ID}"
 
@@ -106,7 +106,7 @@ jobs:
         run: |
           set -euo pipefail
           gh release upload "${CANDIDATE_TAG}" dist/*
-          gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${CANDIDATE_TAG}" \
+          gh release view "${CANDIDATE_TAG}" --json assets \
             --jq '.assets[].name'
 
       - uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808 # v4.3.3
