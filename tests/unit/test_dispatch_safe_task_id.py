@@ -3,8 +3,7 @@
 Task IDs such as `discuss-<uuid>/round-N` contain `/`. Unsanitized, they cause
 `os.path.join(launcher_log_dir, f"{task_id}-...")` to resolve into a
 nonexistent subdirectory, which made `script(1)` exit 1 and marked every
-discussion round-1+ dispatch as failed. See docs/claude_superharness_review.md
-section "Launcher log path corrupts on any task ID containing /".
+discussion round-1+ dispatch as failed.
 """
 
 from __future__ import annotations

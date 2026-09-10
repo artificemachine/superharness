@@ -16,7 +16,7 @@
 | ✅ 1 | TUI (terminal board) | DONE (2026-05-07, v1.49.0) | 6 | 28 | ~8 | `DECISION-shux-tui-before-pi-hermes-adapters.md` |
 | ✅ 2 | MCP Server | DONE (2026-05-07, v1.50.0) | 10 | 56 | ~14 | `PLAN-mcp-server.md` |
 | ✅ 3 | Always-On-Agent Merge | DONE (2026-05-07, v1.51.0) | 7 | 29 | ~10 | `ROADMAP.md` |
-| ✅ 4 | Hermes Integration (C2) | DONE (2026-05-07, v1.51.0) | partial | 11 | — | `hermes-integration-tdd-plan.md` |
+| ✅ 4 | Hermes Integration (C2) | DONE (2026-05-07, v1.51.0) | partial | 11 | — | — |
 | 5 | Pi / OpenCode Adapters | Optional | TBD | TBD | TBD | `DECISION-shux-tui-before-pi-hermes-adapters.md` |
 | ✅ 6 | Windows CI Full Fix | DONE (2026-05-07, v1.51.0) | partial | 18 | — | `windows-native-full-fix-tdd-plan.md` |
 
@@ -116,7 +116,7 @@ Windows CI (6) runs in parallel — not blocked by any phase
 ## Phase 4 — Hermes Integration
 
 **Status:** PARTIAL — sub-phases A, B, C1, C2, D1, D2 done; full 47-test count pending remaining sub-phase iterations (v1.51.0, 2026-05-07)
-**Source:** `docs/hermes-integration-tdd-plan.md`
+**Source:** plan pruned 2026-09-10 (superseded; recoverable from git history)
 **Iterations:** 8 (across 4 sub-phases) | **Tests:** 47 planned, ~30 shipped | **Est:** ~19 hours
 
 **Goal:** Integrate Hermes safety layer — dangerous command detection, credential redaction, checkpoint/rollback, smart dispatch routing, event hook system, and proactive session flush.
