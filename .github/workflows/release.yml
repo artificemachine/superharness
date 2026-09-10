@@ -1,140 +1,134 @@
 name: Release
 
-# Fires only when a v* tag is pushed explicitly (via /ship-release or git push --tags).
-# Merging PRs to main never triggers a release.
+# Promotion of an approved release candidate to a tag and GitHub Release.
+# Dispatch-only: the operator supplies the numeric candidate_release_id of
+# the draft release created by candidate.yml (named candidate-<full-sha>)
+# plus the approver identity. A manually pushed v* tag no longer triggers
+# anything — tag creation is itself a workflow step, and it happens only
+# after the candidate draft has been validated (draft=true, matching
+# target_commitish, full-commit manifest, approval evidence) and required
+# CI is green on the candidate commit.
 
 on:
-  push:
-    tags:
-      - "v*"
+  workflow_dispatch:
+    inputs:
+      candidate_release_id:
+        description: "Numeric GitHub release ID of the candidate draft (from candidate.yml)"
+        required: true
+        type: string
+      approver:
+        description: "Who approved promotion (recorded as approval evidence)"
+        required: true
+        type: string
 
 permissions:
-  contents: write   # needed to create releases and tags
+  contents: write   # needed to create the tag, the release, and read the draft
   actions: write    # needed to dispatch publish.yml via workflow_dispatch
+  checks: read      # required-check gate lookup
 
 jobs:
-  # ---------------------------------------------------------------------------
-  # Tagging is the one irreversible, outward-facing step in this repo: this
-  # workflow creates the GitHub Release and dispatches publish.yml, which
-  # uploads to PyPI. A PyPI version cannot be re-uploaded once taken.
-  #
-  # Until now nothing connected that to tests passing. The 2026-07-22 golive
-  # audit (Stage 7) logged this as a real MEDIUM: release.yml fires on any v*
-  # tag with zero automated dependency on tests.yml, so "CI must be green
-  # before tagging" was pure process discipline with no backstop. A tag pushed
-  # from a red commit — or from a local checkout that never ran CI — would
-  # publish.
-  #
-  # This gate mirrors branch protection exactly: it requires the same check
-  # contexts main requires, resolved against the tagged commit. It deliberately
-  # does NOT check the Tests *workflow* conclusion, because that workflow also
-  # contains non-required jobs (the pytest-xdist trial) whose failure must not
-  # be able to block a release.
-  #
-  # Fails closed. There is no skip variable: a bypass that can be set once and
-  # forgotten is exactly the fail-open pattern /ci-gate flags. If a tag's check
-  # runs have aged out (GitHub retains them ~90 days), re-run CI on that commit
-  # before releasing.
-  # ---------------------------------------------------------------------------
+  resolve-candidate:
+    name: Validate the approved candidate draft
+    runs-on: ubuntu-latest
+    outputs:
+      sha: ${{ steps.candidate.outputs.sha }}
+      version: ${{ steps.candidate.outputs.version }}
+      tag: ${{ steps.candidate.outputs.tag }}
+      candidate_release_id: ${{ inputs.candidate_release_id }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Validate candidate draft and manifest
+        id: candidate
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CANDIDATE_RELEASE_ID: ${{ inputs.candidate_release_id }}
+          APPROVER: ${{ inputs.approver }}
+        run: |
+          set -euo pipefail
+          SHA="$(git rev-parse HEAD)"
+          echo "sha=${SHA}" >> "$GITHUB_OUTPUT"
+
+          RELEASE_JSON="$(gh api "repos/${GITHUB_REPOSITORY}/releases/${CANDIDATE_RELEASE_ID}")"
+          DRAFT="$(echo "$RELEASE_JSON" | jq -r '.draft')"
+          TARGET="$(echo "$RELEASE_JSON" | jq -r '.target_commitish')"
+          TAG_NAME="$(echo "$RELEASE_JSON" | jq -r '.tag_name')"
+          if [ "$DRAFT" != "true" ]; then
+            echo "Refusing: release ${CANDIDATE_RELEASE_ID} is not a draft (draft=${DRAFT})." >&2
+            exit 1
+          fi
+          if [ "$TAG_NAME" != "candidate-${SHA}" ]; then
+            echo "Refusing: candidate tag ${TAG_NAME} does not match candidate-${SHA}." >&2
+            exit 1
+          fi
+          if [ "$TARGET" != "$SHA" ]; then
+            echo "Refusing: candidate target_commitish ${TARGET} != resolved commit ${SHA}." >&2
+            exit 1
+          fi
+
+          # Download the manifest asset BY ASSET ID (never by tag URL — the
+          # tag can be repointed, the asset ID cannot).
+          ASSET_ID="$(echo "$RELEASE_JSON" | jq -r '.assets[] | select(.name == "candidate-manifest.json") | .id')"
+          if [ -z "$ASSET_ID" ]; then
+            echo "Refusing: candidate draft has no candidate-manifest.json asset." >&2
+            exit 1
+          fi
+          gh api "repos/${GITHUB_REPOSITORY}/releases/assets/${ASSET_ID}" \
+            -H "Accept: application/octet-stream" > candidate-manifest.json
+
+          # The manifest must bind to the exact commit being promoted.
+          jq -e --arg sha "$SHA" '.commit == $sha' candidate-manifest.json >/dev/null || {
+            echo "Refusing: manifest commit does not match ${SHA}." >&2
+            exit 1
+          }
+
+          VERSION="$(jq -r '.version' candidate-manifest.json)"
+          TAG="v${VERSION}"
+
+          # Tag/version/changelog identity preflight, reused unchanged.
+          python3 scripts/release_preflight.py \
+            --tag "$TAG" \
+            --pyproject pyproject.toml \
+            --changelog CHANGELOG.md
+
+          # Approval gate: without explicit approval evidence this fails.
+          python3 src/superharness/release_candidate.py promote \
+            --manifest candidate-manifest.json \
+            --approver "$APPROVER" \
+            --candidate-release-id "$CANDIDATE_RELEASE_ID"
+
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "Candidate ${CANDIDATE_RELEASE_ID} approved and validated: ${TAG} @ ${SHA}"
+
   verify-ci:
-    name: Verify required checks passed on the tagged commit
+    name: Verify required checks passed on the candidate commit
+    needs: resolve-candidate
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 0
-
-      - name: Release identity preflight
-        run: |
-          python3 scripts/release_preflight.py \
-            --tag "${GITHUB_REF_NAME}" \
-            --pyproject pyproject.toml \
-            --changelog CHANGELOG.md
 
       - name: Require branch-protection checks to be green on this commit
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euo pipefail
-          SHA="$(git rev-list -n1 "${GITHUB_REF_NAME}")"
-          echo "Tag ${GITHUB_REF_NAME} resolves to ${SHA}"
-
-          # Keep in sync with branch protection on main:
-          #   gh api repos/${GITHUB_REPOSITORY}/branches/main/protection \
-          #     --jq '.required_status_checks.contexts'
-          REQUIRED=("QA Gate" "Windows-Native Release Gate" "ShipGuard Scan" "Gitleaks")
-
-          gh api "repos/${GITHUB_REPOSITORY}/commits/${SHA}/check-runs?per_page=100" \
-            --paginate --jq '.check_runs[] | {name, conclusion, started_at}' \
-            | jq -s '.' > /tmp/check_runs.json
-
-          echo "Found $(jq 'length' /tmp/check_runs.json) check run(s) on ${SHA}"
-
-          FAILED=0
-          for name in "${REQUIRED[@]}"; do
-            # A rerun creates a second check run with the same name — take the
-            # most recently started one, which is the authoritative result.
-            conclusion="$(jq -r --arg n "$name" \
-              '[.[] | select(.name == $n)] | sort_by(.started_at) | last | .conclusion // "MISSING"' \
-              /tmp/check_runs.json)"
-            if [ "$conclusion" = "success" ]; then
-              echo "  OK       ${name}: success"
-            elif [ "$conclusion" = "MISSING" ] || [ "$conclusion" = "null" ]; then
-              echo "  BLOCKED  ${name}: no check run found on this commit"
-              FAILED=1
-            else
-              echo "  BLOCKED  ${name}: ${conclusion}"
-              FAILED=1
-            fi
-          done
-
-          if [ "$FAILED" -ne 0 ]; then
-            echo ""
-            echo "Refusing to release ${GITHUB_REF_NAME}."
-            echo ""
-            echo "The checks main requires are not green on ${SHA}. Releasing would"
-            echo "create a GitHub Release and publish to PyPI, which cannot be undone"
-            echo "for that version number."
-            echo ""
-            echo "To resolve:"
-            echo "  1. Push ${SHA} to a branch and let the Tests workflow run, or re-run"
-            echo "     the existing failed jobs on that commit."
-            echo "  2. Once QA Gate and Windows-Native Release Gate are green, delete and"
-            echo "     re-push the tag:"
-            echo "       git push --delete origin ${GITHUB_REF_NAME}"
-            echo "       git push origin ${GITHUB_REF_NAME}"
-            echo ""
-            echo "If the check runs have simply aged out (GitHub retains them ~90 days),"
-            echo "re-run CI on the commit rather than bypassing this gate."
-            exit 1
-          fi
-
-          echo ""
-          echo "All required checks green on ${SHA} — proceeding with release."
+        run: scripts/required_checks_gate.sh "${{ needs.resolve-candidate.outputs.sha }}"
 
   release:
-    name: Create GitHub Release
-    needs: verify-ci
+    name: Create tag and GitHub Release
+    needs: [resolve-candidate, verify-ci]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
-
-      - name: Extract version from tag
-        id: version
-        run: |
-          TAG="${GITHUB_REF_NAME}"
-          VERSION="${TAG#v}"
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
 
       - name: Check if release already exists
         id: tag_check
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.resolve-candidate.outputs.tag }}
         run: |
-          if gh release view "${{ steps.version.outputs.tag }}" >/dev/null 2>&1; then
+          if gh release view "$TAG" >/dev/null 2>&1; then
             echo "exists=true" >> "$GITHUB_OUTPUT"
           else
             echo "exists=false" >> "$GITHUB_OUTPUT"
@@ -143,8 +137,9 @@ jobs:
       - name: Extract changelog section for this version
         id: changelog
         if: steps.tag_check.outputs.exists == 'false'
+        env:
+          VERSION: ${{ needs.resolve-candidate.outputs.version }}
         run: |
-          VERSION="${{ steps.version.outputs.version }}"
           # Extract the block between ## [VERSION] and the next ## [
           NOTES=$(python3 -c "
           import re, pathlib
@@ -157,22 +152,30 @@ jobs:
           echo "$NOTES" > /tmp/release_notes.txt
           echo "notes_file=/tmp/release_notes.txt" >> "$GITHUB_OUTPUT"
 
-      - name: Create GitHub Release
+      - name: Create tag and GitHub Release at the candidate commit
         if: steps.tag_check.outputs.exists == 'false'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.resolve-candidate.outputs.tag }}
+          SHA: ${{ needs.resolve-candidate.outputs.sha }}
         run: |
-          gh release create "${{ steps.version.outputs.tag }}" \
-            --title "superharness ${{ steps.version.outputs.tag }}" \
+          gh release create "$TAG" \
+            --target "$SHA" \
+            --title "superharness $TAG" \
             --notes-file "${{ steps.changelog.outputs.notes_file }}" \
             --latest
 
       # GitHub won't trigger publish.yml from a release created by GITHUB_TOKEN,
-      # so we dispatch it explicitly via workflow_dispatch.
+      # so we dispatch it explicitly via workflow_dispatch, handing over the
+      # same candidate release ID so publish uploads the exact stored files.
       - name: Trigger publish workflow
         if: steps.tag_check.outputs.exists == 'false'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.resolve-candidate.outputs.tag }}
+          CANDIDATE_RELEASE_ID: ${{ needs.resolve-candidate.outputs.candidate_release_id }}
         run: |
           gh workflow run publish.yml \
-            --ref "${{ steps.version.outputs.tag }}"
+            --ref "$TAG" \
+            -f ref="$TAG" \
+            -f candidate_release_id="$CANDIDATE_RELEASE_ID"
