@@ -22,6 +22,9 @@ files:
   - path: .github/dependabot.yml
     type: config
     reason: Dependabot update-schedule config for pip + github-actions ecosystems
+  - path: .github/workflows/candidate.yml
+    type: config
+    reason: builds and checksums a release candidate as a draft-release bundle (release-candidate rollout, iteration 2)
   - path: .github/workflows/ci-matrix.yml
     type: config
     reason: GitHub Actions matrix workflow

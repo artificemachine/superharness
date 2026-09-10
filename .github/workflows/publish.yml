@@ -1,18 +1,30 @@
 name: Publish to PyPI
 
+# Consumes the checksumed candidate bundle stored as draft-release assets
+# by candidate.yml. No rebuilding: the dist/ files are downloaded from the
+# candidate draft BY ASSET ID, every SHA-256 is recomputed against the
+# candidate manifest before each upload, TestPyPI gets the files first and
+# they are smoke-installed from the TestPyPI index, then PyPI publishes the
+# exact same unchanged files.
+
 on:
   release:
     types: [published]
   workflow_dispatch:
     inputs:
       ref:
-        description: "Tag or ref to build and publish (e.g. v1.10.3)"
+        description: "Tag or ref the release is cut from (e.g. v1.10.3)"
+        required: false
+        default: ""
+      candidate_release_id:
+        description: "Numeric GitHub release ID of the candidate draft (from candidate.yml)"
         required: false
         default: ""
 
 permissions:
   id-token: write
-  contents: read
+  contents: read   # read the candidate draft assets and check runs
+  checks: read     # required-check gate lookup
 
 jobs:
   verify-ci:
@@ -21,72 +33,86 @@ jobs:
     permissions:
       contents: read
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
       - name: Verify required checks are green before publish
         env:
           GH_TOKEN: ${{ github.token }}
+          REF: ${{ inputs.ref || github.event.release.tag_name || github.ref_name }}
         run: |
           set -euo pipefail
-          REF="${{ inputs.ref || github.event.release.tag_name || github.ref_name }}"
           echo "Verifying release gate for ref ${REF}"
+          # publish.yml has its own trigger surface (release:published,
+          # workflow_dispatch) independent of release.yml, so it must
+          # re-verify rather than trust the caller. Same REQUIRED list as
+          # release.yml — asserted by the shared gate script.
+          scripts/required_checks_gate.sh "$REF"
 
-          # Keep in sync with release.yml verify-ci and branch protection on main.
-          # publish.yml has its own trigger surface (release:published, workflow_dispatch)
-          # independent of release.yml, so it must re-verify rather than trust the caller.
-          REQUIRED=("QA Gate" "Windows-Native Release Gate" "ShipGuard Scan" "Gitleaks")
-
-          gh api "repos/${{ github.repository }}/commits/${REF}/check-runs?per_page=100" \
-            --paginate --jq '.check_runs[] | {name, conclusion, started_at}' \
-            | jq -s '.' > /tmp/check_runs.json
-
-          echo "Found $(jq 'length' /tmp/check_runs.json) check run(s) on ${REF}"
-
-          FAILED=0
-          for name in "${REQUIRED[@]}"; do
-            conclusion="$(jq -r --arg n "$name" \
-              '[.[] | select(.name == $n)] | sort_by(.started_at) | last | .conclusion // "MISSING"' \
-              /tmp/check_runs.json)"
-            if [ "$conclusion" = "success" ]; then
-              echo "  OK       ${name}: success"
-            elif [ "$conclusion" = "MISSING" ] || [ "$conclusion" = "null" ]; then
-              echo "  BLOCKED  ${name}: no check run found on ${REF}"
-              FAILED=1
-            else
-              echo "  BLOCKED  ${name}: ${conclusion}"
-              FAILED=1
-            fi
-          done
-
-          if [ "$FAILED" -ne 0 ]; then
-            echo ""
-            echo "Refusing to publish ${REF} to PyPI — required checks are not green."
-            exit 1
-          fi
-
-          echo ""
-          echo "All required checks green on ${REF} — proceeding with publish."
-
-  build:
+  fetch-candidate:
+    name: Fetch checksumed candidate from draft release
     needs: verify-ci
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.candidate.outputs.version }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          # Check out the ref being published so the verifier code is the
+          # release commit's own release_candidate.py, not main's.
           ref: ${{ inputs.ref || github.ref }}
 
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
-        with:
-          python-version: "3.11"
-
-      - name: Install build tools
-        run: pip install build
-
-      - name: Build sdist and wheel
-        run: python -m build
-
-      - name: Verify dist contents
+      - name: Download candidate draft assets and verify checksums
+        id: candidate
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REF: ${{ inputs.ref || github.event.release.tag_name || github.ref_name }}
+          CANDIDATE_RELEASE_ID: ${{ inputs.candidate_release_id }}
         run: |
+          set -euo pipefail
+          SHA="$(git rev-list -n1 "$REF")"
+          echo "Ref ${REF} resolves to ${SHA}"
+
+          if [ -n "$CANDIDATE_RELEASE_ID" ]; then
+            RELEASE_ID="$CANDIDATE_RELEASE_ID"
+          else
+            RELEASE_ID="$(gh api "repos/${GITHUB_REPOSITORY}/releases" --paginate \
+              --jq ".[] | select(.draft and .tag_name == \"candidate-${SHA}\") | .id" | head -n1)"
+          fi
+          if [ -z "$RELEASE_ID" ]; then
+            echo "Refusing: no candidate draft found for ${SHA} (build one with candidate.yml)." >&2
+            exit 1
+          fi
+
+          RELEASE_JSON="$(gh api "repos/${GITHUB_REPOSITORY}/releases/${RELEASE_ID}")"
+          DRAFT="$(echo "$RELEASE_JSON" | jq -r '.draft')"
+          TARGET="$(echo "$RELEASE_JSON" | jq -r '.target_commitish')"
+          if [ "$DRAFT" != "true" ]; then
+            echo "Refusing: release ${RELEASE_ID} is not a draft (draft=${DRAFT})." >&2
+            exit 1
+          fi
+          if [ "$TARGET" != "$SHA" ]; then
+            echo "Refusing: candidate target_commitish ${TARGET} != ${SHA}." >&2
+            exit 1
+          fi
+
+          # Download EVERY asset BY ASSET ID — never by download URL, which
+          # follows the mutable tag.
+          mkdir -p dist
+          echo "$RELEASE_JSON" | jq -r '.assets[] | "\(.id) \(.name)"' |
+          while read -r ASSET_ID ASSET_NAME; do
+            echo "Downloading asset ${ASSET_NAME} (id ${ASSET_ID})"
+            gh api "repos/${GITHUB_REPOSITORY}/releases/assets/${ASSET_ID}" \
+              -H "Accept: application/octet-stream" > "dist/${ASSET_NAME}"
+          done
+
           ls -la dist/
-          tar -tzf dist/*.tar.gz | head -20
+          # Recompute every checksum against the manifest before anything
+          # is uploaded anywhere.
+          python3 src/superharness/release_candidate.py verify \
+            --dist dist --manifest dist/candidate-manifest.json
+          VERSION="$(jq -r '.version' dist/candidate-manifest.json)"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "Candidate ${RELEASE_ID} verified: superharness ${VERSION}"
 
       - uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808 # v4.3.3
         with:
@@ -94,20 +120,41 @@ jobs:
           path: dist/
 
   publish-testpypi:
-    needs: build
+    needs: fetch-candidate
     runs-on: ubuntu-latest
     environment: testpypi
     permissions:
       id-token: write
+      contents: read
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.ref || github.event.release.tag_name || github.ref }}
+
       - uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4.1.8
         with:
           name: dist
           path: dist/
 
+      - name: Re-verify checksums against the candidate manifest
+        run: |
+          python3 src/superharness/release_candidate.py verify \
+            --dist dist --manifest dist/candidate-manifest.json
+
       - uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # release/v1
         with:
           repository-url: https://test.pypi.org/legacy/
+
+      - name: Smoke-install the published wheel from TestPyPI
+        env:
+          VERSION: ${{ needs.fetch-candidate.outputs.version }}
+        run: |
+          python -m venv .smoke-venv
+          .smoke-venv/bin/pip install \
+            --index-url https://test.pypi.org/simple/ \
+            --extra-index-url https://pypi.org/simple/ \
+            "superharness==${VERSION}"
+          .smoke-venv/bin/python -m superharness demo
 
   publish-pypi:
     needs: publish-testpypi
@@ -115,10 +162,20 @@ jobs:
     environment: pypi
     permissions:
       id-token: write
+      contents: read
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.ref || github.event.release.tag_name || github.ref }}
+
       - uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4.1.8
         with:
           name: dist
           path: dist/
+
+      - name: Re-verify checksums against the candidate manifest
+        run: |
+          python3 src/superharness/release_candidate.py verify \
+            --dist dist --manifest dist/candidate-manifest.json
 
       - uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # release/v1
