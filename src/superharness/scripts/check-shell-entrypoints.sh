@@ -35,6 +35,7 @@ ENTRYPOINT_FILES=(
   "src/superharness/scripts/heartbeat.sh"
   "src/superharness/scripts/init-project.sh"
   "scripts/dev-reinstall.sh"
+  "scripts/required_checks_gate.sh"
   "scripts/verify-l5-loop.sh"
   "cli/recall.sh"
   "cli/status.sh"
