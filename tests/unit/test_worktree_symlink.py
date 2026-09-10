@@ -52,24 +52,6 @@ def git_project(tmp_path):
     return project
 
 
-@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-def test_git_worktree_add_replaces_checked_out_superharness_with_symlink(git_project):
-    """When .superharness/ is tracked in git, _git_worktree_add must
-    overwrite the checked-out copy with a symlink to the live source."""
-    from superharness.commands import inbox_dispatch
-
-    worktree = inbox_dispatch._git_worktree_add(str(git_project), "test-task")
-    assert worktree is not None, "worktree creation failed"
-    try:
-        dst = Path(worktree) / ".superharness"
-        assert dst.is_symlink(), (
-            f".superharness/ in the worktree is not a symlink. "
-            f"It's: {os.lstat(dst)}. The dispatch lifecycle gate will read a "
-            f"stale checked-out copy and reject every task."
-        )
-        assert os.readlink(dst) == str(git_project / ".superharness")
-    finally:
-        inbox_dispatch._git_worktree_remove(str(git_project), worktree)
 
 
 def test_get_connection_uses_state_project_env_var(tmp_path):

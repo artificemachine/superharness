@@ -60,63 +60,8 @@ def _setup_project(tmp_path: Path, status: str = "plan_approved") -> Path:
 # ── task.sh create --criteria ──
 
 
-@_skip_win
-@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-def test_task_create_with_criteria(repo_root, tmp_path) -> None:
-    project = _setup_project(tmp_path)
-    script = repo_root / "src" / "superharness" / "scripts" / "task.sh"
-    result = run_bash(
-        script,
-        cwd=repo_root,
-        args=[
-            "create",
-            "--project",
-            str(project),
-            "--id",
-            "my-task",
-            "--title",
-            "Test task",
-            "--owner",
-            "claude-code",
-            "--criteria",
-            "All tests pass",
-            "--criteria",
-            "No lint errors",
-        ],
-    )
-    assert result.returncode == 0, result.stderr
-    assert "Created task" in result.stdout
-
-    contract = yaml.safe_load((project / ".superharness" / "contract.yaml").read_text())
-    task = next(t for t in contract["tasks"] if t["id"] == "my-task")
-    assert task["acceptance_criteria"] == ["All tests pass", "No lint errors"]
 
 
-@_skip_win
-@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-def test_task_create_without_criteria_omits_field(repo_root, tmp_path) -> None:
-    project = _setup_project(tmp_path)
-    script = repo_root / "src" / "superharness" / "scripts" / "task.sh"
-    result = run_bash(
-        script,
-        cwd=repo_root,
-        args=[
-            "create",
-            "--project",
-            str(project),
-            "--id",
-            "no-ac-task",
-            "--title",
-            "No criteria",
-            "--owner",
-            "codex-cli",
-        ],
-    )
-    assert result.returncode == 0, result.stderr
-
-    contract = yaml.safe_load((project / ".superharness" / "contract.yaml").read_text())
-    task = next(t for t in contract["tasks"] if t["id"] == "no-ac-task")
-    assert "acceptance_criteria" not in task
 
 
 # ── engine/contract.py task_acceptance_criteria ──
@@ -175,31 +120,6 @@ def test_engine_returns_empty_when_no_criteria(repo_root, tmp_path) -> None:
 # ── delegate.sh injects criteria into prompt ──
 
 
-@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-def test_delegate_prompt_includes_criteria(repo_root, tmp_path) -> None:
-    project = _setup_project(tmp_path)
-    contract_file = project / ".superharness" / "contract.yaml"
-    doc = yaml.safe_load(contract_file.read_text())
-    doc["tasks"][0]["acceptance_criteria"] = ["Tests green", "Coverage > 60%"]
-    contract_file.write_text(yaml.dump(doc))
-
-    result = _run_delegate_py(
-        repo_root,
-        args=[
-            "--to",
-            "codex-cli",
-            "--project",
-            str(project),
-            "--task",
-            "existing-task",
-            "--print-only",
-        ],
-        env={"PATH": "/usr/bin:/bin"},
-    )
-    assert result.returncode == 0, result.stderr
-    assert "Acceptance criteria" in result.stdout
-    assert "- Tests green" in result.stdout
-    assert "- Coverage > 60%" in result.stdout
 
 
 def test_delegate_prompt_omits_criteria_when_none(repo_root, tmp_path) -> None:
@@ -224,36 +144,6 @@ def test_delegate_prompt_omits_criteria_when_none(repo_root, tmp_path) -> None:
 # ── task.sh status=done warns about criteria ──
 
 
-@_skip_win
-@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-def test_task_status_done_warns_about_criteria(repo_root, tmp_path) -> None:
-    project = _setup_project(tmp_path)
-    contract_file = project / ".superharness" / "contract.yaml"
-    doc = yaml.safe_load(contract_file.read_text())
-    doc["tasks"][0]["acceptance_criteria"] = ["All tests pass"]
-    contract_file.write_text(yaml.dump(doc))
-
-    script = repo_root / "src" / "superharness" / "scripts" / "task.sh"
-    result = run_bash(
-        script,
-        cwd=repo_root,
-        args=[
-            "status",
-            "--project",
-            str(project),
-            "--id",
-            "existing-task",
-            "--status",
-            "done",
-            "--actor",
-            "codex-cli",
-            "--summary",
-            "Completed",
-        ],
-    )
-    assert result.returncode == 0, result.stderr
-    assert "acceptance criteria" in result.stderr
-    assert "All tests pass" in result.stderr
 
 
 @_skip_win

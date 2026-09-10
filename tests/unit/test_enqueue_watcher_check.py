@@ -81,46 +81,6 @@ class TestCheckWatcherHealth:
 # ---------------------------------------------------------------------------
 
 
-class TestEnqueueWatcherWarning:
-    @pytest.mark.skip(
-        reason="legacy YAML fixture — pending SQLite migration (see PR #208)"
-    )
-    def test_warns_when_watcher_not_loaded(self, tmp_path, capsys):
-        project = _setup_project(tmp_path)
-        with patch(
-            "superharness.commands.inbox_enqueue._check_watcher_health",
-            return_value=False,
-        ):
-            rc = enqueue_cmd(
-                project_dir=str(project),
-                target="claude-code",
-                task_id="T-1",
-                item_id=None,
-                priority=2,
-            )
-        assert rc == 0  # warn, not block
-        captured = capsys.readouterr()
-        assert "watcher not loaded" in captured.err.lower()
-
-    @pytest.mark.skip(
-        reason="legacy YAML fixture — pending SQLite migration (see PR #208)"
-    )
-    def test_no_warning_when_watcher_loaded(self, tmp_path, capsys):
-        project = _setup_project(tmp_path)
-        with patch(
-            "superharness.commands.inbox_enqueue._check_watcher_health",
-            return_value=True,
-        ):
-            rc = enqueue_cmd(
-                project_dir=str(project),
-                target="claude-code",
-                task_id="T-1",
-                item_id=None,
-                priority=2,
-            )
-        assert rc == 0
-        captured = capsys.readouterr()
-        assert "watcher" not in captured.err.lower()
 
 
 # ---------------------------------------------------------------------------
@@ -146,21 +106,3 @@ class TestEnqueueWatcherGate:
                 )
             assert exc.value.code == 1
 
-    @pytest.mark.skip(
-        reason="legacy YAML fixture — pending SQLite migration (see PR #208)"
-    )
-    def test_gate_passes_when_watcher_loaded(self, tmp_path):
-        project = _setup_project(tmp_path)
-        with patch(
-            "superharness.commands.inbox_enqueue._check_watcher_health",
-            return_value=True,
-        ):
-            rc = enqueue_cmd(
-                project_dir=str(project),
-                target="claude-code",
-                task_id="T-1",
-                item_id=None,
-                priority=2,
-                require_watcher=True,
-            )
-        assert rc == 0

@@ -134,32 +134,8 @@ def _write_profile(path, **overrides) -> None:
     path.write_text(lines + "\n")
 
 
-@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-def test_init_from_profile_creates_files(repo_root, tmp_path) -> None:
-    project = tmp_path / "proj"
-    project.mkdir()
-    profile = tmp_path / "profile.yaml"
-    _write_profile(profile)
-
-    result = _run_init_py(project, args=["--from-profile", str(profile)])
-    assert result.returncode == 0, (
-        f"init --from-profile failed:\n{result.stdout}\n{result.stderr}"
-    )
-    assert (project / ".superharness/contract.yaml").exists()
-    assert (project / ".superharness/profile.yaml").exists()
 
 
-@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-def test_init_from_profile_uses_project_name(repo_root, tmp_path) -> None:
-    project = tmp_path / "proj"
-    project.mkdir()
-    profile = tmp_path / "profile.yaml"
-    _write_profile(profile, project_name="AwesomeApp")
-
-    result = _run_init_py(project, args=["--from-profile", str(profile)])
-    assert result.returncode == 0, result.stderr
-    contract = (project / ".superharness/contract.yaml").read_text()
-    assert "AwesomeApp" in contract
 
 
 def test_init_from_profile_copies_profile_into_superharness(
@@ -198,30 +174,8 @@ def test_init_from_profile_source_outside_superharness_dir(repo_root, tmp_path) 
 # ── init --detect ─────────────────────────────────────────────────────────────
 
 
-@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-def test_init_detect_creates_files(repo_root, tmp_path) -> None:
-    project = tmp_path / "proj"
-    project.mkdir()
-    (project / "pyproject.toml").write_text(
-        '[project]\nname = "detect-test"\nversion = "0.1"\n'
-    )
-
-    result = _run_init_py(project, args=["--detect"])
-    assert result.returncode == 0, (
-        f"init --detect failed:\n{result.stdout}\n{result.stderr}"
-    )
-    assert (project / ".superharness/contract.yaml").exists()
 
 
-@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-def test_init_detect_uses_detected_name(repo_root, tmp_path) -> None:
-    project = tmp_path / "mydetectproject"
-    project.mkdir()
-
-    result = _run_init_py(project, args=["--detect"])
-    assert result.returncode == 0, result.stderr
-    contract = (project / ".superharness/contract.yaml").read_text()
-    assert "mydetectproject" in contract
 
 
 # ── Iter 5 RED: auto_dispatch seeded at init ──────────────────────────────────

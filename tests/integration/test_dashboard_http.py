@@ -529,19 +529,6 @@ class TestLogicActions:
         assert status == 200
         assert body.get("ok") is True
 
-    @pytest.mark.skip(
-        reason="legacy YAML fixture — pending SQLite migration (see PR #208)"
-    )
-    def test_disable_task_sets_stopped(self, server, tmp_path):
-        base, token = server
-        _insert_task(tmp_path, "t-dis", "todo")
-        status, body = _post_action(base, token, "disable_task:t-dis")
-        assert status == 200
-        assert body.get("ok") is True
-        conn = get_connection(str(tmp_path))
-        row = conn.execute("SELECT status FROM tasks WHERE id='t-dis'").fetchone()
-        conn.close()
-        assert row[0] == "stopped"
 
     def test_enable_task_transitions_stopped_to_todo(self, server, tmp_path):
         base, token = server

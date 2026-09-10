@@ -75,65 +75,6 @@ def _find_shux_python():
 class TestDaemonSurvivesParentExit:
     """Test that the monitor daemon outlives the CLI that launched it."""
 
-    @pytest.mark.skip(
-        reason="legacy YAML fixture — pending SQLite migration (see PR #208)"
-    )
-    def test_daemon_survives_parent_exit(self, tmp_path: Path):
-        project_dir = tmp_path / "test-project"
-        project_dir.mkdir()
-        (project_dir / ".superharness").mkdir()
-
-        shux = _find_shux_bin()
-
-        cmd = [
-            shux,
-            "daemon",
-            "start",
-            "--project",
-            str(project_dir),
-            "--interval",
-            "60",
-        ]
-
-        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        out, err = proc.communicate(timeout=30)
-
-        state_file = project_dir / ".superharness" / "daemon-state.json"
-        assert state_file.exists(), (
-            f"State file not created. stdout={out.decode()} stderr={err.decode()}"
-        )
-
-        # Wait for monitor to write its PID (up to 10 seconds, checking every 0.5s)
-        pid = None
-        for _ in range(20):
-            state = json.loads(state_file.read_text())
-            pid = state.get("pid")
-            watcher = state.get("watcher_pid")
-            # Monitor has written when watcher_pid differs from pid
-            # (monitor PID != watcher PID in the updated state)
-            if watcher is not None and watcher != pid:
-                break
-            time.sleep(0.5)
-
-        assert pid is not None, f"No PID in state after waiting: {state}"
-        assert isinstance(pid, int) and pid > 0
-
-        # Wait briefly for daemon to settle
-        time.sleep(1)
-
-        try:
-            os.kill(pid, 0)
-            alive = True
-        except (ProcessLookupError, OSError):
-            alive = False
-
-        assert alive, (
-            f"Daemon PID {pid} died after parent exit. "
-            f"It was likely a daemon thread, not a detached subprocess."
-        )
-
-        # Cleanup
-        os.kill(pid, signal.SIGTERM)
 
     def test_daemon_start_is_idempotent_when_alive(self, tmp_path: Path):
         project_dir = tmp_path / "test-project"

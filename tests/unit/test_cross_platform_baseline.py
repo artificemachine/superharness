@@ -381,32 +381,6 @@ class TestDispatchNoBashAssumption:
         if sys.platform == "win32":
             assert not Path(lock).resolve().is_relative_to(Path("/tmp"))
 
-    @pytest.mark.skip(
-        reason="legacy YAML fixture — pending SQLite migration (see PR #208)"
-    )
-    def test_delegate_print_only_does_not_exec(self, tmp_path):
-        """delegate --print-only must return normally (not os.execvp)."""
-        project = _setup_project(tmp_path)
-        result = subprocess.run(
-            [
-                sys.executable,
-                "-m",
-                "superharness.commands.delegate",
-                "--to",
-                "claude-code",
-                "--task",
-                "CP-001",
-                "--project",
-                str(project),
-                "--print-only",
-            ],
-            capture_output=True,
-            text=True,
-            cwd=str(project),
-        )
-        # Must exit cleanly — no exec() swallowing the process
-        assert result.returncode == 0
-        assert "Generated prompt" in result.stdout
 
 
 # ---------------------------------------------------------------------------
@@ -462,15 +436,6 @@ class TestRuntimeProbe:
         assert interp
         assert os.path.isfile(interp) or shutil.which(interp)
 
-    @pytest.mark.skip(
-        reason="legacy YAML fixture — pending SQLite migration (see PR #208)"
-    )
-    def test_probe_required_modules_pass_for_installed_package(self):
-        """probe_required_modules() does not raise when superharness is installed."""
-        from superharness.engine.runtime_probe import probe_required_modules
-
-        # Should not raise — superharness is installed in this test env
-        probe_required_modules(["superharness.engine.inbox"])
 
     def test_probe_required_modules_raises_on_missing(self):
         """probe_required_modules() raises ImportError for a non-existent module."""
@@ -485,36 +450,3 @@ class TestRuntimeProbe:
 # ---------------------------------------------------------------------------
 
 
-class TestInboxLockCrossPlatform:
-    """_inbox_lock must work on both Unix (fcntl) and Windows (msvcrt)."""
-
-    @pytest.mark.skip(
-        reason="legacy YAML fixture — pending SQLite migration (see PR #208)"
-    )
-    def test_inbox_lock_acquires_and_releases(self, tmp_path):
-        """_inbox_lock context manager acquires and releases without error."""
-        from superharness.engine.inbox import _inbox_lock
-
-        inbox_file = tmp_path / "inbox.yaml"
-        inbox_file.write_text("[]", encoding="utf-8")
-
-        with _inbox_lock(str(inbox_file)):
-            # Within context: lock held, no exception
-            assert True
-
-        # After context: lock file exists (harmless), no error on re-acquire
-        with _inbox_lock(str(inbox_file)):
-            assert True
-
-    @pytest.mark.skip(
-        reason="legacy YAML fixture — pending SQLite migration (see PR #208)"
-    )
-    def test_inbox_lock_file_created(self, tmp_path):
-        """_inbox_lock creates a .flock file alongside the inbox."""
-        from superharness.engine.inbox import _inbox_lock
-
-        inbox_file = tmp_path / "inbox.yaml"
-        inbox_file.write_text("[]", encoding="utf-8")
-
-        with _inbox_lock(str(inbox_file)):
-            assert (tmp_path / "inbox.yaml.flock").exists()

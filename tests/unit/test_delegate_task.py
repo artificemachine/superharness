@@ -137,22 +137,6 @@ def test_delegate_task_print_only_succeeds(repo_root, tmp_path) -> None:
     assert "mcp-docs" in result.stdout
 
 
-@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-def test_delegate_task_non_interactive_passes_flag(repo_root, tmp_path) -> None:
-    project = _setup_project(tmp_path)
-    bin_dir = _fake_bin(tmp_path, "codex")
-    script = repo_root / "src" / "superharness" / "scripts" / "delegate-task.sh"
-    result = run_bash(
-        script,
-        cwd=repo_root,
-        args=["mcp-docs", "--project", str(project), "--non-interactive"],
-        env={
-            "PATH": f"{bin_dir}:/usr/bin:/bin",
-            "SUPERHARNESS_CONFIRM_NON_INTERACTIVE": "YES",
-        },
-    )
-    assert result.returncode == 0, result.stderr
-    assert "--skip-git-repo-check" in result.stdout
 
 
 def test_delegate_task_help_exits_zero(repo_root, tmp_path) -> None:

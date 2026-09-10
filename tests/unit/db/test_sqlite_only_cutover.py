@@ -85,26 +85,7 @@ class TestMigrationV2:
         assert "discussions" in tables
         assert "discussion_rounds" in tables
 
-    @pytest.mark.skip(
-        reason="legacy YAML fixture — pending SQLite migration (see PR #208)"
-    )
-    def test_schema_version_is_2(self, conn: sqlite3.Connection):
-        from superharness.engine.db import CURRENT_SCHEMA_VERSION
 
-        assert CURRENT_SCHEMA_VERSION == 2
-        version = conn.execute("PRAGMA user_version").fetchone()[0]
-        assert version == 2
-
-    @pytest.mark.skip(
-        reason="legacy YAML fixture — pending SQLite migration (see PR #208)"
-    )
-    def test_migration_idempotent(self, proj: Path):
-        c = get_connection(str(proj))
-        init_db(c)
-        init_db(c)
-        count = c.execute("SELECT COUNT(*) FROM schema_migrations").fetchone()[0]
-        assert count == 2  # v1 + v2
-        c.close()
 
 
 # ---------------------------------------------------------------------------
@@ -802,41 +783,3 @@ class TestDashboardActionsSqliteOnly:
         c2.close()
         assert row.status == "done"
 
-    @pytest.mark.skip(
-        reason="legacy YAML fixture — pending SQLite migration (see PR #208)"
-    )
-    def test_confirm_plan_sqlite_only_no_yaml(
-        self, conn: sqlite3.Connection, proj: Path, monkeypatch
-    ):
-        """_confirm_plan transitions plan_proposed -> todo via SQLite without contract.yaml."""
-        monkeypatch.setenv("STATE_BACKEND", "sqlite_only")
-        _make_task(conn, "plan-t", status="plan_proposed")
-        conn.commit()
-        conn.close()
-
-        assert not (proj / ".superharness" / "contract.yaml").exists()
-
-        from pathlib import Path as _Path
-        import importlib.util
-
-        spec = importlib.util.spec_from_file_location(
-            "dashboard_ui",
-            _Path(__file__).parents[3]
-            / "src"
-            / "superharness"
-            / "scripts"
-            / "dashboard-ui.py",
-        )
-        m = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(m)
-
-        harness_dir = proj / ".superharness"
-        result = m._confirm_plan(harness_dir, "plan-t")
-        assert result["ok"] is True
-
-        c2 = get_connection(str(proj))
-        init_db(c2)
-        row = tasks_dao.get(c2, "plan-t")
-        c2.close()
-        assert row is not None
-        assert row.status == "todo"

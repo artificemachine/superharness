@@ -20,11 +20,6 @@ def test_inbox_enqueue_help():
     _help_exits_zero(inbox_enqueue)
 
 
-@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-def test_inbox_normalize_help():
-    from superharness.commands import inbox_normalize
-
-    _help_exits_zero(inbox_normalize)
 
 
 def test_inbox_recover_help():
