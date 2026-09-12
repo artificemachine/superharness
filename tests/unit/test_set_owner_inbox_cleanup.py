@@ -1,6 +1,6 @@
 """TDD: shux task set-owner must actually clean up inbox items.
 
-Bug filed 2026-05-09 (docs/BUG-set-owner-inbox-cleanup.md): the cleanup
+Bug filed 2026-05-09: the cleanup
 block at commands/task.py:483 imports `_load_items` and `_write_items`
 from `engine/inbox`, which were removed in the YAML→SQLite migration.
 The ImportError surfaces at runtime, the "Reassigned" line still prints,

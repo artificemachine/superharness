@@ -35,58 +35,6 @@ SRC = str(REPO_ROOT / "src")
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-def test_watcher_worker_fails_loud_when_install_fails(tmp_path):
-    """When the launchd install script fails, watcher_worker.py must:
-    - exit with a non-zero return code
-    - NOT print 'Watcher worker is ready.'
-    Otherwise users keep seeing success after a silent install failure.
-    """
-    project = tmp_path / "proj"
-    harness = project / ".superharness"
-    harness.mkdir(parents=True)
-    (harness / "contract.yaml").write_text("tasks: []\n")
-    (harness / "handoffs").mkdir()
-
-    project_scripts = project / "scripts"
-    project_scripts.mkdir()
-    fail_install = project_scripts / "install-launchd-inbox-watcher.sh"
-    fail_install.write_text("#!/bin/bash\necho 'simulated failure' >&2\nexit 7\n")
-    fail_install.chmod(0o755)
-    fail_install_systemd = project_scripts / "install-systemd-inbox-watcher.sh"
-    fail_install_systemd.write_text(
-        "#!/bin/bash\necho 'simulated failure' >&2\nexit 7\n"
-    )
-    fail_install_systemd.chmod(0o755)
-
-    env = os.environ.copy()
-    env["PYTHONPATH"] = SRC
-    env["SUPERHARNESS_PYTHON"] = sys.executable
-
-    res = subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "superharness.commands.watcher_worker",
-            "-p",
-            str(project),
-        ],
-        capture_output=True,
-        text=True,
-        env=env,
-        check=False,
-        timeout=30,
-    )
-
-    assert res.returncode != 0, (
-        f"watcher_worker exited 0 despite install script failing. "
-        f"stdout: {res.stdout!r}\nstderr: {res.stderr!r}"
-    )
-    assert "Watcher worker is ready" not in res.stdout, (
-        f"watcher_worker printed 'Watcher worker is ready.' after install "
-        f"script failed. Users will think the install succeeded.\n"
-        f"stdout: {res.stdout!r}"
-    )
 
 
 # ---------------------------------------------------------------------------

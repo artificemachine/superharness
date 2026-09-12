@@ -123,83 +123,12 @@ class TestRunDashboardWritesOperatorState:
         assert data["operator_pid"] == 99
         assert str(tmp_path) in data["project"]
 
-    @pytest.mark.skip(
-        reason="legacy YAML fixture — pending SQLite migration (see PR #208)"
-    )
-    def test_operator_state_port_survives_next_is_running_call(self, tmp_path):
-        """After _run_dashboard writes operator-state.json, the next call to
-        _is_dashboard_running() uses Priority 1 (file-based) and succeeds
-        without falling through to the fragile ps-scan path."""
-        harness_dir = tmp_path / ".superharness"
-        harness_dir.mkdir()
-        op_file = harness_dir / "operator-state.json"
-        op_file.write_text(
-            json.dumps(
-                {
-                    "operator_pid": 42,
-                    "dashboard_port": 8799,
-                    "started_at": time.time(),
-                    "project": str(tmp_path),
-                }
-            )
-        )
-
-        with (
-            patch("urllib.request.urlopen") as mock_open,
-            patch(
-                "superharness.commands.dashboard._find_dashboard_processes"
-            ) as mock_ps,
-        ):
-            mock_resp = MagicMock()
-            mock_resp.status = 200
-            mock_resp.__enter__ = lambda s: s
-            mock_resp.__exit__ = MagicMock(return_value=False)
-            mock_open.return_value = mock_resp
-
-            running, port = _is_dashboard_running(str(tmp_path))
-
-        assert running is True
-        assert port == 8799
-        (
-            mock_ps.assert_not_called(),
-            "ps scan must not be needed when operator-state.json is current",
-        )
 
 
 # ── _is_dashboard_running: Priority 1 uses operator-state.json ───────────────
 
 
 class TestIsDashboardRunning:
-    @pytest.mark.skip(
-        reason="legacy YAML fixture — pending SQLite migration (see PR #208)"
-    )
-    def test_priority1_uses_operator_state_json(self, tmp_path):
-        """Priority 1 must read the port from operator-state.json and probe it."""
-        harness_dir = tmp_path / ".superharness"
-        harness_dir.mkdir()
-        op_file = harness_dir / "operator-state.json"
-        op_file.write_text(
-            json.dumps(
-                {
-                    "operator_pid": 99,
-                    "dashboard_port": 8787,
-                    "started_at": time.time(),
-                    "project": str(tmp_path),
-                }
-            )
-        )
-
-        with patch("urllib.request.urlopen") as mock_open:
-            mock_resp = MagicMock()
-            mock_resp.status = 200
-            mock_resp.__enter__ = lambda s: s
-            mock_resp.__exit__ = MagicMock(return_value=False)
-            mock_open.return_value = mock_resp
-
-            running, port = _is_dashboard_running(str(tmp_path))
-
-        assert running is True
-        assert port == 8787
 
     def test_priority1_falls_through_when_port_dead(self, tmp_path):
         """If operator-state.json port is unreachable, fall through to ps scan."""

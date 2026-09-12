@@ -189,9 +189,6 @@ def test_enqueue_priority_default(tmp_path: Path) -> None:
     assert "priority: 2" in r.stdout
 
 
-@pytest.mark.skip(
-    reason="seed_sqlite_from_yaml always sets project_path=project_dir; needs direct SQLite seed to test mismatch scenario (see PR #208)"
-)
 def test_enqueue_validates_contract_project_path(tmp_path: Path) -> None:
     other = tmp_path / "other"
     other.mkdir()

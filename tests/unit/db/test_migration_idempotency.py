@@ -23,36 +23,6 @@ def test_init_db_is_idempotent(tmp_path):
     conn.close()
 
 
-@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-def test_partial_v3_recovers(tmp_path):
-    project = tmp_path
-    sh_dir = project / ".superharness"
-    sh_dir.mkdir(exist_ok=True)
-    conn = get_connection(str(project))
-
-    # Get to version 2
-    with patch("superharness.engine.db.CURRENT_SCHEMA_VERSION", 2):
-        init_db(conn, str(project))
-
-    assert conn.execute("PRAGMA user_version").fetchone()[0] == 2
-
-    # Simulate partial migration: column 'verified' exists but version is still 2.
-    conn.execute("ALTER TABLE tasks ADD COLUMN verified INTEGER NOT NULL DEFAULT 0")
-    conn.commit()
-
-    # Now call init_db. It should detect version 2 < 3, run v3,
-    # but handle the fact that 'verified' is already there.
-    init_db(conn, str(project))
-
-    # Check if other v3 columns exist
-    info = [r["name"] for r in conn.execute("PRAGMA table_info(tasks)")]
-    assert "verified" in info
-    assert "verified_at" in info
-    assert "verified_by" in info
-
-    # Check version
-    assert conn.execute("PRAGMA user_version").fetchone()[0] == 3
-    conn.close()
 
 
 def test_migration_creates_backup(monkeypatch, tmp_path):

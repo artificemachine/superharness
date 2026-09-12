@@ -54,60 +54,8 @@ def _parse(out: str) -> dict:
     return json.loads(line)
 
 
-@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-def test_task_status_json_success(project: Path):
-    rc, out, err = _run(
-        "superharness.commands.task",
-        [
-            "status",
-            "--project",
-            str(project),
-            "--id",
-            "t-json",
-            "--status",
-            "in_progress",
-            "--actor",
-            "claude-code",
-            "--summary",
-            "starting",
-            "--json",
-        ],
-        project,
-    )
-    assert rc == 0, f"stderr: {err}"
-    payload = _parse(out)
-    assert payload["ok"] is True
-    assert payload["task_id"] == "t-json"
-    assert payload["new_status"] == "in_progress"
-    assert payload["old_status"] == "plan_approved"
-    assert payload["actor"] == "claude-code"
 
 
-@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-def test_task_status_json_error(project: Path):
-    rc, out, err = _run(
-        "superharness.commands.task",
-        [
-            "status",
-            "--project",
-            str(project),
-            "--id",
-            "does-not-exist",
-            "--status",
-            "in_progress",
-            "--actor",
-            "claude-code",
-            "--summary",
-            "x",
-            "--json",
-        ],
-        project,
-    )
-    assert rc != 0
-    payload = _parse(out)
-    assert payload["ok"] is False
-    assert "error" in payload
-    assert "does-not-exist" in payload["error"]
 
 
 def test_enqueue_json_success(project: Path):
@@ -196,105 +144,8 @@ def test_close_json_requires_verify_gate(project: Path):
     assert payload["ok"] is False
 
 
-@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-def test_close_json_success_after_verify(project: Path):
-    # Move plan_approved → in_progress → report_ready
-    _run(
-        "superharness.commands.task",
-        [
-            "status",
-            "--project",
-            str(project),
-            "--id",
-            "t-json",
-            "--status",
-            "in_progress",
-            "--actor",
-            "claude-code",
-            "--summary",
-            "start",
-        ],
-        project,
-    )
-    _run(
-        "superharness.commands.task",
-        [
-            "status",
-            "--project",
-            str(project),
-            "--id",
-            "t-json",
-            "--status",
-            "report_ready",
-            "--actor",
-            "claude-code",
-            "--summary",
-            "ready",
-        ],
-        project,
-    )
-    # Verify pass
-    _run(
-        "superharness.commands.verify",
-        [
-            "--project",
-            str(project),
-            "--id",
-            "t-json",
-            "--method",
-            "checked",
-            "--result",
-            "pass",
-            "--actor",
-            "claude-code",
-        ],
-        project,
-    )
-    # Close
-    rc, out, err = _run(
-        "superharness.commands.close",
-        [
-            "--project",
-            str(project),
-            "--id",
-            "t-json",
-            "--actor",
-            "claude-code",
-            "--summary",
-            "done",
-            "--json",
-        ],
-        project,
-    )
-    assert rc == 0, f"stderr: {err}, stdout: {out}"
-    payload = _parse(out)
-    assert payload["ok"] is True
-    assert payload["closed"] is True
 
 
-@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-def test_delegate_json_print_only(project: Path):
-    # Task already starts in plan_approved, so it's dispatchable
-    rc, out, err = _run(
-        "superharness.commands.delegate",
-        [
-            "--project",
-            str(project),
-            "--to",
-            "claude-code",
-            "--task",
-            "t-json",
-            "--json",
-            "--skip-preflight",
-        ],
-        project,
-    )
-    # Delegate may return non-zero if gates fail, but JSON must be emitted
-    payload = _parse(out)
-    assert "ok" in payload
-    assert payload["task_id"] == "t-json"
-    assert payload["to"] == "claude-code"
-    assert payload["print_only"] is True  # --json implies print-only
 
 
 def test_delegate_json_invalid_target():

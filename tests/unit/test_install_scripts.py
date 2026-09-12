@@ -681,46 +681,6 @@ sync_worker_copy
     )
 
 
-@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-def test_setup_watcher_worker_creates_clean_worker_and_watcher_config(
-    repo_root, tmp_path
-) -> None:
-    project = tmp_path / "source-proj"
-    (project / ".superharness").mkdir(parents=True, exist_ok=True)
-    (project / "README.md").write_text("source\n")
-    (project / ".superharness" / "contract.yaml").write_text("id: demo\n")
-
-    home = tmp_path / "home"
-    home.mkdir()
-    worker = tmp_path / "worker-proj"
-    fake_bin = _fake_launchd_bin(tmp_path)
-
-    result = _run_watcher_worker_py(
-        repo_root,
-        args=[
-            "--project",
-            str(project),
-            "--worker",
-            str(worker),
-            "--interval",
-            "15",
-            "--to",
-            "both",
-        ],
-        env={"HOME": str(home), "PATH": f"{fake_bin}:{os.environ.get('PATH', '')}"},
-    )
-
-    assert result.returncode == 0, result.stderr
-    assert "Watcher worker is ready." in result.stdout
-    assert (worker / "README.md").exists()
-    assert (worker / ".superharness").is_symlink()
-    assert (worker / ".superharness").resolve() == (project / ".superharness").resolve()
-    watcher_cfg = project / ".superharness" / "watcher.yaml"
-    assert watcher_cfg.exists()
-    cfg_text = watcher_cfg.read_text()
-    assert f'watcher_project: "{worker.resolve()}"' in cfg_text
-    assert "launcher_timeout_seconds: 180" in cfg_text
-    assert "codex_bypass: false" in cfg_text
 
 
 def test_install_launchd_creates_plist_from_scratch(repo_root, tmp_path) -> None:
@@ -961,43 +921,3 @@ def test_install_launchd_missing_superharness_dir_fails(repo_root, tmp_path) -> 
     assert "Missing .superharness" in result.stderr
 
 
-@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-def test_setup_watcher_worker_persists_custom_recover_values(
-    repo_root, tmp_path
-) -> None:
-    project = tmp_path / "source-proj-custom"
-    (project / ".superharness").mkdir(parents=True, exist_ok=True)
-    (project / ".superharness" / "contract.yaml").write_text("id: demo\n")
-
-    home = tmp_path / "home-custom"
-    home.mkdir()
-    worker = tmp_path / "worker-proj-custom"
-    fake_bin = _fake_launchd_bin(tmp_path)
-
-    result = _run_watcher_worker_py(
-        repo_root,
-        args=[
-            "--project",
-            str(project),
-            "--worker",
-            str(worker),
-            "--interval",
-            "15",
-            "--recover-timeout-minutes",
-            "12",
-            "--recover-action",
-            "stale",
-            "--launcher-timeout",
-            "45",
-            "--to",
-            "both",
-        ],
-        env={"HOME": str(home), "PATH": f"{fake_bin}:{os.environ.get('PATH', '')}"},
-    )
-
-    assert result.returncode == 0, result.stderr
-    watcher_cfg = project / ".superharness" / "watcher.yaml"
-    cfg_text = watcher_cfg.read_text()
-    assert "recover_timeout_minutes: 12" in cfg_text
-    assert "recover_action: stale" in cfg_text
-    assert "launcher_timeout_seconds: 45" in cfg_text

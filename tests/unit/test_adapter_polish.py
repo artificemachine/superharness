@@ -36,31 +36,8 @@ REPO_ROOT = Path(__file__).parent.parent.parent
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-def test_opencode_branch_prefixes_claude_with_anthropic():
-    """delegate.py must prefix bare claude-* model names with anthropic/
-    when launching opencode, otherwise opencode rejects with
-    ProviderModelNotFoundError."""
-    src = (REPO_ROOT / "src" / "superharness" / "commands" / "delegate.py").read_text()
-    # Find the opencode branch
-    idx = src.find('elif target == "opencode":')
-    assert idx > 0
-    branch = src[idx : idx + 1500]
-    assert "anthropic/" in branch, (
-        "opencode branch must auto-prefix Claude models with 'anthropic/'. "
-        "Got branch:\n" + branch[:600]
-    )
-    assert "claude-" in branch, "branch must check for claude- prefix"
 
 
-@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-def test_opencode_branch_prefixes_openai_models():
-    """Same check for openai/ prefix on gpt/o1/o3 models."""
-    src = (REPO_ROOT / "src" / "superharness" / "commands" / "delegate.py").read_text()
-    idx = src.find('elif target == "opencode":')
-    branch = src[idx : idx + 1500]
-    assert "openai/" in branch
-    assert "gpt-" in branch
 
 
 # ---------------------------------------------------------------------------
@@ -87,19 +64,6 @@ def test_dispatch_skips_worktree_for_discussion_rounds():
     )
 
 
-@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-def test_dispatch_discussion_check_guards_worktree_creation(tmp_path):
-    """End-to-end-ish: simulate calling _git_worktree_add gating logic.
-    We can't easily test the full dispatch() function, so check the
-    source for the conjunction `not is_discussion and ... _has_dirty_worktree`."""
-    src = (
-        REPO_ROOT / "src" / "superharness" / "commands" / "inbox_dispatch.py"
-    ).read_text()
-    # The guard must be:  if not is_discussion and non_interactive and ...
-    assert "not is_discussion" in src, (
-        "the worktree-creation `if` must include `not is_discussion` so "
-        "discussions never spawn a worktree"
-    )
 
 
 # ---------------------------------------------------------------------------

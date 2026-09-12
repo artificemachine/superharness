@@ -93,6 +93,8 @@ This is enforced by a scope warning on `plan_approved` transitions.
 
 Releases are triggered by pushing a `v*` tag (via `/ship-release` or `git push --tags`), not by merging to `main`. A PR merge alone does not tag or publish. `publish.yml` fires on `release: published`; `release.yml` fires on `v*` tag push. Never use `git push --force` to main.
 
+**Keep the last 10 release tags.** Never delete or prune the most recent 10 `v*` tags; release history must stay recoverable. Pruning older tags needs explicit owner approval.
+
 ## CHANGELOG Policy (Strict)
 - `CHANGELOG.md` is append-only.
 - Never edit, reorder, or delete existing lines in `CHANGELOG.md`.

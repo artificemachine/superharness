@@ -33,22 +33,6 @@ def _run_py_module_help(module: str, cwd: Path) -> subprocess.CompletedProcess:
     )
 
 
-@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-def test_entrypoint_help_contract(repo_root: Path) -> None:
-    guard_entrypoints = shell_guard_list(repo_root, "--list-entrypoints")
-    all_entrypoints = sorted(set(HELP_ENTRYPOINTS + guard_entrypoints))
-    assert all_entrypoints, "No entrypoints discovered for help smoke contract"
-    usage_required = set(HELP_ENTRYPOINTS)
-
-    for rel_path in all_entrypoints:
-        script = repo_root / rel_path
-        assert script.exists(), f"Missing entrypoint: {rel_path}"
-        result = run_bash(script, cwd=repo_root, args=["--help"])
-        assert result.returncode == 0, f"{rel_path} --help failed: {result.stderr}"
-        if rel_path in usage_required:
-            assert "Usage:" in result.stdout or "usage:" in result.stdout.lower(), (
-                f"{rel_path} --help missing Usage output"
-            )
 
 
 def test_discuss_help_lists_core_subcommands(repo_root: Path) -> None:

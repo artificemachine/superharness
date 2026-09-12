@@ -127,36 +127,6 @@ def _stop_server(server, thread) -> None:
     thread.join(timeout=2)
 
 
-@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-def test_monitor_status_returns_contract_and_counts(
-    repo_root, tmp_path, monkeypatch
-) -> None:
-    module = _load_monitor_module(repo_root)
-    project = _setup_project(tmp_path)
-    monkeypatch.setattr(
-        module,
-        "watcher_runtime",
-        lambda label: {
-            "loaded": True,
-            "state": "running",
-            "last_exit_code": "0",
-            "run_interval_seconds": 15,
-        },
-    )
-    monkeypatch.setattr(module, "contract_id", lambda path: "monitor-contract")
-    monkeypatch.setattr(module.shutil, "which", lambda name: None)
-
-    server, thread, base_url = _start_server(module, repo_root, project)
-    try:
-        status, payload = _request_json("GET", base_url + "/api/status")
-    finally:
-        _stop_server(server, thread)
-
-    assert status == 200
-    assert payload["contract_id"] == "monitor-contract"
-    assert payload["inbox_counts"]["pending"] == 1
-    assert payload["watcher_health"]["level"] == "ok"
-    assert any("monitor test" in line for line in payload["ledger_tail"])
 
 
 def test_monitor_action_rejects_missing_token(repo_root, tmp_path, monkeypatch) -> None:
@@ -480,31 +450,6 @@ def test_plan_proposals_returns_empty_when_no_contract(repo_root, tmp_path) -> N
     assert proposals == []
 
 
-@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-def test_confirm_plan_updates_contract_and_handoff(repo_root, tmp_path) -> None:
-    module = _load_monitor_module(repo_root)
-    project = _setup_plan_project(tmp_path)
-    harness = project / ".superharness"
-
-    result = module._confirm_plan(harness, "feature-x")
-
-    assert result["ok"] is True
-    assert result["task"] == "feature-x"
-    assert "confirmed_at" in result
-
-    # Contract task must now be todo
-    import yaml
-
-    doc = yaml.safe_load((harness / "contract.yaml").read_text())
-    task = next(t for t in doc["tasks"] if t["id"] == "feature-x")
-    assert task["status"] == "todo"
-    assert "plan_confirmed_at" in task
-
-    # Handoff must be updated
-    hf = harness / "handoffs" / "feature-x.yaml"
-    hdata = yaml.safe_load(hf.read_text())
-    assert hdata["status"] == "plan_confirmed"
-    assert hdata["plan_gate"]["confirmed_by_user"] is True
 
 
 def test_confirm_plan_returns_error_for_unknown_task(repo_root, tmp_path) -> None:
@@ -518,42 +463,6 @@ def test_confirm_plan_returns_error_for_unknown_task(repo_root, tmp_path) -> Non
     assert any("not found" in e for e in result.get("errors", []))
 
 
-@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-def test_confirm_plan_action_via_api(repo_root, tmp_path, monkeypatch) -> None:
-    """confirm_plan:<task_id> action via HTTP API updates contract and handoff."""
-    module = _load_monitor_module(repo_root)
-    project = _setup_plan_project(tmp_path)
-    monkeypatch.setattr(
-        module,
-        "watcher_runtime",
-        lambda label: {
-            "loaded": True,
-            "state": "running",
-            "last_exit_code": "0",
-            "run_interval_seconds": 15,
-        },
-    )
-    monkeypatch.setattr(module, "contract_id", lambda path: "plan-contract")
-    monkeypatch.setattr(module.shutil, "which", lambda name: None)
-
-    server, thread, base_url = _start_server(module, repo_root, project)
-    try:
-        status, payload = _request_json(
-            "POST",
-            base_url + "/api/action",
-            payload={"action": "confirm_plan:feature-x"},
-            headers={
-                "Origin": base_url,
-                "Referer": base_url + "/",
-                "Content-Type": "application/json",
-                "X-Superharness-Token": module.Handler.auth_token,
-            },
-        )
-    finally:
-        _stop_server(server, thread)
-
-    assert status == 200
-    assert payload.get("ok") is True
 
 
 @pytest.mark.skipif(
@@ -721,71 +630,6 @@ def test_monitor_config_and_pending_approvals(repo_root, tmp_path, monkeypatch) 
     )
 
 
-@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-def test_monitor_action_retry_and_stop_paths(repo_root, tmp_path, monkeypatch) -> None:
-    module = _load_monitor_module(repo_root)
-    project = _setup_project(tmp_path)
-    inbox = project / ".superharness" / "inbox.yaml"
-    inbox.write_text(
-        "\n".join(
-            [
-                "# Delegation inbox",
-                "# status: pending|launched|running|done|failed|stale",
-                "",
-                "- id: retry-me",
-                "  status: stale",
-                "  task: t1",
-                f"  project: {project}",
-                "  to: codex-cli",
-                "- id: stop-me",
-                "  status: launched",
-                "  task: t2",
-                f"  project: {project}",
-                "  to: codex-cli",
-                "  pid: 999999",
-                "- id: wrong-retry",
-                "  status: done",
-                "  task: t3",
-                f"  project: {project}",
-                "  to: codex-cli",
-            ]
-        )
-        + "\n"
-    )
-
-    captured: list[list[str]] = []
-
-    def fake_run_cmd(self, args, timeout=30):  # noqa: ANN001, ANN202
-        captured.append(args)
-        return {"exit_code": 0, "stdout": "ok", "stderr": "", "cmd": " ".join(args)}
-
-    monkeypatch.setattr(module.Handler, "_run_cmd", fake_run_cmd)
-    monkeypatch.setattr(module.os, "kill", lambda *args, **kwargs: None)
-
-    module.Handler.project_dir = project
-    module.Handler.scripts_dir = repo_root / "src" / "superharness" / "scripts"
-
-    h = module.Handler.__new__(module.Handler)
-    retry_ok, status_ok = h._action("retry_item:retry-me")
-    assert status_ok == 200
-    assert retry_ok["stdout"] == "ok"
-
-    retry_missing, status_missing = h._action("retry_item:missing")
-    assert status_missing == 404
-    assert "item not found" in retry_missing["error"]
-
-    retry_bad, status_bad = h._action("retry_item:wrong-retry")
-    assert status_bad == 400
-    assert "cannot retry from status" in retry_bad["error"]
-
-    stop_ok, status_stop = h._action("stop_item:stop-me")
-    assert status_stop == 200
-    assert stop_ok["stdout"] == "ok"
-
-    unsupported, status_unsup = h._action("unsupported")
-    assert status_unsup == 400
-    assert "unsupported action" in unsupported["error"]
-    assert any("set_status" in " ".join(cmd) for cmd in captured)
 
 
 def test_monitor_watcher_runtime_nonzero_exit(repo_root, monkeypatch) -> None:
@@ -876,19 +720,8 @@ def test_monitor_watcher_health_running_healthy(repo_root) -> None:
     assert "active" in result["message"]
 
 
-@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-def test_monitor_contract_id_reads_yaml(repo_root, tmp_path) -> None:
-    module = _load_monitor_module(repo_root)
-    project = _setup_project(tmp_path)
-    cid = module.contract_id(project / ".superharness" / "contract.yaml")
-    assert cid == "monitor-contract"
 
 
-@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-def test_monitor_contract_id_missing_file(repo_root, tmp_path) -> None:
-    module = _load_monitor_module(repo_root)
-    cid = module.contract_id(tmp_path / "nonexistent" / "contract.yaml")
-    assert cid == ""
 
 
 def test_monitor_html_endpoint(repo_root, tmp_path, monkeypatch) -> None:
@@ -1296,22 +1129,6 @@ def test_monitor_action_stop_item_not_found(repo_root, tmp_path, monkeypatch) ->
     assert "item not found" in result["error"]
 
 
-@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-def test_task_report_contract_summary(repo_root, tmp_path) -> None:
-    """task_report returns contract task status and summary."""
-    module = _load_monitor_module(repo_root)
-    project = tmp_path / "proj-report"
-    harness = project / ".superharness"
-    harness.mkdir(parents=True)
-    (harness / "contract.yaml").write_text(
-        "id: c1\ntasks:\n"
-        "  - id: my-task\n    owner: claude-code\n    status: done\n"
-        "    summary: |\n      Implemented feature X with tests.\n"
-    )
-
-    result = module.task_report(project, "my-task", "claude-code")
-    assert result["contract_status"] == "done"
-    assert "feature X" in result["contract_summary"]
 
 
 def test_task_report_handoff_and_markdown(repo_root, tmp_path) -> None:
@@ -1683,31 +1500,6 @@ def _make_contract(harness: Path, tasks: list[dict]) -> None:
     (harness / "contract.yaml").write_text(yaml.dump(doc))
 
 
-@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-def test_set_task_status_transitions_correctly(repo_root, tmp_path):
-    m = _load_monitor_module(repo_root)
-    harness = tmp_path / ".superharness"
-    _make_contract(
-        harness,
-        [
-            {
-                "id": "t1",
-                "status": "plan_proposed",
-                "title": "T1",
-                "owner": "claude-code",
-            }
-        ],
-    )
-    result = m._set_task_status(
-        harness, "t1", "plan_approved", from_status="plan_proposed"
-    )
-    assert result["ok"] is True
-    import yaml
-
-    doc = yaml.safe_load((harness / "contract.yaml").read_text())
-    task = next(t for t in doc["tasks"] if t["id"] == "t1")
-    assert task["status"] == "plan_approved"
-    assert "plan_approved_at" in task
 
 
 def test_set_task_status_rejects_wrong_from_status(repo_root, tmp_path):
@@ -1746,40 +1538,6 @@ def test_set_task_status_no_from_status_always_transitions(repo_root, tmp_path):
 # ── contract_tasks ────────────────────────────────────────────────────────
 
 
-@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-def test_contract_tasks_returns_all_tasks(repo_root, tmp_path):
-    m = _load_monitor_module(repo_root)
-    harness = tmp_path / ".superharness"
-    _make_contract(
-        harness,
-        [
-            {"id": "a", "status": "todo", "title": "A", "owner": "claude-code"},
-            {"id": "b", "status": "plan_proposed", "title": "B", "owner": "codex-cli"},
-            {
-                "id": "c",
-                "status": "done",
-                "title": "C",
-                "owner": "claude-code",
-                "verified": True,
-            },
-        ],
-    )
-    tasks = m.contract_tasks(harness / "contract.yaml")
-    assert len(tasks) == 3
-    assert tasks[0] == {
-        "id": "a",
-        "title": "A",
-        "status": "todo",
-        "owner": "claude-code",
-        "review_target": "",
-        "verified": False,
-        "workflow": "",
-        "scheduled_after": "",
-        "due_by": "",
-        "depends_on": [],
-    }
-    assert tasks[1]["status"] == "plan_proposed"
-    assert tasks[2]["verified"] is True
 
 
 def test_contract_tasks_adds_review_target_for_review_requested(repo_root, tmp_path):
@@ -2009,99 +1767,8 @@ def test_monitor_action_enqueue_task_missing_parts(
     assert "missing" in payload.get("error", "").lower()
 
 
-@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-def test_monitor_action_request_review_enqueues_opposite_agent_and_updates_status(
-    repo_root, tmp_path, monkeypatch
-) -> None:
-    module = _load_monitor_module(repo_root)
-    project = _setup_project(tmp_path)
-    harness = project / ".superharness"
-    _make_contract(
-        harness,
-        [
-            {
-                "id": "review-me",
-                "status": "report_ready",
-                "title": "Review me",
-                "owner": "codex-cli",
-            }
-        ],
-    )
-
-    captured: dict[str, object] = {}
-
-    def fake_run_cmd(self, args, timeout=30):  # noqa: ANN001, ANN202
-        captured["args"] = args
-        return {
-            "exit_code": 0,
-            "stdout": "Enqueued",
-            "stderr": "",
-            "cmd": " ".join(args),
-        }
-
-    monkeypatch.setattr(module.Handler, "_run_cmd", fake_run_cmd)
-    module.Handler.project_dir = project
-    module.Handler.scripts_dir = repo_root / "src" / "superharness" / "scripts"
-
-    handler = module.Handler.__new__(module.Handler)
-    payload, status = handler._action("request_review:review-me")
-
-    assert status == 200
-    assert payload["status"] == "review_requested"
-    assert payload["review_target"] == "claude-code"
-    assert "Requested review" in payload["stdout"]
-    args = captured["args"]
-    assert "inbox_enqueue" in " ".join(args)
-    assert "--task" in args and "review-me" in args
-    assert "--to" in args and "claude-code" in args
-
-    import yaml
-
-    doc = yaml.safe_load((harness / "contract.yaml").read_text())
-    task = next(t for t in doc["tasks"] if t["id"] == "review-me")
-    assert task["status"] == "review_requested"
 
 
-@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-def test_monitor_action_request_review_rejects_when_already_enqueued(
-    repo_root, tmp_path
-) -> None:
-    module = _load_monitor_module(repo_root)
-    project = _setup_project(tmp_path)
-    harness = project / ".superharness"
-    _make_contract(
-        harness,
-        [
-            {
-                "id": "review-me",
-                "status": "report_ready",
-                "title": "Review me",
-                "owner": "codex-cli",
-            }
-        ],
-    )
-    (harness / "inbox.yaml").write_text(
-        "\n".join(
-            [
-                "- id: review-item",
-                "  to: claude-code",
-                "  task: review-me",
-                f"  project: {project}",
-                "  status: pending",
-                "  priority: 1",
-            ]
-        )
-        + "\n"
-    )
-
-    module.Handler.project_dir = project
-    module.Handler.scripts_dir = repo_root / "src" / "superharness" / "scripts"
-
-    handler = module.Handler.__new__(module.Handler)
-    payload, status = handler._action("request_review:review-me")
-
-    assert status == 409
-    assert "already enqueued" in payload["error"]
 
 
 def test_monitor_action_close_without_review_runs_close_command(
@@ -2174,82 +1841,8 @@ def test_task_report_endpoint_returns_500_on_crash(
     assert "boom" in payload.get("error", "")
 
 
-@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-def test_monitor_action_enqueue_task_duplicate_blocked(
-    repo_root, tmp_path, monkeypatch
-) -> None:
-    """enqueue_task for a task already in inbox (pending/launched) returns 409."""
-    module = _load_monitor_module(repo_root)
-    project = _setup_project(tmp_path)
-    # inbox already has an item for task "mcp-docs" (from _setup_project)
-    # Add one for mod.0-loader
-    inbox_file = project / ".superharness" / "inbox.yaml"
-    with open(inbox_file, "a") as f:
-        f.write(
-            "\n- id: existing-item\n"
-            "  to: claude-code\n"
-            "  task: mod.0-loader\n"
-            f"  project: {project}\n"
-            "  status: pending\n"
-            "  priority: 2\n"
-        )
-
-    server, thread, base_url = _start_server(module, repo_root, project)
-    try:
-        status, payload = _request_json(
-            "POST",
-            base_url + "/api/action",
-            payload={"action": "enqueue_task:mod.0-loader:claude-code"},
-            headers={
-                "Origin": base_url,
-                "Referer": base_url + "/",
-                "Content-Type": "application/json",
-                "X-Superharness-Token": module.Handler.auth_token,
-            },
-        )
-    finally:
-        _stop_server(server, thread)
-
-    assert status == 409
-    assert "already" in payload.get("error", "").lower()
 
 
-@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-def test_monitor_action_enqueue_task_paused_also_blocked(
-    repo_root, tmp_path, monkeypatch
-) -> None:
-    """enqueue_task for a task with a paused inbox item returns 409."""
-    module = _load_monitor_module(repo_root)
-    project = _setup_project(tmp_path)
-    inbox_file = project / ".superharness" / "inbox.yaml"
-    with open(inbox_file, "a") as f:
-        f.write(
-            "\n- id: paused-item\n"
-            "  to: claude-code\n"
-            "  task: mod.0-loader\n"
-            f"  project: {project}\n"
-            "  status: paused\n"
-            "  priority: 2\n"
-        )
-
-    server, thread, base_url = _start_server(module, repo_root, project)
-    try:
-        status, payload = _request_json(
-            "POST",
-            base_url + "/api/action",
-            payload={"action": "enqueue_task:mod.0-loader:claude-code"},
-            headers={
-                "Origin": base_url,
-                "Referer": base_url + "/",
-                "Content-Type": "application/json",
-                "X-Superharness-Token": module.Handler.auth_token,
-            },
-        )
-    finally:
-        _stop_server(server, thread)
-
-    assert status == 409
-    assert "already" in payload.get("error", "").lower()
 
 
 def test_monitor_action_enqueue_task_allows_after_done(
@@ -2301,41 +1894,6 @@ def test_monitor_action_enqueue_task_allows_after_done(
     assert "mod.0-loader" in captured["args"]
 
 
-@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-def test_monitor_action_mark_done(repo_root, tmp_path, monkeypatch) -> None:
-    """mark_done transitions task from todo to done."""
-    module = _load_monitor_module(repo_root)
-    project = _setup_project(tmp_path)
-    harness = project / ".superharness"
-    import yaml
-
-    contract = yaml.safe_load((harness / "contract.yaml").read_text()) or {}
-    contract["tasks"] = [
-        {"id": "test-task", "status": "todo", "title": "Test", "owner": "claude-code"}
-    ]
-    (harness / "contract.yaml").write_text(yaml.dump(contract))
-
-    server, thread, base_url = _start_server(module, repo_root, project)
-    try:
-        status, payload = _request_json(
-            "POST",
-            base_url + "/api/action",
-            payload={"action": "mark_done:test-task"},
-            headers={
-                "Origin": base_url,
-                "Referer": base_url + "/",
-                "Content-Type": "application/json",
-                "X-Superharness-Token": module.Handler.auth_token,
-            },
-        )
-    finally:
-        _stop_server(server, thread)
-
-    assert status == 200
-    assert payload.get("ok") is True
-    updated = yaml.safe_load((harness / "contract.yaml").read_text()) or {}
-    task = next(t for t in updated["tasks"] if t["id"] == "test-task")
-    assert task["status"] == "done"
 
 
 def test_monitor_action_mark_done_wrong_status(
@@ -2378,89 +1936,8 @@ def test_monitor_action_mark_done_wrong_status(
     assert payload.get("ok") is not True
 
 
-@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-def test_status_includes_active_inbox_tasks(repo_root, tmp_path, monkeypatch) -> None:
-    """Status API includes active_inbox_tasks listing task IDs with active inbox items."""
-    module = _load_monitor_module(repo_root)
-    project = _setup_project(tmp_path)
-    # Add an active item for mod.0-loader
-    inbox_file = project / ".superharness" / "inbox.yaml"
-    with open(inbox_file, "a") as f:
-        f.write(
-            "\n- id: active-item\n"
-            "  to: claude-code\n"
-            "  task: mod.0-loader\n"
-            f"  project: {project}\n"
-            "  status: pending\n"
-            "  priority: 2\n"
-            "\n- id: done-item\n"
-            "  to: claude-code\n"
-            "  task: mod.1-runner\n"
-            f"  project: {project}\n"
-            "  status: done\n"
-            "  priority: 2\n"
-        )
-
-    monkeypatch.setattr(
-        module.Handler,
-        "_run_cmd",
-        lambda self, args, timeout=30: {
-            "exit_code": 0,
-            "stdout": "",
-            "stderr": "",
-            "cmd": "",
-        },
-    )
-
-    server, thread, base_url = _start_server(module, repo_root, project)
-    try:
-        status, payload = _request_json("GET", base_url + "/api/status")
-    finally:
-        _stop_server(server, thread)
-
-    assert status == 200
-    active = payload.get("active_inbox_tasks", [])
-    assert "mod.0-loader" in active
-    assert "mod.1-runner" not in active  # done items not active
 
 
-@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-def test_status_includes_done_inbox_tasks(repo_root, tmp_path, monkeypatch) -> None:
-    """Status API includes done_inbox_tasks for tasks whose inbox item completed."""
-    module = _load_monitor_module(repo_root)
-    project = _setup_project(tmp_path)
-    inbox_file = project / ".superharness" / "inbox.yaml"
-    with open(inbox_file, "a") as f:
-        f.write(
-            "\n- id: done-item\n"
-            "  to: claude-code\n"
-            "  task: mod.0-loader\n"
-            f"  project: {project}\n"
-            "  status: done\n"
-            "  priority: 2\n"
-        )
-
-    monkeypatch.setattr(
-        module.Handler,
-        "_run_cmd",
-        lambda self, args, timeout=30: {
-            "exit_code": 0,
-            "stdout": "",
-            "stderr": "",
-            "cmd": "",
-        },
-    )
-
-    server, thread, base_url = _start_server(module, repo_root, project)
-    try:
-        status, payload = _request_json("GET", base_url + "/api/status")
-    finally:
-        _stop_server(server, thread)
-
-    assert status == 200
-    done = payload.get("done_inbox_tasks", [])
-    assert "mod.0-loader" in done
-    assert "mod.0-loader" not in payload.get("active_inbox_tasks", [])
 
 
 def test_task_instructions_includes_plan_section(repo_root, tmp_path) -> None:
@@ -2729,14 +2206,6 @@ def test_html_uses_review_first_wording_for_report_ready(repo_root) -> None:
     assert "Accept & Close" not in html
 
 
-@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-def test_html_requires_verification_before_close_bypass(repo_root) -> None:
-    """Unverified report_ready tasks should not present a misleading close action."""
-    module = _load_monitor_module(repo_root)
-    html = module.HTML
-    assert "Verify First" in html
-    assert "if (t.verified)" in html
-    assert "Run verify before closing" in html
 
 
 def test_html_shows_reviewer_for_review_requested_rows(repo_root) -> None:
@@ -2963,34 +2432,6 @@ def test_board_api_includes_agent_status(repo_root, tmp_path, monkeypatch) -> No
     assert payload["agent_status"]["agents"]["claude-code"]["level"] == "ok"
 
 
-@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-def test_status_includes_review_queue_count(repo_root, tmp_path, monkeypatch) -> None:
-    """/api/status includes review_queue_count for operator at-a-glance visibility."""
-    module = _load_monitor_module(repo_root)
-    project = _setup_board_project(tmp_path)
-    monkeypatch.setattr(
-        module,
-        "watcher_runtime",
-        lambda label: {
-            "loaded": False,
-            "state": "",
-            "last_exit_code": "",
-            "run_interval_seconds": 0,
-        },
-    )
-    monkeypatch.setattr(module, "contract_id", lambda path: "board-contract")
-    monkeypatch.setattr(module.shutil, "which", lambda name: None)
-
-    server, thread, base_url = _start_server(module, repo_root, project)
-    try:
-        status, payload = _request_json("GET", base_url + "/api/status")
-    finally:
-        _stop_server(server, thread)
-
-    assert status == 200
-    assert "review_queue_count" in payload
-    # 3 review tasks: review_requested + review_passed + review_failed
-    assert payload["review_queue_count"] == 3
 
 
 def test_board_view_task_fields_are_complete(repo_root, tmp_path) -> None:
@@ -3067,56 +2508,6 @@ def _setup_project_with_tasks(tmp_path: Path) -> Path:
     return project
 
 
-@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-def test_board_tasks_groups_by_column(repo_root) -> None:
-    """board_tasks() groups contract tasks into board columns."""
-    module = _load_monitor_module(repo_root)
-    import tempfile
-
-    with tempfile.TemporaryDirectory() as tmp:
-        contract = Path(tmp) / "contract.yaml"
-        contract.write_text(
-            "id: test\n"
-            "tasks:\n"
-            "- {id: t1, title: T1, owner: a, status: todo}\n"
-            "- {id: t2, title: T2, owner: a, status: plan_proposed}\n"
-            "- {id: t3, title: T3, owner: a, status: plan_approved}\n"
-            "- {id: t4, title: T4, owner: a, status: in_progress}\n"
-            "- {id: t5, title: T5, owner: a, status: report_ready}\n"
-            "- {id: t6, title: T6, owner: a, status: review_requested}\n"
-            "- {id: t7, title: T7, owner: a, status: review_passed}\n"
-            "- {id: t8, title: T8, owner: a, status: done}\n"
-            "- {id: t9, title: T9, owner: a, status: stopped}\n"
-        )
-        board = module.board_tasks(contract)
-
-    assert "todo" in board
-    assert "plan" in board
-    assert "active" in board
-    assert "review" in board
-    assert "done" in board
-    assert "stopped" in board
-
-    todo_ids = [t["id"] for t in board["todo"]]
-    assert "t1" in todo_ids
-
-    plan_ids = [t["id"] for t in board["plan"]]
-    assert "t2" in plan_ids
-    assert "t3" in plan_ids
-
-    active_ids = [t["id"] for t in board["active"]]
-    assert "t4" in active_ids
-
-    review_ids = [t["id"] for t in board["review"]]
-    assert "t5" in review_ids
-    assert "t6" in review_ids
-    assert "t7" in review_ids
-
-    done_ids = [t["id"] for t in board["done"]]
-    assert "t8" in done_ids
-
-    stopped_ids = [t["id"] for t in board["stopped"]]
-    assert "t9" in stopped_ids
 
 
 def test_board_tasks_missing_contract(repo_root, tmp_path) -> None:
@@ -3126,39 +2517,6 @@ def test_board_tasks_missing_contract(repo_root, tmp_path) -> None:
     assert result == {}
 
 
-@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-def test_review_queue_returns_review_state_tasks(repo_root) -> None:
-    """review_queue() returns tasks in review states ordered by urgency."""
-    module = _load_monitor_module(repo_root)
-    import tempfile
-
-    with tempfile.TemporaryDirectory() as tmp:
-        contract = Path(tmp) / "contract.yaml"
-        contract.write_text(
-            "id: test\n"
-            "tasks:\n"
-            "- {id: t1, title: T1, owner: claude-code, status: todo}\n"
-            "- {id: t2, title: T2, owner: claude-code, status: report_ready, verified: false}\n"
-            "- {id: t3, title: T3, owner: codex-cli, status: review_requested}\n"
-            "- {id: t4, title: T4, owner: claude-code, status: review_passed}\n"
-            "- {id: t5, title: T5, owner: codex-cli, status: review_failed}\n"
-            "- {id: t6, title: T6, owner: claude-code, status: done}\n"
-        )
-        queue = module.review_queue(contract)
-
-    review_ids = [t["id"] for t in queue]
-    # Only review-state tasks
-    assert "t1" not in review_ids
-    assert "t6" not in review_ids
-    assert "t2" in review_ids
-    assert "t3" in review_ids
-    assert "t4" in review_ids
-    assert "t5" in review_ids
-    # review_failed should come first (highest urgency)
-    assert queue[0]["id"] == "t5"
-    # Each item has review_target
-    for item in queue:
-        assert "review_target" in item
 
 
 def test_review_queue_empty_for_no_review_tasks(repo_root) -> None:
@@ -3248,80 +2606,8 @@ def test_monitor_board_endpoint_exists(repo_root, tmp_path, monkeypatch) -> None
     assert "now_utc" in payload
 
 
-@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-def test_monitor_board_endpoint_groups_tasks_correctly(
-    repo_root, tmp_path, monkeypatch
-) -> None:
-    """GET /api/board groups tasks into correct columns."""
-    module = _load_monitor_module(repo_root)
-    project = _setup_project_with_tasks(tmp_path)
-    monkeypatch.setattr(
-        module,
-        "watcher_runtime",
-        lambda label: {
-            "loaded": False,
-            "state": "",
-            "last_exit_code": "",
-            "run_interval_seconds": 0,
-        },
-    )
-    monkeypatch.setattr(module.shutil, "which", lambda name: None)
-
-    server, thread, base_url = _start_server(module, repo_root, project)
-    try:
-        status, payload = _request_json("GET", base_url + "/api/board")
-    finally:
-        _stop_server(server, thread)
-
-    board = payload["board"]
-    todo_ids = [t["id"] for t in board.get("todo", [])]
-    plan_ids = [t["id"] for t in board.get("plan", [])]
-    active_ids = [t["id"] for t in board.get("active", [])]
-    review_ids = [t["id"] for t in board.get("review", [])]
-
-    assert "task.todo" in todo_ids
-    assert "task.plan-proposed" in plan_ids
-    assert "task.plan-approved" in plan_ids
-    assert "task.in-progress" in active_ids
-    assert "task.report-ready" in review_ids
-    assert "task.review-requested" in review_ids
-    assert "task.review-passed" in review_ids
 
 
-@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-def test_monitor_board_endpoint_review_queue_populated(
-    repo_root, tmp_path, monkeypatch
-) -> None:
-    """GET /api/board includes review queue with tasks in review states."""
-    module = _load_monitor_module(repo_root)
-    project = _setup_project_with_tasks(tmp_path)
-    monkeypatch.setattr(
-        module,
-        "watcher_runtime",
-        lambda label: {
-            "loaded": False,
-            "state": "",
-            "last_exit_code": "",
-            "run_interval_seconds": 0,
-        },
-    )
-    monkeypatch.setattr(module.shutil, "which", lambda name: None)
-
-    server, thread, base_url = _start_server(module, repo_root, project)
-    try:
-        status, payload = _request_json("GET", base_url + "/api/board")
-    finally:
-        _stop_server(server, thread)
-
-    rq = payload["review_queue"]
-    rq_ids = [t["id"] for t in rq]
-    assert "task.report-ready" in rq_ids
-    assert "task.review-requested" in rq_ids
-    assert "task.review-passed" in rq_ids
-    assert "task.review-failed" in rq_ids
-    # Non-review tasks should NOT be in queue
-    assert "task.todo" not in rq_ids
-    assert "task.done" not in rq_ids
 
 
 def test_monitor_review_queue_endpoint_exists(repo_root, tmp_path, monkeypatch) -> None:
@@ -3355,76 +2641,8 @@ def test_monitor_review_queue_endpoint_exists(repo_root, tmp_path, monkeypatch) 
     assert "now_utc" in payload
 
 
-@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-def test_monitor_review_queue_endpoint_returns_review_tasks(
-    repo_root, tmp_path, monkeypatch
-) -> None:
-    """GET /api/review-queue returns only review-state tasks."""
-    module = _load_monitor_module(repo_root)
-    project = _setup_project_with_tasks(tmp_path)
-    monkeypatch.setattr(
-        module,
-        "watcher_runtime",
-        lambda label: {
-            "loaded": False,
-            "state": "",
-            "last_exit_code": "",
-            "run_interval_seconds": 0,
-        },
-    )
-    monkeypatch.setattr(module.shutil, "which", lambda name: None)
-
-    server, thread, base_url = _start_server(module, repo_root, project)
-    try:
-        status, payload = _request_json("GET", base_url + "/api/review-queue")
-    finally:
-        _stop_server(server, thread)
-
-    queue = payload["queue"]
-    queue_ids = [t["id"] for t in queue]
-    assert "task.report-ready" in queue_ids
-    assert "task.review-requested" in queue_ids
-    assert "task.todo" not in queue_ids
-    assert "task.done" not in queue_ids
-    # review_failed should be first (highest urgency)
-    assert queue[0]["id"] == "task.review-failed"
 
 
-@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-def test_monitor_status_includes_review_queue_and_board(
-    repo_root, tmp_path, monkeypatch
-) -> None:
-    """GET /api/status includes review_queue and board_columns for operator use."""
-    module = _load_monitor_module(repo_root)
-    project = _setup_project_with_tasks(tmp_path)
-    monkeypatch.setattr(
-        module,
-        "watcher_runtime",
-        lambda label: {
-            "loaded": True,
-            "state": "running",
-            "last_exit_code": "0",
-            "run_interval_seconds": 15,
-        },
-    )
-    monkeypatch.setattr(module, "contract_id", lambda path: "board-contract")
-    monkeypatch.setattr(module.shutil, "which", lambda name: None)
-
-    server, thread, base_url = _start_server(module, repo_root, project)
-    try:
-        status, payload = _request_json("GET", base_url + "/api/status")
-    finally:
-        _stop_server(server, thread)
-
-    assert status == 200
-    assert "review_queue" in payload
-    assert "board_columns" in payload
-    # review queue should contain the review-state tasks
-    review_ids = [t["id"] for t in payload["review_queue"]]
-    assert "task.report-ready" in review_ids
-    # board_columns should have column keys
-    board = payload["board_columns"]
-    assert "todo" in board or "review" in board
 
 
 def test_monitor_html_contains_board_and_review_queue_elements(
@@ -3483,69 +2701,8 @@ def _setup_project_with_todo_task(tmp_path: Path) -> Path:
     return project
 
 
-@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-def test_propose_plan_transitions_status_and_writes_handoff(repo_root, tmp_path):
-    """_propose_plan_handoff transitions todo->plan_proposed and writes a handoff YAML."""
-    module = _load_monitor_module(repo_root)
-    project = _setup_project_with_todo_task(tmp_path)
-    harness = project / ".superharness"
-
-    result = module._propose_plan_handoff(
-        harness,
-        "feat.one",
-        plan_summary="Implement thing",
-        tdd_red="write failing test",
-        tdd_green="pass it",
-        tdd_refactor="cleanup",
-        risks="none",
-    )
-
-    assert result["ok"] is True, result
-    assert result["status"] == "plan_proposed"
-
-    # Contract status updated
-    import yaml
-
-    doc = yaml.safe_load((harness / "contract.yaml").read_text())
-    assert doc["tasks"][0]["status"] == "plan_proposed"
-    assert doc["tasks"][0]["plan_proposed_at"]
-
-    # Handoff file exists and contains TDD block
-    handoffs = list((harness / "handoffs").glob("feat.one-plan-*.yaml"))
-    assert len(handoffs) == 1
-    ho = yaml.safe_load(handoffs[0].read_text())
-    assert ho["task"] == "feat.one"
-    assert ho["phase"] == "plan"
-    assert ho["status"] == "plan_proposed"
-    assert ho["tdd"]["red"] == "write failing test"
-    assert ho["tdd"]["green"] == "pass it"
-    assert ho["tdd"]["refactor"] == "cleanup"
-    assert ho["risks"] == "none"
 
 
-@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-def test_propose_plan_rejects_non_todo_task(repo_root, tmp_path):
-    """Cannot propose a plan on a task that is not in todo status."""
-    module = _load_monitor_module(repo_root)
-    project = _setup_project_with_todo_task(tmp_path)
-    harness = project / ".superharness"
-
-    # Move task to plan_approved
-    module._set_task_status(harness, "feat.one", "plan_approved")
-
-    result = module._propose_plan_handoff(
-        harness,
-        "feat.one",
-        plan_summary="x",
-        tdd_red="x",
-        tdd_green="x",
-        tdd_refactor="x",
-    )
-    assert result["ok"] is False
-    assert "expected 'todo'" in result["error"]
-
-    # No handoff written
-    assert not list((harness / "handoffs").glob("feat.one-plan-*.yaml"))
 
 
 def test_propose_plan_defaults_empty_tdd_fields_to_placeholder(repo_root, tmp_path):

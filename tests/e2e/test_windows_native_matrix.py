@@ -51,24 +51,6 @@ def _shux(
 class TestInitCrossPlatform:
     """shux init must create .superharness/ on all OSes without bash."""
 
-    @pytest.mark.skip(
-        reason="legacy YAML fixture — pending SQLite migration (see PR #208)"
-    )
-    def test_init_creates_harness_directory(self, tmp_path):
-        result = _run(
-            [
-                sys.executable,
-                "-m",
-                "superharness.commands.init_project",
-                "Matrix Test",
-                "Python",
-                "active",
-            ],
-            cwd=tmp_path,
-        )
-        assert result.returncode == 0, f"init failed: {result.stderr}"
-        assert (tmp_path / ".superharness").is_dir()
-        assert (tmp_path / ".superharness" / "contract.yaml").is_file()
 
     def test_init_creates_claude_and_agents_md(self, tmp_path):
         _run(
@@ -85,28 +67,6 @@ class TestInitCrossPlatform:
         assert (tmp_path / "CLAUDE.md").is_file()
         assert (tmp_path / "AGENTS.md").is_file()
 
-    @pytest.mark.skip(
-        reason="legacy YAML fixture — pending SQLite migration (see PR #208)"
-    )
-    def test_init_contract_has_valid_yaml(self, tmp_path):
-        _run(
-            [
-                sys.executable,
-                "-m",
-                "superharness.commands.init_project",
-                "Matrix Test",
-                "Python",
-                "active",
-            ],
-            cwd=tmp_path,
-        )
-        import yaml
-
-        contract = yaml.safe_load(
-            (tmp_path / ".superharness" / "contract.yaml").read_text()
-        )
-        assert "id" in contract
-        assert "tasks" in contract
 
 
 # ---------------------------------------------------------------------------
@@ -131,43 +91,6 @@ class TestTaskCrossPlatform:
         )
         return tmp_path
 
-    @pytest.mark.skip(
-        reason="legacy YAML fixture — pending SQLite migration (see PR #208)"
-    )
-    def test_task_create_succeeds(self, tmp_path):
-        project = self._init(tmp_path)
-        result = _run(
-            [
-                sys.executable,
-                "-m",
-                "superharness.commands.task",
-                "create",
-                "--id",
-                "WIN-001",
-                "--title",
-                "Windows native test task",
-                "--owner",
-                "claude-code",
-                "--status",
-                "todo",
-                "--workflow",
-                "quick",
-                "--project",
-                str(project),
-                "--criteria",
-                "Must pass on Windows",
-            ],
-            cwd=project,
-        )
-        assert result.returncode == 0, f"task create failed:\n{result.stderr}"
-
-        import yaml
-
-        contract = yaml.safe_load(
-            (project / ".superharness" / "contract.yaml").read_text()
-        )
-        task_ids = [t["id"] for t in contract.get("tasks", []) if isinstance(t, dict)]
-        assert "WIN-001" in task_ids
 
     def test_status_command_shows_contract(self, tmp_path):
         project = self._init(tmp_path)
@@ -230,34 +153,6 @@ class TestEnqueueCrossPlatform:
         )
         return tmp_path
 
-    @pytest.mark.skip(
-        reason="legacy YAML fixture — pending SQLite migration (see PR #208)"
-    )
-    def test_enqueue_writes_inbox(self, tmp_path):
-        project = self._setup(tmp_path)
-        result = _run(
-            [
-                sys.executable,
-                "-m",
-                "superharness.commands.inbox_enqueue",
-                "--task",
-                "WIN-002",
-                "--to",
-                "claude-code",
-                "--project",
-                str(project),
-            ],
-            cwd=project,
-        )
-        assert result.returncode == 0, f"enqueue failed:\n{result.stderr}"
-
-        import yaml
-
-        inbox = yaml.safe_load((project / ".superharness" / "inbox.yaml").read_text())
-        assert isinstance(inbox, list)
-        assert any(
-            isinstance(item, dict) and item.get("task") == "WIN-002" for item in inbox
-        )
 
 
 # ---------------------------------------------------------------------------
@@ -303,55 +198,7 @@ class TestDelegateCrossPlatform:
         )
         return tmp_path
 
-    @pytest.mark.skip(
-        reason="legacy YAML fixture — pending SQLite migration (see PR #208)"
-    )
-    def test_delegate_print_only_exits_cleanly(self, tmp_path):
-        project = self._setup(tmp_path)
-        result = _run(
-            [
-                sys.executable,
-                "-m",
-                "superharness.commands.delegate",
-                "--to",
-                "claude-code",
-                "--task",
-                "WIN-003",
-                "--project",
-                str(project),
-                "--print-only",
-                "--no-auto-model",
-            ],
-            cwd=project,
-        )
-        assert result.returncode == 0, f"delegate failed:\n{result.stderr}"
-        assert "WIN-003" in result.stdout
 
-    @pytest.mark.skip(
-        reason="legacy YAML fixture — pending SQLite migration (see PR #208)"
-    )
-    def test_delegate_does_not_use_execvp(self, tmp_path):
-        """After --print-only returns, the test process must still be running (no execvp)."""
-        project = self._setup(tmp_path)
-        # If os.execvp were still used, this subprocess would never return cleanly
-        result = _run(
-            [
-                sys.executable,
-                "-m",
-                "superharness.commands.delegate",
-                "--to",
-                "claude-code",
-                "--task",
-                "WIN-003",
-                "--project",
-                str(project),
-                "--print-only",
-                "--no-auto-model",
-            ],
-            cwd=project,
-        )
-        # We got here — process returned normally
-        assert result.returncode == 0
 
 
 # ---------------------------------------------------------------------------

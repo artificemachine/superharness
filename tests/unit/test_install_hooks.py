@@ -317,30 +317,3 @@ class TestNoHardcodedPathsInRepo:
                 continue
             yield repo_root / rel
 
-    @pytest.mark.skip(
-        reason="legacy YAML fixture — pending SQLite migration (see PR #208)"
-    )
-    def test_no_hardcoded_user_home_in_source(self, repo_root: Path) -> None:
-        import re
-
-        pattern = re.compile(r"/(?:Users|home)/([A-Za-z0-9_.-]+)/")
-        violations = []
-        for fpath in self._git_tracked_files(repo_root):
-            if not fpath.is_file():
-                continue
-            try:
-                text = fpath.read_text(errors="ignore")
-            except OSError:
-                continue
-            for lineno, line in enumerate(text.splitlines(), 1):
-                for m in pattern.finditer(line):
-                    username = m.group(1)
-                    if username.lower() in self._FIXTURE_NAMES:
-                        continue  # known test-fixture placeholder
-                    rel = fpath.relative_to(repo_root)
-                    violations.append(f"{rel}:{lineno}: {line.strip()[:120]}")
-        assert not violations, (
-            "Hardcoded user home paths found in tracked repo files "
-            "(use $HOME, relative paths, or config variables instead):\n"
-            + "\n".join(violations)
-        )

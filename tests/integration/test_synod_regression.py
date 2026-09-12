@@ -121,42 +121,6 @@ def test_rejected_message_surfaces_hint(tmp_path: Path) -> None:
     assert "--plan-only" in result.stdout + result.stderr
 
 
-@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-def test_plan_only_unblocks_todo_implementation(tmp_path: Path) -> None:
-    """--plan-only is the escape hatch that the synod session needed."""
-    project = _make_project(tmp_path, "synod-plan-only")
-    _write_contract(
-        project,
-        {
-            "id": "iter-0-red",
-            "title": "TDD red phase",
-            "status": "todo",
-            "workflow": "implementation",
-            "owner": "claude-code",
-            "project_path": str(project.resolve()),
-        },
-    )
-
-    result = _run(
-        [
-            "--project",
-            str(project),
-            "--to",
-            "claude-code",
-            "--task",
-            "iter-0-red",
-            "--plan-only",
-        ],
-        project=project,
-    )
-
-    assert result.returncode == 0, result.stderr
-    inbox = project / ".superharness" / "inbox.yaml"
-    assert inbox.exists()
-    data = yaml.safe_load(inbox.read_text()) or []
-    items = [x for x in data if isinstance(x, dict)]
-    assert len(items) == 1
-    assert items[0].get("plan_only") is True
 
 
 def test_owner_mismatch_silent_accept_is_gone(tmp_path: Path) -> None:

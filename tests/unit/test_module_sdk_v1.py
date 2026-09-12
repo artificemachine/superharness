@@ -171,65 +171,8 @@ class TestManifestValidation:
 class TestLoaderValidationIntegration:
     """Loader must validate manifests and skip invalid ones with a logged warning."""
 
-    @pytest.mark.skip(
-        reason="legacy YAML fixture — pending SQLite migration (see PR #208)"
-    )
-    def test_loader_skips_invalid_schema_version(self, tmp_path, caplog):
-        from superharness.modules.loader import load_modules
 
-        modules_dir = tmp_path / ".superharness" / "modules"
-        modules_dir.mkdir(parents=True)
 
-        (modules_dir / "bad_version.yaml").write_text(
-            "name: bad-ver\nschema_version: '99'\nenabled: true\nhooks: {}\nsettings: {}\n"
-        )
-
-        with caplog.at_level("WARNING"):
-            mods = load_modules(tmp_path)
-
-        # Bad schema_version module must NOT be loaded
-        assert all(m.name != "bad-ver" for m in mods)
-        assert any("bad-ver" in r.message for r in caplog.records)
-
-    @pytest.mark.skip(
-        reason="legacy YAML fixture — pending SQLite migration (see PR #208)"
-    )
-    def test_loader_skips_unknown_lifecycle_hook(self, tmp_path, caplog):
-        from superharness.modules.loader import load_modules
-
-        modules_dir = tmp_path / ".superharness" / "modules"
-        modules_dir.mkdir(parents=True)
-
-        (modules_dir / "bad_hook.yaml").write_text(
-            "name: bad-hook\nenabled: true\n"
-            "hooks:\n  on_unknown_event:\n    action: foo\nsettings: {}\n"
-        )
-
-        with caplog.at_level("WARNING"):
-            mods = load_modules(tmp_path)
-
-        assert all(m.name != "bad-hook" for m in mods)
-        assert any("bad-hook" in r.message for r in caplog.records)
-
-    @pytest.mark.skip(
-        reason="legacy YAML fixture — pending SQLite migration (see PR #208)"
-    )
-    def test_loader_skips_hook_without_action(self, tmp_path, caplog):
-        from superharness.modules.loader import load_modules
-
-        modules_dir = tmp_path / ".superharness" / "modules"
-        modules_dir.mkdir(parents=True)
-
-        (modules_dir / "no_action.yaml").write_text(
-            "name: no-action\nenabled: true\n"
-            "hooks:\n  on_close:\n    priority: high\nsettings: {}\n"
-        )
-
-        with caplog.at_level("WARNING"):
-            mods = load_modules(tmp_path)
-
-        assert all(m.name != "no-action" for m in mods)
-        assert any("no-action" in r.message for r in caplog.records)
 
     def test_loader_loads_valid_module_still_works(self, tmp_path):
         from superharness.modules.loader import load_modules

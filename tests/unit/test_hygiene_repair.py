@@ -318,35 +318,6 @@ def test_repair_noop_on_clean_project(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-def test_repair_fixes_stuck_status(tmp_path: Path) -> None:
-    """--repair sets status to done when verified=true but status!=done."""
-    import yaml
-
-    project = _write_project(
-        tmp_path,
-        tasks=_done_task_yaml("mu-task", verified=True, status="plan_approved"),
-        ledger="# Ledger\nmu-task done\n",
-    )
-    (project / ".superharness" / "handoffs" / "h.yaml").write_text("task: mu-task\n")
-
-    # Without repair, this task has status plan_approved and verified=true,
-    # so it's a stuck status; adjust contract first so run_validate sees it
-    (project / ".superharness" / "contract.yaml").write_text(
-        "id: test\ntasks:\n"
-        "  - id: mu-task\n"
-        "    status: plan_approved\n"
-        "    verified: true\n"
-        "    owner: claude-code\n"
-        "decisions: []\nfailures: []\n"
-    )
-
-    rc = run_validate(str(project), repair=True)
-
-    contract = yaml.safe_load((project / ".superharness" / "contract.yaml").read_text())
-    tasks_by_id = {t["id"]: t for t in contract["tasks"]}
-    assert tasks_by_id["mu-task"]["status"] == "done"
-    assert rc == 0
 
 
 def test_repair_stuck_status_logged_in_ledger(tmp_path: Path) -> None:

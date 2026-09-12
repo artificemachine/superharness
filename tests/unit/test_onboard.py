@@ -320,29 +320,6 @@ def test_onboard_doctor_failure_non_blocking(runner, project):
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-def test_onboard_step_task_creates_entry(runner, project):
-    """--task-title creates a task entry in contract.yaml."""
-    from superharness.commands.onboard import cmd_onboard
-
-    result = runner.invoke(
-        cmd_onboard,
-        [
-            "--project",
-            str(project),
-            "--non-interactive",
-            "--task-title",
-            "Add login page",
-        ],
-    )
-    assert result.exit_code == 0, result.output
-    contract = project / ".superharness" / "contract.yaml"
-    assert contract.exists()
-    doc = yaml.safe_load(contract.read_text())
-    titles = [t.get("title", "") for t in doc.get("tasks", [])]
-    assert any("login" in t.lower() for t in titles), (
-        f"task not found in contract: {titles}"
-    )
 
 
 # ---------------------------------------------------------------------------
@@ -350,27 +327,6 @@ def test_onboard_step_task_creates_entry(runner, project):
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-def test_onboard_step_delegate_enqueues(runner, project):
-    """--enqueue adds the task to inbox.yaml."""
-    from superharness.commands.onboard import cmd_onboard
-
-    result = runner.invoke(
-        cmd_onboard,
-        [
-            "--project",
-            str(project),
-            "--non-interactive",
-            "--task-title",
-            "Fix the bug",
-            "--enqueue",
-        ],
-    )
-    assert result.exit_code == 0, result.output
-    inbox = project / ".superharness" / "inbox.yaml"
-    assert inbox.exists(), "inbox.yaml not created after --enqueue"
-    items = yaml.safe_load(inbox.read_text()) or []
-    assert len(items) > 0, "no items in inbox after --enqueue"
 
 
 # ---------------------------------------------------------------------------

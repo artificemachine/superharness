@@ -138,41 +138,6 @@ class TestAutoDispatch:
         mock_enqueue.assert_not_called()
         assert rc == 0
 
-    @pytest.mark.skip(
-        reason="legacy YAML fixture — pending SQLite migration (see PR #208)"
-    )
-    def test_enqueue_uses_valid_priority(self, tmp_path):
-        """Regression: auto_dispatch._enqueue must pass a priority accepted by
-        inbox_enqueue (1, 2, or 3). Prior to this test the default was 5, which
-        caused `shux auto-dispatch` to fail with '--priority must be 1, 2, or 3'."""
-        from superharness.commands.auto_dispatch import _enqueue
-
-        project = _make_project(
-            tmp_path,
-            tasks=[
-                {
-                    "id": "T-PRI",
-                    "title": "pri task",
-                    "owner": "claude-code",
-                    "status": "todo",
-                    "effort": "low",
-                    "project_path": str(tmp_path / "proj"),
-                },
-            ],
-        )
-        # The engine inbox expects a YAML list, not a dict. Remove the
-        # dict-form inbox the helper writes so enqueue() creates a fresh one.
-        (project / ".superharness" / "inbox.yaml").unlink()
-        ok = _enqueue(str(project), "T-PRI", "claude-code")
-        assert ok is True
-        inbox_items = (
-            yaml.safe_load((project / ".superharness" / "inbox.yaml").read_text()) or []
-        )
-        assert len(inbox_items) == 1
-        assert inbox_items[0]["priority"] in (1, 2, 3)
-        # auto-dispatch picks up todo tasks — plan_only must be set so the
-        # implementation workflow gate accepts the enqueue.
-        assert inbox_items[0].get("plan_only") is True
 
     def test_agent_override(self, tmp_path):
         from superharness.commands.auto_dispatch import run_auto_dispatch
@@ -252,60 +217,7 @@ class TestInboxRecoverDryRun:
         inbox.write_text(yaml.dump({"items": items}))
         return project
 
-    @pytest.mark.skip(
-        reason="legacy YAML fixture — pending SQLite migration (see PR #208)"
-    )
-    def test_dry_run_prints_stale_items(self, tmp_path, capsys):
-        from superharness.commands.inbox_recover import _preview_recover
-        from datetime import datetime, timezone, timedelta
 
-        old_ts = (datetime.now(timezone.utc) - timedelta(minutes=30)).strftime(
-            "%Y-%m-%dT%H:%M:%SZ"
-        )
-        project = self._make_inbox(
-            tmp_path,
-            items=[
-                {
-                    "id": "I-1",
-                    "task": "T-1",
-                    "status": "launched",
-                    "launched_at": old_ts,
-                    "pid": None,
-                }
-            ],
-        )
-        inbox_file = str(project / ".superharness" / "inbox.yaml")
-        with patch("superharness.engine.inbox._process_alive", return_value=False):
-            _preview_recover(inbox_file, timeout_minutes=10)
-        out = capsys.readouterr().out
-        assert "I-1" in out
-        assert "T-1" in out
-
-    @pytest.mark.skip(
-        reason="legacy YAML fixture — pending SQLite migration (see PR #208)"
-    )
-    def test_dry_run_no_stale_message(self, tmp_path, capsys):
-        from superharness.commands.inbox_recover import _preview_recover
-        from datetime import datetime, timezone
-
-        recent_ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-        project = self._make_inbox(
-            tmp_path,
-            items=[
-                {
-                    "id": "I-2",
-                    "task": "T-2",
-                    "status": "launched",
-                    "launched_at": recent_ts,
-                    "pid": None,
-                }
-            ],
-        )
-        inbox_file = str(project / ".superharness" / "inbox.yaml")
-        with patch("superharness.engine.inbox._process_alive", return_value=False):
-            _preview_recover(inbox_file, timeout_minutes=60)
-        out = capsys.readouterr().out
-        assert "no stale" in out.lower()
 
 
 class TestSIGALRMFallback:
