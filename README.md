@@ -52,7 +52,7 @@ Gives you `/shux` (raw CLI passthrough), `/shux-contract`, `/shux-status`, `/shu
 - **Typed telemetry events**: dedicated events table (migration v31) with a background emitter and DB-heartbeat liveness (`is_fresh`)
 - **Dependency hygiene**: CVE floors on `starlette`/`python-multipart`, a previously-undeclared `requests` dependency now declared, and `.github/dependabot.yml` for ongoing drift
 - **Dashboard/CLI DB-path fix**: `dashboard-ui.py` now resolves `state.db` through the same XDG-aware `get_connection` as the CLI, closing a silent divergence bug between the two
-- **5,000+ tests** preventing regressions across lifecycle, dispatch, and protocol state
+- **5,700+ tests** preventing regressions across lifecycle, dispatch, and protocol state
 
 ---
 
@@ -411,7 +411,7 @@ See [ATTRIBUTIONS.md](ATTRIBUTIONS.md) for the full extract list — what each s
 
 ## Current Version
 
-Current version: see the [PyPI badge](https://pypi.org/project/superharness/) above — 5,000+ tests, harness adapter registry, transcript tailing, dual watchdog, typed telemetry events.
+Current version: see the [PyPI badge](https://pypi.org/project/superharness/) above — 5,700+ tests, harness adapter registry, transcript tailing, dual watchdog, typed telemetry events.
 
 See [CHANGELOG.md](CHANGELOG.md) for the full iteration log.
 
