@@ -87,6 +87,7 @@ todo → plan_proposed → plan_approved → in_progress → report_ready → do
 
 ## 4. Rules
 
+- Keep the last 10 release tags — never delete or prune the most recent 10 `v*` tags.
 - Never commit directly to `main`. Create a feature branch: `git checkout -b feat/<id>`.
 - Never run `git push` without `ALLOW_PUSH=1`.
 - Never close a task — only the operator runs `superharness close`.

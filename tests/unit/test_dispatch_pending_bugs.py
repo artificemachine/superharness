@@ -95,48 +95,6 @@ def _make_project(tmp_path: Path, *, task_id: str = "test-task") -> Path:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-def test_inbox_next_pending_cli_returns_item(tmp_path):
-    """python -m superharness.engine.inbox next_pending must output JSON for a
-    pending item, not silently exit with empty stdout."""
-    _make_project(tmp_path)
-    inbox_file = tmp_path / ".superharness" / "inbox.yaml"
-    inbox_file.write_text(
-        "# Delegation inbox\n"
-        "- id: auto-test01\n"
-        "  task: test-task\n"
-        "  to: claude-code\n"
-        "  status: pending\n"
-        "  priority: 2\n"
-        "  retry_count: 0\n"
-        "  max_retries: 3\n"
-        "  created_at: '2026-01-01T00:00:00Z'\n"
-        f"  project: '{tmp_path.as_posix()}'\n"
-        "  plan_only: false\n"
-    )
-
-    r = subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "superharness.engine.inbox",
-            "next_pending",
-            "--file",
-            str(inbox_file),
-            "--to",
-            "claude-code",
-        ],
-        capture_output=True,
-        text=True,
-        env=_env(),
-        check=False,
-    )
-    assert r.returncode == 0, f"stderr: {r.stderr}"
-    assert r.stdout.strip() != "", (
-        "next_pending returned empty output — items are invisible to dispatch"
-    )
-    item = json.loads(r.stdout)
-    assert item.get("task") == "test-task" or item.get("task_id") == "test-task"
 
 
 # ---------------------------------------------------------------------------
@@ -265,29 +223,3 @@ def test_dispatch_passes_project_dir_to_is_sqlite_only(tmp_path, monkeypatch):
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-def test_auto_dispatch_imports_uuid_and_passes_project_dir(tmp_path):
-    """auto_dispatch.py must import uuid (for item_id generation) and pass
-    project_dir to classify_task (so the router can load project-specific
-    model maps)."""
-    from superharness.commands.auto_dispatch import _classify_task, _enqueue
-    from unittest.mock import patch
-
-    # 1. Verify uuid import (by attempting to enqueue)
-    _make_project(tmp_path, task_id="task-uuid")
-    with patch("superharness.engine.inbox_dao.enqueue") as mock_enqueue:
-        # This calls uuid.uuid4(). If uuid is not imported, it raises NameError.
-        _enqueue(str(tmp_path), "task-uuid", "claude-code")
-        assert mock_enqueue.called
-
-    # 2. Verify project_dir pass to classify_task
-    task = {"title": "Test", "id": "t1"}
-    with patch("superharness.engine.model_router.classify_task") as mock_classify:
-        mock_classify.return_value = ("mini", "low")
-        _classify_task(task, str(tmp_path))
-        # Ensure project_dir was passed as keyword arg
-        kwargs = mock_classify.call_args.kwargs
-        assert kwargs.get("project_dir") == str(tmp_path), (
-            "auto_dispatch._classify_task must pass project_dir to classify_task "
-            "to support project-specific model mappings."
-        )

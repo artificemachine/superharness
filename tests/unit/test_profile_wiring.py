@@ -107,66 +107,8 @@ def _make_path(bin_dir: Path) -> str:
 # ── delegate.sh: autonomy → env vars ─────────────────────────────────────────
 
 
-@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-def test_delegate_autonomous_sets_both_env_vars(repo_root, tmp_path) -> None:
-    """autonomy=autonomous sets SUPERHARNESS_CONFIRM_NON_INTERACTIVE and CONFIRM_SKIP_PERMISSIONS."""
-    project = _setup_project(tmp_path)
-    _write_profile(project / ".superharness", autonomy="autonomous")
-    bin_dir = _fake_bin(tmp_path, "codex")
-
-    result = _run_delegate_py(
-        repo_root,
-        args=[
-            "--to",
-            "codex-cli",
-            "--project",
-            str(project),
-            "--task",
-            "task-1",
-            "--non-interactive",
-        ],
-        env={
-            "PATH": _make_path(bin_dir),
-            # Clear these so profile controls them
-            "SUPERHARNESS_CONFIRM_NON_INTERACTIVE": None,
-            "SUPERHARNESS_CONFIRM_SKIP_PERMISSIONS": None,
-        },
-    )
-    # autonomous sets CONFIRM_NON_INTERACTIVE=YES, so non-interactive proceeds
-    # (codex runs without the "refusing" error)
-    assert result.returncode == 0, f"Expected success, stderr:\n{result.stderr}"
 
 
-@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-def test_delegate_supervised_sets_non_interactive_only(repo_root, tmp_path) -> None:
-    """autonomy=supervised only sets SUPERHARNESS_CONFIRM_NON_INTERACTIVE (not skip-permissions)."""
-    project = _setup_project(tmp_path)
-    _write_profile(project / ".superharness", autonomy="supervised")
-    bin_dir = _fake_bin(tmp_path, "claude")
-
-    result = _run_delegate_py(
-        repo_root,
-        args=[
-            "--to",
-            "claude-code",
-            "--project",
-            str(project),
-            "--task",
-            "task-1",
-            "--non-interactive",
-            "--via",
-            "cli",
-        ],
-        env={
-            "PATH": _make_path(bin_dir),
-            "SUPERHARNESS_CONFIRM_NON_INTERACTIVE": None,
-            "SUPERHARNESS_CONFIRM_SKIP_PERMISSIONS": None,
-        },
-    )
-    # supervised sets NON_INTERACTIVE=YES so risk check passes,
-    # but SKIP_PERMISSIONS is not set → claude-code CLI should refuse (exit 1)
-    assert result.returncode == 1
-    assert "SUPERHARNESS_CONFIRM_SKIP_PERMISSIONS=YES" in result.stderr
 
 
 def test_delegate_approval_gated_sets_no_env_vars(repo_root, tmp_path) -> None:
@@ -196,36 +138,6 @@ def test_delegate_approval_gated_sets_no_env_vars(repo_root, tmp_path) -> None:
     assert "SUPERHARNESS_CONFIRM_NON_INTERACTIVE=YES" in result.stderr
 
 
-@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-def test_delegate_existing_env_not_overridden_by_profile(repo_root, tmp_path) -> None:
-    """Existing SUPERHARNESS_CONFIRM_* env vars are not clobbered by profile defaults."""
-    project = _setup_project(tmp_path)
-    # profile says approval-gated, but caller has explicitly set CONFIRM_NON_INTERACTIVE=YES
-    _write_profile(project / ".superharness", autonomy="approval-gated")
-    bin_dir = _fake_bin(tmp_path, "codex")
-
-    result = _run_delegate_py(
-        repo_root,
-        args=[
-            "--to",
-            "codex-cli",
-            "--project",
-            str(project),
-            "--task",
-            "task-1",
-            "--non-interactive",
-        ],
-        env={
-            "PATH": _make_path(bin_dir),
-            "SUPERHARNESS_CONFIRM_NON_INTERACTIVE": "YES",
-            "SUPERHARNESS_CONFIRM_SKIP_PERMISSIONS": None,
-        },
-    )
-    # NON_INTERACTIVE check passes (caller set it), skip-permissions not set → codex runs
-    # codex-cli non-interactive doesn't require skip-permissions so should succeed
-    assert result.returncode == 0, (
-        f"Expected success (existing env respected), stderr:\n{result.stderr}"
-    )
 
 
 def test_delegate_no_profile_no_crash(repo_root, tmp_path) -> None:
@@ -251,107 +163,10 @@ def test_delegate_no_profile_no_crash(repo_root, tmp_path) -> None:
 # ── task.sh: owner from profile ───────────────────────────────────────────────
 
 
-@_skip_win
-@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-def test_task_create_uses_profile_primary_agent_when_no_owner(
-    repo_root, tmp_path
-) -> None:
-    """task create with no --owner picks up primary_agent from profile.yaml."""
-    project = tmp_path / "proj"
-    project.mkdir()
-    harness = project / ".superharness"
-    harness.mkdir()
-    (harness / "contract.yaml").write_text("id: test-contract\ntasks: []\n")
-    _write_profile(harness, primary_agent="claude-code")
-
-    result = run_bash(
-        repo_root / "src" / "superharness" / "scripts" / "task.sh",
-        cwd=repo_root,
-        args=[
-            "create",
-            "--project",
-            str(project),
-            "--id",
-            "t-profile-1",
-            "--title",
-            "Test task",
-        ],
-        # No --owner flag; stdin empty so prompt read gets empty → but profile should fill it
-        stdin="",
-    )
-    # Should succeed with owner=claude-code from profile
-    assert result.returncode == 0, (
-        f"task create failed:\n{result.stderr}\n{result.stdout}"
-    )  # shipguard:ignore PY-007
-    contract = (harness / "contract.yaml").read_text()
-    assert "claude-code" in contract
 
 
-@_skip_win
-@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-def test_task_create_explicit_owner_ignores_profile(repo_root, tmp_path) -> None:
-    """Explicit --owner overrides any profile primary_agent."""
-    project = tmp_path / "proj"
-    project.mkdir()
-    harness = project / ".superharness"
-    harness.mkdir()
-    (harness / "contract.yaml").write_text("id: test-contract\ntasks: []\n")
-    _write_profile(harness, primary_agent="claude-code")
-
-    result = run_bash(
-        repo_root / "src" / "superharness" / "scripts" / "task.sh",
-        cwd=repo_root,
-        args=[
-            "create",
-            "--project",
-            str(project),
-            "--id",
-            "t-explicit-1",
-            "--title",
-            "Explicit owner task",
-            "--owner",
-            "codex-cli",
-        ],
-        stdin="",
-    )
-    assert result.returncode == 0, (
-        f"task create failed:\n{result.stderr}"
-    )  # shipguard:ignore PY-007
-    contract = (harness / "contract.yaml").read_text()
-    assert "codex-cli" in contract
 
 
-@_skip_win
-@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-def test_task_create_no_owner_no_profile_prompts_user(repo_root, tmp_path) -> None:
-    """No --owner and no profile.yaml → user is prompted; piping an answer works."""
-    project = tmp_path / "proj"
-    project.mkdir()
-    harness = project / ".superharness"
-    harness.mkdir()
-    (harness / "contract.yaml").write_text("id: test-contract\ntasks: []\n")
-    # No profile written
-
-    result = run_bash(
-        repo_root / "src" / "superharness" / "scripts" / "task.sh",
-        cwd=repo_root,
-        args=[
-            "create",
-            "--project",
-            str(project),
-            "--id",
-            "t-prompt-1",
-            "--title",
-            "Prompted task",
-        ],
-        # Pipe owner answer via stdin
-        stdin="codex-cli\n",
-    )
-    assert result.returncode == 0, (
-        f"task create with stdin prompt failed:\n{result.stderr}"
-    )  # shipguard:ignore PY-007
-    contract = (harness / "contract.yaml").read_text()
-    assert "codex-cli" in contract
 
 
 # ── contract-today.sh: team_size gates delegation suggestion ──────────────────
@@ -379,49 +194,7 @@ def _setup_contract_today_project(tmp_path: Path) -> Path:
     return project
 
 
-@_skip_win
-@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-def test_contract_today_solo_no_delegation_suggestion(repo_root, tmp_path) -> None:
-    """team_size=solo suppresses the delegation suggestion."""
-    project = _setup_contract_today_project(tmp_path)
-    _write_profile(project / ".superharness", team_size="solo")
-
-    result = run_bash(
-        repo_root / "src" / "superharness" / "scripts" / "contract-today.sh",
-        cwd=repo_root,
-        args=["--project", str(project)],
-    )
-    assert result.returncode == 0, result.stderr
-    assert "Do you want to delegate" not in result.stdout
 
 
-@_skip_win
-@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-def test_contract_today_small_shows_delegation_suggestion(repo_root, tmp_path) -> None:
-    """team_size=small shows the delegation suggestion."""
-    project = _setup_contract_today_project(tmp_path)
-    _write_profile(project / ".superharness", team_size="small")
-
-    result = run_bash(
-        repo_root / "src" / "superharness" / "scripts" / "contract-today.sh",
-        cwd=repo_root,
-        args=["--project", str(project)],
-    )
-    assert result.returncode == 0, result.stderr
-    assert "Do you want to delegate" in result.stdout
 
 
-@_skip_win
-@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-def test_contract_today_no_profile_shows_delegation(repo_root, tmp_path) -> None:
-    """No profile.yaml → defaults to non-solo → delegation suggestion still shown (backward compat)."""
-    project = _setup_contract_today_project(tmp_path)
-    # No profile written — old behavior: delegation suggestion is always shown
-
-    result = run_bash(
-        repo_root / "src" / "superharness" / "scripts" / "contract-today.sh",
-        cwd=repo_root,
-        args=["--project", str(project)],
-    )
-    assert result.returncode == 0, result.stderr
-    assert "Do you want to delegate" in result.stdout

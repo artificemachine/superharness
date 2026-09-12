@@ -1,11 +1,10 @@
-"""Tests for engine.state_writer — RED tests for iter 3a of auto-mode-gap-plan.
+"""Tests for engine.state_writer — RED tests for the unified write API (iter 3a).
 
 iter 3a (skeleton): introduces a unified write API for tasks, inbox items, and
 discussion state. Writes go to SQLite first; YAML is queued for export.
 
 The full migration (3b-3e: routing all writers through this module, switching
-default backend to sqlite_only) is deferred — see docs/auto-mode-gap-plan.md
-for the remaining work.
+default backend to sqlite_only) is deferred.
 
 These tests pin down the public API contract.
 """

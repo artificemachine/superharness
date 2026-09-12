@@ -48,30 +48,6 @@ def _write_profile(project: Path, auto_dispatch: bool) -> None:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-def test_auto_dispatch_enqueues_plan_approved(tmp_path):
-    """Watcher auto-enqueues plan_approved contract task when auto_dispatch=True."""
-    from superharness.commands.inbox_watch import auto_enqueue_approved
-
-    project = tmp_path / "proj"
-    project.mkdir()
-    _write_contract(
-        project,
-        [
-            {"id": "task-1", "owner": "claude-code", "status": "plan_approved"},
-        ],
-    )
-    _write_inbox(project, [])
-    _write_profile(project, auto_dispatch=True)
-
-    added = auto_enqueue_approved(str(project))
-
-    assert added == 1, f"Expected 1 item enqueued, got {added}"
-    items = _read_inbox(project)
-    assert len(items) == 1
-    assert items[0]["task"] == "task-1"
-    assert items[0]["status"] == "pending"
-    assert items[0]["to"] == "claude-code"
 
 
 # ---------------------------------------------------------------------------
@@ -79,28 +55,6 @@ def test_auto_dispatch_enqueues_plan_approved(tmp_path):
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-def test_auto_dispatch_idempotent(tmp_path):
-    """Running auto_enqueue_approved twice on the same project adds no duplicates."""
-    from superharness.commands.inbox_watch import auto_enqueue_approved
-
-    project = tmp_path / "proj"
-    project.mkdir()
-    _write_contract(
-        project,
-        [
-            {"id": "task-2", "owner": "claude-code", "status": "plan_approved"},
-        ],
-    )
-    _write_inbox(project, [])
-    _write_profile(project, auto_dispatch=True)
-
-    auto_enqueue_approved(str(project))
-    added = auto_enqueue_approved(str(project))
-
-    assert added == 0, "Second call should add nothing (already pending)"
-    items = _read_inbox(project)
-    assert len(items) == 1, "Inbox should still have exactly 1 item"
 
 
 # ---------------------------------------------------------------------------

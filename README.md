@@ -397,12 +397,12 @@ CONFIRM_NON_INTERACTIVE=yes bash src/superharness/scripts/install-systemd-inbox-
 
 superharness draws on ideas from several open agent harnesses and patterns. Each link points to the specific extraction or comparison doc.
 
-- [Nous Research / hermes-agent](https://github.com/nousresearch/hermes-agent) — agent lifecycle and tool-use shape. See [docs/AUDIT-pi-hermes-adaptation.md](docs/AUDIT-pi-hermes-adaptation.md), [docs/archive/COMPARISON-superharness-vs-pi-hermes.md](docs/archive/COMPARISON-superharness-vs-pi-hermes.md), [docs/hermes-integration-tdd-plan.md](docs/hermes-integration-tdd-plan.md)
+- [Nous Research / hermes-agent](https://github.com/nousresearch/hermes-agent) — agent lifecycle and tool-use shape. See [docs/archive/COMPARISON-superharness-vs-pi-hermes.md](docs/archive/COMPARISON-superharness-vs-pi-hermes.md)
 - [earendil-works/pi](https://github.com/earendil-works/pi) — multi-agent coordination patterns
-- [obra/superpowers](https://github.com/obra/superpowers) — composable `SKILL.md` files, two-stage review (spec compliance, then code quality), TDD enforcement. See [docs/CONCEPT-superpowers-extraction.md](docs/CONCEPT-superpowers-extraction.md)
-- [paperclipai/paperclip](https://github.com/paperclipai/paperclip) — adapter breadth, plugin SDK shape, dashboard control plane. See [docs/AUDIT-paperclip-gap-analysis.md](docs/AUDIT-paperclip-gap-analysis.md)
+- [obra/superpowers](https://github.com/obra/superpowers) — composable `SKILL.md` files, two-stage review (spec compliance, then code quality), TDD enforcement.
+- [paperclipai/paperclip](https://github.com/paperclipai/paperclip) — adapter breadth, plugin SDK shape, dashboard control plane.
 - [Charlie85270/Dorothy](https://github.com/Charlie85270/Dorothy) — parallel-agent Kanban UI, SQLite FTS5 knowledge store. See [docs/archive/comparison-dorothy.md](docs/archive/comparison-dorothy.md)
-- [thedotmack/claude-mem](https://github.com/thedotmack/claude-mem) — per-agent persistent memory plugin for Claude Code. Inspired our privacy-tag write boundary, env-driven multi-profile isolation, observation snapshot table, and citation URL pattern (not auto-prompt-injection, which fights operator gating). See [docs/AUDIT-claude-mem-adaptation.md](docs/AUDIT-claude-mem-adaptation.md), [docs/CONCEPT-claude-mem-integration.md](docs/CONCEPT-claude-mem-integration.md), [docs/PLAN-claude-mem-integration.md](docs/PLAN-claude-mem-integration.md)
+- [thedotmack/claude-mem](https://github.com/thedotmack/claude-mem) — per-agent persistent memory plugin for Claude Code. Inspired our privacy-tag write boundary, env-driven multi-profile isolation, observation snapshot table, and citation URL pattern (not auto-prompt-injection, which fights operator gating).
 - **Ralph Loops** ([Chris Parsons workshop](https://youtu.be/2TLXsxkz0zI), [Jeffrey Huntley](https://ghuntley.com/)) — "next most important task" dispatch, sub-agent validation against confirmation bias, fresh-context discipline
 
 See [ATTRIBUTIONS.md](ATTRIBUTIONS.md) for the full extract list — what each source contributed, and what we deliberately did not adopt.

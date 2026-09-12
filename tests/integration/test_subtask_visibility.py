@@ -99,39 +99,8 @@ def test_adapter_payload_includes_subtask_status(project: Path):
     assert active_subs["parent-active.1"]["status"] == "pending"
 
 
-@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-def test_contract_include_subtasks_renders_nested(project: Path):
-    rc, out, err = _run(
-        [
-            "superharness.commands.contract_today",
-            "--project",
-            str(project),
-            "--include-subtasks",
-        ],
-        project,
-    )
-    assert rc == 0, f"stderr: {err}"
-    # Top-level tasks present
-    assert "parent-done" in out
-    assert "parent-active" in out
-    # Subtasks nested with indent marker
-    assert "parent-done.1" in out
-    assert "parent-done.2" in out
-    assert "parent-active.1" in out
-    assert "└" in out  # nested-row marker
 
 
-@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-def test_contract_without_flag_hides_subtasks(project: Path):
-    rc, out, err = _run(
-        ["superharness.commands.contract_today", "--project", str(project)],
-        project,
-    )
-    assert rc == 0, f"stderr: {err}"
-    assert "parent-done" in out
-    # Subtasks not shown
-    assert "parent-done.1" not in out
-    assert "parent-active.1" not in out
 
 
 def test_recall_finds_subtask_by_title(project: Path):

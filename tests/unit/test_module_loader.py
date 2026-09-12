@@ -67,24 +67,6 @@ detect: {}
         modules = load_modules(project)
         assert len(modules) == 0
 
-    @pytest.mark.skip(
-        reason="legacy YAML fixture — pending SQLite migration (see PR #208)"
-    )
-    def test_invalid_yaml_skipped_with_warning(self, tmp_path, caplog):
-        """Malformed YAML → skipped, logged, no crash."""
-        from superharness.modules.loader import load_modules
-
-        project = tmp_path / "proj"
-        project.mkdir()
-        modules_dir = project / ".superharness" / "modules"
-        modules_dir.mkdir(parents=True)
-
-        (modules_dir / "broken.yaml").write_text("invalid: yaml: content::: [[[")
-
-        modules = load_modules(project)
-        assert len(modules) == 0
-        # Should log a warning about malformed YAML
-        assert any("broken.yaml" in record.message.lower() for record in caplog.records)
 
     def test_module_has_name_and_hooks(self, tmp_path):
         """Loaded module exposes name, enabled, hooks dict."""

@@ -259,119 +259,9 @@ class TestSessionStopPausesTasks:
         )
         return inbox
 
-    @pytest.mark.skip(
-        reason="legacy YAML fixture — pending SQLite migration (see PR #208)"
-    )
-    def test_pauses_pending_inbox_items(self, repo_root: Path, tmp_path: Path) -> None:
-        project = _setup_project(tmp_path)
-        harness = project / ".superharness"
-        inbox = self._make_inbox(
-            harness,
-            [
-                {
-                    "id": "item-001",
-                    "to": "claude-code",
-                    "task": "t1",
-                    "status": "pending",
-                    "priority": 1,
-                    "retry_count": 0,
-                    "max_retries": 3,
-                    "created_at": "2026-01-01T00:00:00Z",
-                },
-            ],
-        )
-        script = repo_root / "adapters" / "claude-code" / "hooks" / "session-stop.sh"
-        result = run_bash(script, cwd=project)
-        assert result.returncode == 0, result.stderr
-        loaded = yaml.safe_load(inbox.read_text())
-        assert loaded[0]["status"] == "paused", (
-            f"Expected paused, got {loaded[0]['status']}"
-        )
-        assert "paused_at" in loaded[0]
 
-    @pytest.mark.skip(
-        reason="legacy YAML fixture — pending SQLite migration (see PR #208)"
-    )
-    def test_pauses_launched_inbox_items(self, repo_root: Path, tmp_path: Path) -> None:
-        project = _setup_project(tmp_path)
-        harness = project / ".superharness"
-        inbox = self._make_inbox(
-            harness,
-            [
-                {
-                    "id": "item-002",
-                    "to": "claude-code",
-                    "task": "t2",
-                    "status": "launched",
-                    "priority": 1,
-                    "retry_count": 0,
-                    "max_retries": 3,
-                    "created_at": "2026-01-01T00:00:00Z",
-                },
-            ],
-        )
-        script = repo_root / "adapters" / "claude-code" / "hooks" / "session-stop.sh"
-        result = run_bash(script, cwd=project)
-        assert result.returncode == 0, result.stderr
-        loaded = yaml.safe_load(inbox.read_text())
-        assert loaded[0]["status"] == "paused"
 
-    @pytest.mark.skip(
-        reason="legacy YAML fixture — pending SQLite migration (see PR #208)"
-    )
-    def test_pauses_running_inbox_items(self, repo_root: Path, tmp_path: Path) -> None:
-        project = _setup_project(tmp_path)
-        harness = project / ".superharness"
-        inbox = self._make_inbox(
-            harness,
-            [
-                {
-                    "id": "item-003",
-                    "to": "claude-code",
-                    "task": "t3",
-                    "status": "running",
-                    "priority": 1,
-                    "retry_count": 0,
-                    "max_retries": 3,
-                    "created_at": "2026-01-01T00:00:00Z",
-                },
-            ],
-        )
-        script = repo_root / "adapters" / "claude-code" / "hooks" / "session-stop.sh"
-        result = run_bash(script, cwd=project)
-        assert result.returncode == 0, result.stderr
-        loaded = yaml.safe_load(inbox.read_text())
-        assert loaded[0]["status"] == "paused"
 
-    @pytest.mark.skip(
-        reason="legacy YAML fixture — pending SQLite migration (see PR #208)"
-    )
-    def test_falls_back_to_legacy_inbox_json(
-        self, repo_root: Path, tmp_path: Path
-    ) -> None:
-        project = _setup_project(tmp_path)
-        harness = project / ".superharness"
-        inbox = self._make_inbox(
-            harness,
-            [
-                {
-                    "id": "item-legacy",
-                    "to": "claude-code",
-                    "task": "t-json",
-                    "status": "pending",
-                    "priority": 1,
-                    "retry_count": 0,
-                    "max_retries": 3,
-                    "created_at": "2026-01-01T00:00:00Z",
-                },
-            ],
-            filename="inbox.json",
-        )
-        script = repo_root / "adapters" / "claude-code" / "hooks" / "session-stop.sh"
-        result = run_bash(script, cwd=project)
-        assert result.returncode == 0, result.stderr
-        loaded = yaml.safe_load(inbox.read_text())
-        assert loaded[0]["status"] == "paused"
 
     def test_skips_done_and_stopped_items(
         self, repo_root: Path, tmp_path: Path
@@ -500,37 +390,6 @@ class TestSessionStopPausesTasks:
         assert "session-stop: task stopped (feat-001)" in ledger
         assert "session-stop: inbox task stopped (feat-001)" not in ledger
 
-    @pytest.mark.skip(
-        reason="legacy YAML fixture — pending SQLite migration (see PR #208)"
-    )
-    def test_pauses_only_claude_targeted_inbox_items(
-        self, repo_root: Path, tmp_path: Path
-    ) -> None:
-        project = _setup_project(tmp_path)
-        harness = project / ".superharness"
-        inbox = self._make_inbox(
-            harness,
-            [
-                {
-                    "id": "item-claude",
-                    "to": "claude-code",
-                    "task": "t1",
-                    "status": "pending",
-                },
-                {
-                    "id": "item-codex",
-                    "to": "codex-cli",
-                    "task": "t2",
-                    "status": "pending",
-                },
-            ],
-        )
-        script = repo_root / "adapters" / "claude-code" / "hooks" / "session-stop.sh"
-        result = run_bash(script, cwd=project)
-        assert result.returncode == 0, result.stderr
-        loaded = yaml.safe_load(inbox.read_text())
-        assert loaded[0]["status"] == "paused"
-        assert loaded[1]["status"] == "pending"
 
     def test_monitor_not_killed_by_project_path(self, repo_root: Path) -> None:
         """Monitor dashboard must not be killed by project path either.

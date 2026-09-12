@@ -94,26 +94,6 @@ def test_discuss_start_creates_discussion(tmp_path: Path) -> None:
     assert len(subdirs) == 1
 
 
-@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-def test_discuss_start_enqueues_round1(tmp_path: Path) -> None:
-    project = _make_project(tmp_path)
-    r = _run_discuss(
-        [
-            "start",
-            "--project",
-            str(project),
-            "--topic",
-            "Round 1 test",
-            "--max-rounds",
-            "3",
-        ]
-    )
-    assert r.returncode == 0, r.stderr
-    assert "Enqueued round 1 for claude-code" in r.stdout
-    assert "Enqueued round 1 for codex-cli" in r.stdout
-    # Inbox should have 2 pending items (count "  status: pending" lines, indented)
-    inbox_text = (project / ".superharness" / "inbox.yaml").read_text()
-    assert inbox_text.count("  status: pending") == 2
 
 
 def test_discuss_approve_approves_handoff(tmp_path: Path) -> None:

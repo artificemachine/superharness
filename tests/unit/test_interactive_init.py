@@ -51,20 +51,6 @@ def _pipe_answers(
     return f"{autonomy}\n{goal}\n{watcher}\n"
 
 
-@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-def test_interactive_init_creates_files(repo_root, tmp_path) -> None:
-    """Piping answers to --interactive must produce contract.yaml and profile.yaml."""
-    project = tmp_path / "proj"
-    project.mkdir()
-
-    result = _run_init_py(project, args=["--interactive"], stdin=_pipe_answers())
-    assert result.returncode == 0, (
-        f"init --interactive failed:\n{result.stdout}\n{result.stderr}"
-    )
-    assert (project / ".superharness/contract.yaml").exists(), (
-        "contract.yaml not created"
-    )
-    assert (project / ".superharness/profile.yaml").exists(), "profile.yaml not created"
 
 
 # ---------------------------------------------------------------------------

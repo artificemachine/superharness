@@ -1387,31 +1387,3 @@ def test_shux_status_check_exit_code(clean_harness: Path) -> None:
     )
 
 
-@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-def test_shux_status_clean_exits_zero(clean_harness: Path) -> None:
-    """shux status --check must exit 0 when no task/inbox/discussion issues (watcher down is expected in tests)."""
-    _write_profile(clean_harness)
-    _init_sqlite(clean_harness)
-
-    # Write a recent heartbeat to silence the watcher-down warning
-    hb_file = clean_harness / ".superharness" / "watcher.heartbeat"
-    hb_file.write_text(datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ") + "\n")
-
-    import subprocess
-    import sys
-
-    result = subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "superharness.commands.status",
-            "--project",
-            str(clean_harness),
-            "--check",
-        ],
-        capture_output=True,
-        text=True,
-    )
-    assert result.returncode == 0, (
-        f"--check should exit 0 when clean, got {result.returncode}\n{result.stdout}"
-    )

@@ -14,33 +14,6 @@ import pytest
 import yaml
 
 
-@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-def test_write_valid_contract_succeeds(tmp_path):
-    from superharness.engine.contract_io import write_contract
-
-    doc = {
-        "id": "test-001",
-        "created": "2026-01-01T00:00:00Z",
-        "created_by": "claude-code",
-        "status": "active",
-        "tasks": [
-            {
-                "id": "foo.bar",
-                "title": "A task",
-                "owner": "claude-code",
-                "status": "todo",
-            }
-        ],
-        "decisions": [],
-        "failures": [],
-    }
-    path = str(tmp_path / "contract.yaml")
-    write_contract(path, doc)
-    assert os.path.exists(path)
-    with open(path, encoding="utf-8") as f:
-        loaded = yaml.safe_load(f)
-    assert loaded["id"] == "test-001"
-    assert len(loaded["tasks"]) == 1
 
 
 def test_write_invalid_contract_raises(tmp_path):
@@ -71,42 +44,6 @@ def test_write_invalid_contract_raises(tmp_path):
     assert "acceptance_criteria" in str(exc_info.value)
 
 
-@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-def test_write_is_atomic(tmp_path, monkeypatch):
-    """A failure during os.replace must not corrupt the existing file."""
-    from superharness.engine import contract_io
-
-    original_content = (
-        "id: original\ncreated: '2026-01-01T00:00:00Z'\ncreated_by: x\n"
-        "status: active\ntasks: []\ndecisions: []\nfailures: []\n"
-    )
-    path = tmp_path / "contract.yaml"
-    path.write_text(original_content, encoding="utf-8")
-
-    import os
-
-    def exploding_replace(src, dst):
-        raise OSError("simulated replace failure")
-
-    monkeypatch.setattr(os, "replace", exploding_replace)
-
-    valid_doc = {
-        "id": "new",
-        "created": "2026-01-01T00:00:00Z",
-        "created_by": "x",
-        "status": "active",
-        "tasks": [],
-        "decisions": [],
-        "failures": [],
-    }
-    with pytest.raises(OSError):
-        contract_io.write_contract(str(path), valid_doc)
-
-    # Original must still be intact
-    assert path.read_text(encoding="utf-8") == original_content
-    # No stale .tmp file should remain
-    tmp_files = list(tmp_path.glob("*.tmp"))
-    assert tmp_files == [], f"Stale tmp files left behind: {tmp_files}"
 
 
 def test_write_contract_syncs_subtasks_to_sqlite(tmp_path):

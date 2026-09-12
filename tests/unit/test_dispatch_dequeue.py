@@ -133,28 +133,8 @@ def _stub_agent_bins(
         path.chmod(0o755)
 
 
-@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-def test_dispatch_picks_next_pending(tmp_path: Path) -> None:
-    project = _make_project(
-        tmp_path,
-        inbox_items=[
-            {"id": "item-001", "to": "claude-code", "priority": 1},
-        ],
-    )
-    bin_dir = _fake_launcher_script(tmp_path, "claude")
-    r = _run_dispatch(project, ["--to", "claude-code", "--print-only"], bin_dir)
-    assert r.returncode == 0, r.stderr
-    assert "item-001 -> launched" in r.stdout
-    text = (project / ".superharness" / "inbox.yaml").read_text()
-    assert "status: launched" in text
 
 
-@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-def test_dispatch_no_pending_exits_zero(tmp_path: Path) -> None:
-    project = _make_project(tmp_path)  # empty inbox
-    r = _run_dispatch(project)
-    assert r.returncode == 0
-    assert r.stdout.strip() == ""
 
 
 def test_dispatch_lock_prevents_concurrent(tmp_path: Path) -> None:
@@ -177,71 +157,10 @@ def test_dispatch_lock_prevents_concurrent(tmp_path: Path) -> None:
             lock_dir.rmdir()
 
 
-@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-def test_dispatch_retry_limit_marks_failed(tmp_path: Path) -> None:
-    project = _make_project(
-        tmp_path,
-        inbox_items=[
-            {
-                "id": "exhaust-item",
-                "to": "codex-cli",
-                "retry_count": 3,
-                "max_retries": 3,
-            },
-        ],
-    )
-    r = _run_dispatch(project, ["--to", "codex-cli"])
-    assert r.returncode == 1
-    assert "retry limit reached" in r.stdout
-    text = (project / ".superharness" / "inbox.yaml").read_text()
-    assert "status: failed" in text
 
 
-@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-def test_dispatch_state_reconcile_done(tmp_path: Path) -> None:
-    """When launcher exits 0 and contract task is done, inbox item becomes done."""
-    project = _make_project(
-        tmp_path,
-        inbox_items=[
-            {"id": "reconcile-done", "to": "codex-cli", "task": "test-task"},
-        ],
-    )
-    # Set task to done before dispatch so reconcile sees it
-    contract = project / ".superharness" / "contract.yaml"
-    contract.write_text(
-        "id: test-contract\ntasks:\n"
-        "  - id: test-task\n    owner: codex-cli\n    status: done\n"
-        f"    project_path: '{project.as_posix()}'\n"
-    )
-
-    bin_dir = tmp_path / "bin"
-    bin_dir.mkdir(exist_ok=True)
-    _stub_agent_bins(bin_dir)
-
-    r = _run_dispatch(project, ["--to", "codex-cli", "--non-interactive"], bin_dir)
-    assert r.returncode == 0, r.stderr
-    text = (project / ".superharness" / "inbox.yaml").read_text()
-    assert "status: done" in text
 
 
-@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-def test_dispatch_state_reconcile_failed(tmp_path: Path) -> None:
-    """When launcher exits non-zero, inbox item becomes failed."""
-    project = _make_project(
-        tmp_path,
-        inbox_items=[
-            {"id": "reconcile-fail", "to": "codex-cli", "task": "test-task"},
-        ],
-    )
-
-    bin_dir = tmp_path / "bin"
-    bin_dir.mkdir(exist_ok=True)
-    _stub_agent_bins(bin_dir, "#!/bin/bash\nexit 1\n")
-
-    r = _run_dispatch(project, ["--to", "codex-cli", "--non-interactive"], bin_dir)
-    assert r.returncode == 1
-    text = (project / ".superharness" / "inbox.yaml").read_text()
-    assert "status: failed" in text
 
 
 def test_dispatch_dirty_worktree_uses_worktree(tmp_path: Path) -> None:

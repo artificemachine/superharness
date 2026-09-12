@@ -132,45 +132,6 @@ detect: {}
         assert results[0]["module"] == "continue"
         mock_action.assert_called_once()
 
-    @pytest.mark.skip(
-        reason="legacy YAML fixture — pending SQLite migration (see PR #208)"
-    )
-    def test_module_failure_does_not_block_close(self, tmp_path, caplog):
-        """If module action fails → warning logged, close still succeeds."""
-        from superharness.modules.runner import run_hooks
-
-        project = tmp_path / "proj"
-        project.mkdir()
-        modules_dir = project / ".superharness" / "modules"
-        modules_dir.mkdir(parents=True)
-
-        (modules_dir / "failing.yaml").write_text(
-            """name: failing
-enabled: true
-hooks:
-  on_close:
-    action: fail_action
-settings: {}
-detect: {}
-"""
-        )
-
-        # Mock action that raises an exception
-        def failing_action(context, settings):
-            raise RuntimeError("Action failed")
-
-        with patch(
-            "superharness.modules.runner._ACTION_REGISTRY",
-            {"fail_action": failing_action},
-        ):
-            results = run_hooks("on_close", {}, project)
-
-        # Should return a result indicating failure, not crash
-        assert len(results) == 1
-        assert results[0]["success"] is False
-        assert "error" in results[0]
-        # Should log warning
-        assert any("failing" in record.message.lower() for record in caplog.records)
 
     def test_multiple_modules_all_fire(self, tmp_path):
         """Two enabled modules with on_close → both fire."""

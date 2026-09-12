@@ -109,15 +109,6 @@ def test_validate_passes_done_task_with_handoff_and_ledger(tmp_path: Path) -> No
     assert "passed" in r.stdout.lower()
 
 
-@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-def test_validate_strict_warns_empty_stores(tmp_path: Path) -> None:
-    project = _write_project(
-        tmp_path,
-        decisions="[{id: d1, title: test}]",
-    )
-    r = _run_validate(["--project", str(project), "--strict"])
-    assert r.returncode == 1
-    assert "decisions.yaml is empty" in r.stdout
 
 
 def test_validate_missing_protocol_dir(tmp_path: Path) -> None:

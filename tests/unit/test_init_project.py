@@ -48,20 +48,6 @@ def test_init_project_help_and_dry_run(repo_root, tmp_path) -> None:
     assert "[dry-run]" in dry.stdout
 
 
-@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-def test_init_project_creates_expected_files(repo_root, tmp_path) -> None:
-    project = tmp_path / "demo"
-    project.mkdir()
-
-    result = _run_init_py(project, args=["Demo", "Python", "active"])
-    assert result.returncode == 0, result.stderr
-
-    assert (project / ".superharness/contract.yaml").exists()
-    assert (project / ".superharness/failures.yaml").exists()
-    assert (project / ".superharness/decisions.yaml").exists()
-    assert (project / ".superharness/ledger.md").exists()
-    assert (project / "CLAUDE.md").exists()
-    assert (project / "AGENTS.md").exists()
 
 
 def test_init_project_no_watcher_by_default(repo_root, tmp_path) -> None:
@@ -92,16 +78,6 @@ def test_init_project_no_watcher_by_default(repo_root, tmp_path) -> None:
         assert "Watcher:" not in result.stdout
 
 
-@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-def test_init_project_with_watcher_flag_accepted(repo_root, tmp_path) -> None:
-    """--with-watcher flag should be accepted (even if launchd script is missing)."""
-    project = tmp_path / "with-watcher"
-    project.mkdir()
-
-    result = _run_init_py(project, args=["--with-watcher", "Demo", "Python", "active"])
-    assert result.returncode == 0, result.stderr
-    # The flag was accepted; watcher line may or may not appear depending on platform
-    assert (project / ".superharness/contract.yaml").exists()
 
 
 def test_init_project_doctor_hint_in_output(repo_root, tmp_path) -> None:

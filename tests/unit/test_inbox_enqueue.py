@@ -40,9 +40,6 @@ def _write_contract(project: Path, lines: list[str]) -> None:
     seed_sqlite_from_yaml(project)
 
 
-@pytest.mark.skip(
-    reason="seed_sqlite_from_yaml always sets project_path=project_dir; needs direct SQLite seed to test missing-path scenario (see PR #208)"
-)
 def test_enqueue_fails_when_task_project_path_missing(repo_root, tmp_path) -> None:
     project = _setup_project(tmp_path, "proj-missing-path")
     _write_contract(
@@ -73,9 +70,6 @@ def test_enqueue_fails_when_task_project_path_missing(repo_root, tmp_path) -> No
     assert "missing project_path" in combined or "project_path" in combined
 
 
-@pytest.mark.skip(
-    reason="seed_sqlite_from_yaml always sets project_path=project_dir; needs direct SQLite seed to test mismatch scenario (see PR #208)"
-)
 def test_enqueue_fails_when_task_project_path_mismatch(repo_root, tmp_path) -> None:
     project = _setup_project(tmp_path, "proj-mismatch")
     other = tmp_path / "other-project"

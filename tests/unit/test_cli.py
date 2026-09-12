@@ -194,22 +194,6 @@ class TestRunModule:
 class TestIsMonitorRunning:
     """Tests for the _is_dashboard_running helper function."""
 
-    @pytest.mark.skip(
-        reason="legacy YAML fixture — pending SQLite migration (see PR #208)"
-    )
-    def test_dashboard_running_on_default_port(self):
-        """_is_dashboard_running should detect running dashboard via /api/status on default port."""
-        mock_resp = MagicMock()
-        mock_resp.status = 200
-        mock_resp.__enter__ = lambda s: s
-        mock_resp.__exit__ = MagicMock(return_value=False)
-        with patch("urllib.request.urlopen", return_value=mock_resp) as mock_open:
-            running, port = _is_dashboard_running()
-            assert running is True
-            assert port == 8787
-            url = mock_open.call_args[0][0]
-            assert "127.0.0.1:8787" in url.full_url
-            assert "/api/status" in url.full_url
 
     def test_dashboard_not_running_connection_refused(self):
         """_is_dashboard_running should return False when connection refused."""
@@ -231,23 +215,6 @@ class TestIsMonitorRunning:
                 assert running is False
                 assert port is None
 
-    @pytest.mark.skip(
-        reason="legacy YAML fixture — pending SQLite migration (see PR #208)"
-    )
-    def test_dashboard_running_custom_port(self):
-        """_is_dashboard_running should detect dashboard for a given project_dir."""
-        mock_resp = MagicMock()
-        mock_resp.status = 200
-        mock_resp.__enter__ = lambda s: s
-        mock_resp.__exit__ = MagicMock(return_value=False)
-        with patch(
-            "superharness.commands.dashboard._find_dashboard_processes",
-            return_value=[(9001, 9000, "/myproject")],
-        ):
-            with patch("urllib.request.urlopen", return_value=mock_resp):
-                running, port = _is_dashboard_running("/myproject")
-                assert running is True
-                assert port == 9000
 
 
 class TestIsGitRepo:
@@ -708,23 +675,6 @@ class TestDashboardProjectAware:
 
     # ── _is_dashboard_running with project_dir ──────────────────────────────────
 
-    @pytest.mark.skip(
-        reason="legacy YAML fixture — pending SQLite migration (see PR #208)"
-    )
-    def test_is_dashboard_running_returns_true_for_matching_project(self):
-        """_is_dashboard_running(project_dir) returns (True, port) when a dashboard serves that project."""
-        mock_resp = MagicMock()
-        mock_resp.status = 200
-        mock_resp.__enter__ = lambda s: s
-        mock_resp.__exit__ = MagicMock(return_value=False)
-        with patch(
-            "superharness.commands.dashboard._find_dashboard_processes",
-            return_value=[(1234, 8800, "/projects/myapp")],
-        ):
-            with patch("urllib.request.urlopen", return_value=mock_resp):
-                running, port = _is_dashboard_running("/projects/myapp")
-        assert running is True
-        assert port == 8800
 
     def test_is_dashboard_running_returns_false_for_unknown_project(self):
         """_is_dashboard_running(project_dir) returns (False, None) when no dashboard serves that project."""
@@ -746,26 +696,6 @@ class TestDashboardProjectAware:
         assert running is False
         assert port is None
 
-    @pytest.mark.skip(
-        reason="legacy YAML fixture — pending SQLite migration (see PR #208)"
-    )
-    def test_is_dashboard_running_resolves_realpath_for_project(self):
-        """_is_dashboard_running normalises symlinks when comparing project paths."""
-        import os
-
-        real_path = os.path.realpath("/projects/myapp")
-        mock_resp = MagicMock()
-        mock_resp.status = 200
-        mock_resp.__enter__ = lambda s: s
-        mock_resp.__exit__ = MagicMock(return_value=False)
-        with patch(
-            "superharness.commands.dashboard._find_dashboard_processes",
-            return_value=[(5678, 9100, real_path)],
-        ):
-            with patch("urllib.request.urlopen", return_value=mock_resp):
-                running, port = _is_dashboard_running("/projects/myapp")
-        assert running is True
-        assert port == 9100
 
     # ── dashboard-list shows Project column ─────────────────────────────────────
 

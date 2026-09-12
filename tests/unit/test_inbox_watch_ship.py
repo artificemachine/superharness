@@ -49,25 +49,6 @@ def _write_handoff(project: Path, task_id: str, outcomes: list[str]) -> None:
 # ── missing PR URL → task marked failed ─────────────────────────────────────
 
 
-@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-def test_missing_pr_marks_task_failed(tmp_path: Path) -> None:
-    project = _make_project(tmp_path)
-    _write_contract(
-        project,
-        {
-            "id": "feat.ship-me",
-            "status": "report_ready",
-            "ship_on_complete": True,
-            "owner": "claude-code",
-            "project_path": str(project.resolve()),
-        },
-    )
-    _write_handoff(project, "feat.ship-me", outcomes=["implemented the feature"])
-
-    _check_ship_on_complete_tasks(str(project))
-
-    tasks = _read_contract(project).get("tasks", [])
-    assert tasks[0]["status"] == "failed"
 
 
 def test_pr_url_in_outcomes_task_stays_report_ready(tmp_path: Path) -> None:
@@ -117,25 +98,6 @@ def test_ship_on_complete_false_skipped(tmp_path: Path) -> None:
     assert tasks[0]["status"] == "report_ready"
 
 
-@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-def test_no_handoff_marks_failed(tmp_path: Path) -> None:
-    """ship_on_complete task at report_ready with no handoff at all → failed."""
-    project = _make_project(tmp_path)
-    _write_contract(
-        project,
-        {
-            "id": "feat.ship-me",
-            "status": "report_ready",
-            "ship_on_complete": True,
-            "owner": "claude-code",
-            "project_path": str(project.resolve()),
-        },
-    )
-    # No handoff written.
-    _check_ship_on_complete_tasks(str(project))
-
-    tasks = _read_contract(project).get("tasks", [])
-    assert tasks[0]["status"] == "failed"
 
 
 def test_pr_url_as_bare_url_in_outcomes(tmp_path: Path) -> None:

@@ -1,6 +1,6 @@
 # superharness — Documentation Index
 
-> Updated 2026-07-22. Run `docs-organize` skill to audit. 18 internal working docs (`PLAN-*`/`AUDIT-*`/`bulletproof-report-*` matching `.gitignore`) untracked from the public tree; 6 one-off analysis docs (`ANALYSIS-*`/`CLASSIFY-*`/`COMPARE-*`/`DESIGN-*`/`IMPLEMENTATION-*`/`ADOPTION-LIST-*`) moved to `archive/`. The 4 prior-art analyses cited from the root README's "Prior art" section stay tracked. A follow-up `/bulletproof` pass the same day found 13 more dead links to always-gitignored, never-tracked working docs (`PLAN-*`/`AUDIT-*`/`bulletproof-report-2026-06-08.md`/`PYPI_SETUP.md`) that the first pass hadn't checked; those rows are removed too.
+> Updated 2026-09-10. Run the `docs-organize` skill to audit. On 2026-09-10, 43 superseded or completed docs (~8,150 lines) were pruned: 16 unlinked files under `archive/` plus 27 completed plans/audits/reviews that had been listed in this index. The 4 prior-art analyses cited from the root README's "Prior art" section remain tracked.
 
 ---
 
@@ -24,8 +24,6 @@
 | [`DESIGN-risky-choices.md`](archive/DESIGN-risky-choices.md) | Documented sharp edges and risky choices |
 | [`ROADMAP-phases.md`](ROADMAP-phases.md) | **Master phase roadmap** (single source of truth) |
 | [`IMPLEMENTATION-status.md`](archive/IMPLEMENTATION-status.md) | Implementation status across all audits |
-| [`improvement-roadmap.md`](improvement-roadmap.md) | Morpheme + superharness improvement roadmap |
-| [`improvement-tdd-plans.md`](improvement-tdd-plans.md) | Improvement TDD plans per PR |
 | [`ANALYSIS-sqlite-doctrine-drift.md`](archive/ANALYSIS-sqlite-doctrine-drift.md) | How the SQLite doctrine drifted, and how to make it un-driftable |
 | [`brain-multi-agent-tiers-fleet.md`](brain-multi-agent-tiers-fleet.md) | Why 4 agent CLIs, what tiers mean, Ollama + vLLM fleet |
 | [`brain-scan-2026-07-12.md`](brain-scan-2026-07-12.md) | Brain-level scan of superharness (2026-07-12) |
@@ -38,13 +36,8 @@
 
 | Doc | What |
 |-----|------|
-| [`CONCEPT-agent-owned-tools.md`](CONCEPT-agent-owned-tools.md) | Agent mutates its own tools mid-task |
-| [`CONCEPT-claude-mem-integration.md`](CONCEPT-claude-mem-integration.md) | Claude-mem features worth borrowing |
-| [`CONCEPT-inbox-queue-unification.md`](CONCEPT-inbox-queue-unification.md) | Inbox queue unification options |
-| [`CONCEPT-quota-and-health.md`](CONCEPT-quota-and-health.md) | Unified quota and health engine |
 | [`CONCEPT-recall-progressive-disclosure.md`](CONCEPT-recall-progressive-disclosure.md) | 3-layer recall progressive disclosure |
 | [`CONCEPT-sdk-vs-cli.md`](CONCEPT-sdk-vs-cli.md) | SDK vs CLI dispatch paths |
-| [`CONCEPT-superpowers-extraction.md`](CONCEPT-superpowers-extraction.md) | Superpowers → superharness extraction |
 | [`CONCEPT-behavioral-profile.md`](CONCEPT-behavioral-profile.md) | Zero-touch adaptive layer — behavioral profile |
 | [`CONCEPT-notifications-and-state-isolation.md`](CONCEPT-notifications-and-state-isolation.md) | Notifications + state isolation concept |
 | [`CONCEPT-content-addressed-context-typed-boundaries.md`](CONCEPT-content-addressed-context-typed-boundaries.md) | Content-addressed context hashing + typed handoff boundaries |
@@ -55,10 +48,6 @@
 |-----|------|
 | [`gateway-security.md`](gateway-security.md) | Notification gateway security audit |
 | [`SECURITY-autonomous-dispatch.md`](SECURITY-autonomous-dispatch.md) | Autonomous dispatch security gates |
-| [`defense_layers_plan.md`](defense_layers_plan.md) | Defense layers TDD iteration plan |
-| [`AUDIT-claude-mem-adaptation.md`](AUDIT-claude-mem-adaptation.md) | Claude-mem adaptation audit |
-| [`AUDIT-paperclip-gap-analysis.md`](AUDIT-paperclip-gap-analysis.md) | Superharness vs Paperclip gap analysis |
-| [`AUDIT-pi-hermes-adaptation.md`](AUDIT-pi-hermes-adaptation.md) | **Pi-Mono + Hermes adaptation audit** (ground truth) |
 | [`yaml-inventory.md`](yaml-inventory.md) | YAML file inventory post phase-4 cleanup |
 
 ## 🔎 Audits (Runtime & Protocol)
@@ -73,33 +62,16 @@
 
 | Doc | What |
 |-----|------|
-| **Hermes / Pi-Mono** | |
-| [`hermes-integration-tdd-plan.md`](hermes-integration-tdd-plan.md) | Hermes integration TDD iterations |
-| **Paperclip** | |
-| **Claude-Mem** | |
-| [`PLAN-claude-mem-integration.md`](PLAN-claude-mem-integration.md) | Claude-mem integration iteration plan |
-| **Ralph** | |
-| **Auto-Mode / Dispatch** | |
-| [`auto-mode-gap-v2.md`](auto-mode-gap-v2.md) | Auto-mode gap analysis v2 |
-| [`auto-mode-gap-plan.md`](auto-mode-gap-plan.md) | Auto-mode TDD implementation plan |
 | **Task Lifecycle** | |
 | [`plan-subtask-resolution-gate.md`](plan-subtask-resolution-gate.md) | Subtask resolution gate plan |
-| [`design-task-lifecycle-ship.md`](design-task-lifecycle-ship.md) | Ship step in task lifecycle |
-| [`plan-task-workflow-v2.md`](plan-task-workflow-v2.md) | Task workflow v2 implementation |
 | **Memory / Learning** | |
 | [`plans/PLAN-superharness-L5.md`](plans/PLAN-superharness-L5.md) | Superharness L5: close G5c, wire dormant learning loops |
 | **Infrastructure** | |
 | [`windows-native-full-fix-tdd-plan.md`](windows-native-full-fix-tdd-plan.md) | Native Windows fix TDD plan |
-| [`REMOVE-ALL-PROTOCOL-YAML.md`](REMOVE-ALL-PROTOCOL-YAML.md) | Remove all protocol YAML (in progress) |
 | [`plans/harness-phi4mini-redesign.md`](plans/harness-phi4mini-redesign.md) | phi4-mini/Ollama harness — redesign against main |
 | **Module / Feature** | |
-| [`plan-effort-taxonomy-opus47-morpheme.md`](plan-effort-taxonomy-opus47-morpheme.md) | Effort taxonomy + Opus 4.7 |
-| [`plan-missions-alignment.md`](plan-missions-alignment.md) | Missions alignment (Factory talk) |
 | [`PROPOSAL-session-injection-discussion-dispatch.md`](PROPOSAL-session-injection-discussion-dispatch.md) | Session injection for discussion dispatch |
 | **Subsystem Plans** | |
-| [`plans/failure-management.md`](plans/failure-management.md) | Three-layer failure management |
-| [`plans/headless-auto-dispatch.md`](plans/headless-auto-dispatch.md) | Headless-auto-dispatch strategy |
-| [`plans/superharness-operator.md`](plans/superharness-operator.md) | Operator watchdog design |
 | [`plans/workflow-autonomy.md`](plans/workflow-autonomy.md) | Workflow + per-project autonomy |
 
 ## 🔍 Reviews
@@ -107,16 +79,12 @@
 | Doc | What |
 |-----|------|
 | [`senior-review-2026-05-20.md`](senior-review-2026-05-20.md) | Senior review — 11 fixes, C4-C6 decomposition |
-| [`claude_superharness_review.md`](claude_superharness_review.md) | Claude review |
-| [`codex_superharness_review.md`](codex_superharness_review.md) | Codex review |
-| [`gemini_superharness_review.md`](gemini_superharness_review.md) | Gemini review |
 | [`SKILL_GENERICITY_REVIEW.md`](SKILL_GENERICITY_REVIEW.md) | Skill genericity review (2026-05-26) |
 
 ## 🐛 Bugs
 
 | Doc | What |
 |-----|------|
-| [`BUG-set-owner-inbox-cleanup.md`](BUG-set-owner-inbox-cleanup.md) | ImportError in inbox cleanup |
 | [`bugs/2026-05-11_discuss_dispatch_bugs.md`](bugs/2026-05-11_discuss_dispatch_bugs.md) | Discuss dispatch bugs through v1.56.2 |
 | [`bugs/2026-05-21_ai-driven-dispatch-failure.md`](bugs/2026-05-21_ai-driven-dispatch-failure.md) | Why `ai_driven` autonomy did not dispatch (morpheme project) |
 | [`bugs/2026-05-21_discuss_cli_ux_bugs.md`](bugs/2026-05-21_discuss_cli_ux_bugs.md) | `shux discuss` UX and retry-alert bugs (v1.62.20) |
@@ -151,15 +119,15 @@ Point-in-time claim-vs-reality audits. `docs/bulletproof-report-*.md` is gitigno
 
 ---
 
-## 📦 Archived (44 files in `docs/archive/`)
+## 📦 Archived (28 files in `docs/archive/`)
 
 Obsolete, completed, superseded, or dated docs moved to archive. See `docs/archive/` for:
 - Session handoff notes (`HANDOFF-2026-06-*.md`, `NEXT_SESSION_HANDOFF.md`, `handoff-yaml-cleanup-session-2026-05-13.md`)
-- Superseded bulletproof-report runs (13 dated 2026-05-22 through 2026-05-25, superseded by the active reports above)
+- Superseded bulletproof-report runs (the 2026-05-24 series, superseded by the active reports above)
 - A dated release checklist (`RELEASE-TODO-v1.62.15.md`)
 - Completed migration/cleanup plans (SQLite migration, contract-YAML removal, module system, onboarding pipeline)
-- Stale comparisons/audits/reviews (pi-hermes comparison, Dorothy comparison, drift audit, architecture review)
+- Stale comparisons/audits/reviews (pi-hermes comparison, Dorothy comparison, drift audit)
 
 ---
 
-**Last updated:** 2026-07-22 | **Active docs:** 73 | **Archived:** 44
+**Last updated:** 2026-09-10 | **Active docs:** 63 | **Archived:** 28
