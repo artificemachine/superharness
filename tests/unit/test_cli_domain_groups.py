@@ -8,6 +8,7 @@ import click
 from click.testing import CliRunner
 
 from superharness.cli import main
+from superharness.commands.help_catalog import LEGACY_STATE_COMMANDS, legacy_state_present
 
 
 DOMAIN_COMMANDS = {
@@ -143,5 +144,12 @@ def test_domain_help_is_scoped() -> None:
     for name, commands in DOMAIN_COMMANDS.items():
         result = runner.invoke(main, [name, "--help"])
         assert result.exit_code == 0, result.output
-        for child_name in commands:
+        visible_commands = commands
+        if name == "state" and not legacy_state_present():
+            visible_commands = {
+                child_name: target
+                for child_name, target in commands.items()
+                if child_name not in LEGACY_STATE_COMMANDS
+            }
+        for child_name in visible_commands:
             assert child_name in result.output
