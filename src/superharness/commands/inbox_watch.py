@@ -1004,6 +1004,26 @@ def _select_reviewers(task: dict, candidates: list[str], profile: dict) -> list[
     return qualified
 
 
+def _peer_reviewer_candidates(owner: str) -> list[str]:
+    """Return the harnesses that may review *owner*'s work, in registry order.
+
+    The candidate set comes from the harness registry rather than a literal. This
+    path used to hardcode ``["claude-code", "codex-cli", "gemini-cli", "opencode"]``,
+    which silently excluded `pi` once it was registered — leaving a `pi`-owned task
+    with no autonomous reviewer at all, because the cross-pollination guard removed
+    the owner and nothing was left. `KNOWN_HARNESSES` is sorted and `pi` sorts last,
+    so the first candidate, which is the one the live path picks, is unchanged for
+    every other owner.
+
+    This is the cross-pollination half of the gate `_select_reviewers` above was
+    written to apply. Its model-tier half is still not enforced; see defects 1 and 2
+    of docs/bugs/BUG-2026-09-18-inbox-watch-reviewer-tier-gate.md.
+    """
+    from superharness.harnesses import KNOWN_HARNESSES
+
+    return [harness for harness in KNOWN_HARNESSES if harness != owner]
+
+
 def _trigger_auto_review(project_dir: str, task_id: str, reviewers: list[str]) -> bool:
     """Transition task to review_requested and enqueue multiple reviewers."""
     import subprocess
@@ -1350,9 +1370,7 @@ def _auto_close_report_ready(project_dir: str) -> None:
 
         # Autonomous Peer Review selection (cross-pollination)
         if not peer_reviewers and autonomy == "ai_driven":
-            known_agents = ["claude-code", "codex-cli", "gemini-cli", "opencode"]
-            owner = str(task.get("owner", ""))
-            peers = [a for a in known_agents if a != owner]
+            peers = _peer_reviewer_candidates(str(task.get("owner", "")))
             if peers:
                 peer_reviewers = [peers[0]]
 
