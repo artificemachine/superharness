@@ -8,7 +8,7 @@ You are working for the project owner. Ship > plan. One task per session.
 ## This Project
 - What: superharness — multi-agent session handoff framework for Claude Code, Codex CLI, Gemini CLI
 - Stack: Python 3.11+ (click CLI, pydantic v2), shell scripts (bash), SQLite (state backend)
-- Tests: 2.5k tests (pytest), run with `uv run pytest tests/ -q`
+- Tests: 5.7k tests (pytest), run with `uv run pytest tests/ -q`
 - Entrypoint: `src/superharness/cli.py` → routes to `src/superharness/commands/*.py`
 
 ## Dev Commands
@@ -20,7 +20,11 @@ uv run pytest tests/test_smoke.py      # minimum smoke test
 uv run python -m superharness demo     # zero-config walkthrough
 ```
 
-The full suite has 4 pre-existing failures (dashboard-port detection — ignores these).
+The full suite is green as of 2026-09-18: `5725 passed, 21 skipped, 5 deselected,
+2 xfailed, 0 failed` at revision `432933cb`. The 2 xfails are guards that are not
+implemented yet (`tests/unit/test_dispatch_safety_guards.py`); the 5 deselected are
+`-m "not stress"` from `addopts`. The former "4 pre-existing failures (dashboard-port
+detection)" no longer reproduce — do not carry that note forward.
 
 ## Global Install Hygiene
 - Never run `pipx install --editable` / `pipx install -e .` against the global `superharness`
@@ -118,7 +122,9 @@ If a task has **>3 acceptance criteria** or touches **>4 files**, decompose into
 ## Test Quirks
 
 - Some tests need a SQLite DB in `.superharness/` — use test fixtures in `tests/fixtures/`.
-- Dashboard port-detection tests fail when no dashboard is running (pre-existing, safe to ignore).
+- Two xfails are expected and intentional: `tests/unit/test_dispatch_safety_guards.py`
+  covers guards that are not implemented yet. Nothing else fails in this checkout as
+  of 2026-09-18.
 - Use `uv` for running Python: `uv run pytest`, `uv run python -m superharness`.
 
 ## Self-Improvement Health Check

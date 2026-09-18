@@ -13,8 +13,8 @@ Start with:
 
 Do not infer a Superharness integration from those documents. Any future integration must be requested and designed separately.
 
-Superharness-specific adaptation decisions are recorded in [`ADAPTATION-openprose-reactor.md`](ADAPTATION-openprose-reactor.md).
-
-The conditions for treating the combined system as spec-driven development are recorded in [`ARCH-openprose-superharness-sdd.md`](ARCH-openprose-superharness-sdd.md).
-
-The bounded proof-of-concept decision and evidence gates are recorded in [`CONCEPT-openprose-reactor-pilot.md`](CONCEPT-openprose-reactor-pilot.md).
+Superharness-specific adaptation decisions, the conditions for treating the
+combined system as spec-driven development, and the bounded proof-of-concept
+decision and evidence gates are all recorded in
+[`CONCEPT-openprose-reactor.md`](CONCEPT-openprose-reactor.md) — Parts 1, 3 and 2
+respectively.

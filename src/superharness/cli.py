@@ -6,6 +6,7 @@ Cross-platform: macOS, Linux, Windows.
 from __future__ import annotations
 
 import importlib.resources as _importlib_resources
+import logging
 import os
 import shutil
 import subprocess
@@ -23,8 +24,6 @@ from superharness.commands.help_catalog import (
 from superharness.engine.adapter_registry import fallback_flagship, flagship
 from superharness.engine.errors import SuperharnessError, handle_cli_error
 from superharness.logging_utils import get_logger as _bootstrap_logger
-
-import logging
 
 _logger = logging.getLogger(__name__)
 
@@ -87,7 +86,7 @@ def _inject_quickstart(help_text: str) -> str:
         (
             i
             for i, line in enumerate(lines)
-            if line.startswith("Core commands:") or line.startswith("All commands:")
+            if line.startswith(("Core commands:", "All commands:"))
         ),
         len(lines),
     )
@@ -126,9 +125,15 @@ def _format_command_section(
     commands: list[str] | tuple[str, ...],
 ) -> None:
     """Render known root commands with Click's standard description layout."""
+    # `ctx.command` is declared `Command` but this helper is only ever reached
+    # from a group; narrow it rather than assume the wider type.
+    group = ctx.command if isinstance(ctx.command, click.Group) else None
+    if group is None:
+        return
+
     rows = []
     for name in commands:
-        command = ctx.command.get_command(ctx, name)
+        command = group.get_command(ctx, name)
         if command is not None:
             rows.append((name, command.get_short_help_str()))
     if rows:
@@ -145,7 +150,7 @@ class _OnboardingGroup(click.Group):
                 ctx,
                 formatter,
                 "All commands",
-                canonical_command_names(self.commands),
+                canonical_command_names(dict(self.commands)),
             )
             return
 
@@ -158,7 +163,7 @@ class _OnboardingGroup(click.Group):
         formatter.write_paragraph()
         formatter.write_text("Run 'shux help --all' for the complete expert catalog.")
 
-    def get_help(self, ctx: click.Context) -> str:  # noqa: D401
+    def get_help(self, ctx: click.Context) -> str:
         return _inject_quickstart(super().get_help(ctx))
 
 
@@ -209,7 +214,7 @@ def _cmd(
         else:
             _run_script(script, args)  # type: ignore[arg-type]
 
-    _handler.__name__ = f"cmd_{name.replace('-', '_')}"
+    _handler.__name__ = f"cmd_{name.replace('-', '_')}"  # type: ignore[attr-defined]
     return _handler
 
 
@@ -313,6 +318,11 @@ _cmd(
     "backup-state",
     "Backup or restore the SQLite state DB.",
     module="superharness.commands.backup_state",
+)
+_cmd(
+    "state-gc",
+    "Remove content-free state directories.",
+    module="superharness.commands.state_gc",
 )
 _cmd(
     "archive-yaml",
@@ -566,11 +576,12 @@ _register_memory_roots()
 # operator-memory and operator-forget run in-process (need argparse, not module passthrough)
 def _register_operator_memory():
     try:
-        from superharness.commands.operator_memory_cli import (
-            cmd_operator_memory,
-            cmd_operator_forget,
-        )
         import click as _click
+
+        from superharness.commands.operator_memory_cli import (
+            cmd_operator_forget,
+            cmd_operator_memory,
+        )
 
         @_click.command(
             "operator-memory",
@@ -722,7 +733,10 @@ _register_migrate_state()
 
 
 # Dashboard commands — extracted to commands/dashboard.py (C4 decomposition)
-from superharness.commands.dashboard import register_dashboard_commands, run_dashboard  # noqa: E402
+from superharness.commands.dashboard import (
+    register_dashboard_commands,
+    run_dashboard,
+)
 
 register_dashboard_commands(main, _SCRIPTS)
 
@@ -1010,7 +1024,7 @@ def cmd_run(args):
     if model:
         model = MODEL_SHORTCUTS.get(model, model)
 
-    from superharness.engine.sdk_runner import sdk_available, SDKRunner
+    from superharness.engine.sdk_runner import SDKRunner, sdk_available
 
     if not sdk_available():
         print(
@@ -1083,7 +1097,6 @@ def cmd_help(ctx, show_all):
 @main.group()
 def operator():
     """Manage the Superharness stack (Watcher, Dashboard, and Health)."""
-    pass
 
 
 @operator.command(name="check")
@@ -1136,6 +1149,7 @@ def operator_start(project, port, no_open, use_dashboard, no_daemon):
     invoking shell session. Use --no-daemon for foreground debugging.
     """
     from pathlib import Path
+
     from superharness.engine.operator import Operator
 
     project_dir = Path(project).resolve()
@@ -1242,8 +1256,8 @@ def operator_install(project, install_all, force, use_dashboard, watchdog):
     unless --force is also passed. --force is intentionally undocumented for
     agent use: agents must never run --all unattended.
     """
-    from pathlib import Path
     import subprocess
+    from pathlib import Path
 
     def _install_one(project_dir: Path) -> str:
         """Install the operator for a single project. Returns the label."""
@@ -1298,9 +1312,11 @@ def operator_install(project, install_all, force, use_dashboard, watchdog):
             )
             raise SystemExit(1)
         from superharness.engine.launchd_health import (
+            bootstrap as _bootstrap,
+        )
+        from superharness.engine.launchd_health import (
             find_all_superharness_projects,
             write_watchdog_plist,
-            bootstrap as _bootstrap,
         )
 
         projects = find_all_superharness_projects()
@@ -1345,8 +1361,10 @@ def operator_install(project, install_all, force, use_dashboard, watchdog):
     # 4. Watchdog
     if watchdog:
         from superharness.engine.launchd_health import (
-            write_watchdog_plist,
             bootstrap as _bootstrap,
+        )
+        from superharness.engine.launchd_health import (
+            write_watchdog_plist,
         )
 
         wp = write_watchdog_plist()
@@ -1383,9 +1401,14 @@ def operator_heal(project, auto_discover, quiet):
     (Fix: BUGREPORT watcher-silent-death-no-recovery, root cause #4.)
     """
     from pathlib import Path
+
     from superharness.engine.launchd_health import (
         heal as _heal,
+    )
+    from superharness.engine.launchd_health import (
         heal_all as _heal_all,
+    )
+    from superharness.engine.launchd_health import (
         operator_label_for_project,
         plist_path_for_label,
     )
@@ -1422,6 +1445,7 @@ def operator_heal(project, auto_discover, quiet):
 def operator_stop(project):
     """Persistently stop an installed operator, with a verified PID fallback."""
     from pathlib import Path
+
     from superharness.engine.launchd_health import (
         bootout,
         disable,
@@ -1484,7 +1508,7 @@ def operator_stop(project):
         click.echo(f"Error stopping operator: {e}", err=True)
 
 
-from superharness.commands.domain_groups import register_domain_groups  # noqa: E402
+from superharness.commands.domain_groups import register_domain_groups
 
 register_domain_groups(main)
 
