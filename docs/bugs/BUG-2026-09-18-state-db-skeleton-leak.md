@@ -146,3 +146,43 @@ this one: iteration 2 changes absent-state reads in `state_reader`, iteration 3
 extends that to the remaining readers, and iteration 1 closes the test escapes
 that still exist at collection time. "Proposed fix 1" above — do not create the
 database until the first write — remains the target, and it is not a small patch.
+## Progress 2026-09-18 — iteration 2 landed: task reads no longer create a database
+
+`get_tasks`, `get_task` and `get_top_level_tasks` no longer create a `state.db`
+for a project that has neither a database nor legacy YAML state. This is
+iteration 2 of `docs/PLAN-state-db-skeleton-leak.md` ("Lire les tâches sans créer
+de base"), and it closes the task-read share of the leak that this report
+measures.
+
+What was actually creating the skeleton: each reader reached `get_connection()` +
+`init_db()`, and those create the per-path directory plus the full schema before
+any row is written. A shared guard, `_no_state_to_read()` in
+`engine/state_reader.py`, now returns the reader's empty value first. It is built
+on the existing non-creating `_has_sqlite_db()` resolver plus a new
+`_has_legacy_state()` check on `.superharness/`, so it fires only when there is
+genuinely nothing to read.
+
+Three properties were deliberately preserved, and each has a test:
+
+- **A project that has state reads exactly as before** — the guard does not
+  over-block.
+- **The explicit YAML → SQLite migration still runs** when `.superharness/` is
+  present, which is the documented legacy path for fixtures and upgrades.
+- **A state-root conflict still raises** rather than degrading into a false "this
+  project has no tasks". It surfaces as `engine.state_errors.ConnectionError`,
+  the same type `get_connection()` raises for that condition, with the
+  `StateDatabaseConflictError` kept as the cause.
+
+Verified: `tests/unit/test_state_reader_no_create.py` (new) and
+`tests/unit/test_state_reader_xdg.py` — 14 passed; `tests/unit/` +
+`tests/contract/` 4450 passed / 15 skipped / 2 xfailed; and an out-of-pytest
+end-to-end run on the production branch confirming the state root is never
+created for an absent project.
+
+**Still unfixed after this iteration:** the other readers in this same file —
+`get_inbox_items`, `get_handoffs`, `get_failures`, `get_decisions` and
+`get_ledger_entries` — still open a connection unconditionally, so an absent
+project read through any of them still creates a skeleton. That is iteration 3 of
+the plan ("Étendre aux autres lectures d'état"), and the aggregate
+contract reader `get_contract_doc` is included there. Iteration 1 (closing the
+remaining test-collection escapes) is also still open.
