@@ -280,3 +280,39 @@ collection path. The remaining unverifiable part of this report is its own
 measurement history: the 7.5 Gi of directories existed, but nothing here
 reproduces their creation on the current code. Treat the stated growth rate as
 historical evidence, not as a current property.
+## Progress 2026-09-18 — the log write into HOME is now closed
+
+The previous Progress entry recorded that collection writes
+`<HOME>/Library/Logs/superharness/superharness.log` (0 bytes), and deliberately
+left it alone as outside that iteration's scope. It is now fixed as its own
+change, because iteration 1's acceptance criterion says collection and
+subprocesses write "uniquement dans l'espace temporaire" and that was false — for
+logs, if not for state.
+
+The mechanism: `logging_utils._ensure_handler()` calls
+`log_file.parent.mkdir(parents=True, exist_ok=True)`, and `_default_log_dir()`
+resolves from `Path.home()` on macOS. Any process that configures a logger
+therefore creates that directory, and collection-time imports do so before any
+fixture is active — which is exactly why the per-test `isolated_state_dir`
+fixture could never have covered it.
+
+`tests/conftest.py` now installs `SUPERHARNESS_LOG_FILE` and
+`SUPERHARNESS_AUDIT_LOG_FILE` under a session `tempfile.mkdtemp()` at import time,
+with `atexit` cleanup. conftest is imported before test modules are collected,
+which is the earliest point that precedes collection, and the values are inherited
+by spawned subprocesses — so this covers both halves of the criterion.
+
+Production log resolution is deliberately **unchanged**. `~/Library/Logs` is the
+macOS convention and the Linux branch already honours XDG; relocating macOS logs
+would be a user-visible behaviour change that this defect does not justify.
+Making tests stop writing to a developer's real home is the whole fix.
+
+The children in `tests/unit/test_state_collection_isolation.py` inherit none of
+these overrides, so what they exercise is the repository's isolation rather than
+the parent process's environment.
+
+Verified: the new `test_collection_writes_nothing_into_home` was RED first,
+failing with `['Library', 'Library/Logs', 'Library/Logs/superharness',
+'Library/Logs/superharness/superharness.log']`; the plan's validate command now
+passes twice at 7 tests; `tests/unit/` + `tests/contract/` 4468 passed / 15
+skipped / 2 xfailed; and `tests/conftest.py` goes from 3 ruff findings to 0.
