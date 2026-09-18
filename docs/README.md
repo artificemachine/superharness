@@ -97,6 +97,7 @@
 | [`bugs/2026-05-21_discuss_cli_ux_bugs.md`](bugs/2026-05-21_discuss_cli_ux_bugs.md) | `shux discuss` UX and retry-alert bugs (v1.62.20) |
 | [`bugs/BUG-2026-06-04-operator-orphans-pytest-swap-storm.md`](bugs/BUG-2026-06-04-operator-orphans-pytest-swap-storm.md) | Operator orphans pytest → 34 GB swap storm |
 | [`bugs/BUG-2026-07-31-test-suite-git-dir-escape.md`](bugs/BUG-2026-07-31-test-suite-git-dir-escape.md) | Test suite escaped into the real repo `.git/config` (`core.bare`, `core.hooksPath`) |
+| [`bugs/BUG-2026-09-18-inbox-watch-reviewer-tier-gate.md`](bugs/BUG-2026-09-18-inbox-watch-reviewer-tier-gate.md) | Auto-review tier gate is not enforced; the function meant to enforce it raises `ImportError` |
 | [`bugs/BUG-2026-09-18-state-db-skeleton-leak.md`](bugs/BUG-2026-09-18-state-db-skeleton-leak.md) | Every project path ever seen gets a 340 KB empty `state.db`; `shux state gc` reports them, deletes nothing |
 | [`bugs/BUGREPORT-discussion-consensus-single-participant.md`](bugs/BUGREPORT-discussion-consensus-single-participant.md) | Discussion consensus reached with only 1 of 3 participants |
 | [`bugs/BUGREPORT-watcher-silent-death-no-recovery.md`](bugs/BUGREPORT-watcher-silent-death-no-recovery.md) | Watcher silent death — no auto-recovery (19+ hour outage) |
