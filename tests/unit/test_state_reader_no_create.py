@@ -23,6 +23,12 @@ import pytest
 from superharness.engine.db import get_connection, init_db
 from superharness.engine.state_errors import ConnectionError
 from superharness.engine.state_reader import (
+    get_contract_doc,
+    get_decisions,
+    get_failures,
+    get_handoffs,
+    get_inbox_items,
+    get_ledger_entries,
     get_task,
     get_tasks,
     get_top_level_tasks,
@@ -121,3 +127,98 @@ def test_legacy_migration_path_still_runs(tmp_path, monkeypatch):
 
     dbs = list(Path(state_dir).rglob("state.db"))
     assert dbs, "the legacy ingest path no longer creates the database it reads"
+
+
+# --- iteration 3: the remaining state readers -------------------------------
+
+# Readers with no legacy ingest path: nothing to read means nothing to create.
+_OTHER_READERS = {
+    "get_inbox_items": (lambda project: get_inbox_items(project), []),
+    "get_handoffs": (lambda project: get_handoffs(project), []),
+    "get_handoffs_for_task": (lambda project: get_handoffs(project, "t1"), []),
+    "get_failures": (lambda project: get_failures(project), []),
+    "get_decisions": (lambda project: get_decisions(project), []),
+    "get_ledger_entries": (lambda project: get_ledger_entries(project), []),
+}
+
+
+@pytest.mark.parametrize("reader", sorted(_OTHER_READERS))
+def test_other_missing_state_reads_create_no_files(
+    isolated_state_dir, tmp_path, reader
+):
+    """Every remaining public reader must leave an absent project untouched."""
+    read, expected = _OTHER_READERS[reader]
+    project = tmp_path / "never-initialised"
+    project.mkdir()
+
+    result = read(str(project))
+
+    assert result == expected, f"{reader} returned {result!r} for an absent project"
+    assert not (project / ".superharness").exists(), f"{reader} wrote into the project"
+    assert not isolated_state_dir.exists(), (
+        f"{reader} created the state root {isolated_state_dir}"
+    )
+
+
+@pytest.mark.parametrize("reader", sorted(_OTHER_READERS))
+def test_other_state_reads_preserve_state_conflicts(monkeypatch, tmp_path, reader):
+    """A misconfigured state root must raise, never read as an empty result."""
+    read, _ = _OTHER_READERS[reader]
+    project = tmp_path / "project"
+    (project / ".superharness").mkdir(parents=True)
+    (project / ".superharness" / "state.sqlite3").write_bytes(b"")
+    monkeypatch.setenv("SUPERHARNESS_STATE_DIR", str(tmp_path / "shared-root"))
+
+    with pytest.raises(ConnectionError) as excinfo:
+        read(str(project))
+
+    assert isinstance(excinfo.value.__cause__, StateDatabaseConflictError)
+
+
+def test_aggregate_contract_read_creates_no_files(isolated_state_dir, tmp_path):
+    """`get_contract_doc` composes readers; none of them may create state."""
+    project = tmp_path / "never-initialised"
+    project.mkdir()
+
+    contract = get_contract_doc(str(project))
+
+    assert contract["tasks"] == []
+    assert contract["decisions"] == []
+    assert contract["failures"] == []
+    assert not isolated_state_dir.exists(), (
+        f"get_contract_doc created the state root {isolated_state_dir}"
+    )
+
+
+def test_aggregate_contract_keeps_its_default_id_and_goal(isolated_state_dir, tmp_path):
+    """The aggregate's documented defaults must survive the absence guard."""
+    project = tmp_path / "never-initialised"
+    project.mkdir()
+
+    contract = get_contract_doc(str(project))
+
+    assert contract["id"] == "contract"
+    assert contract["goal"] == ""
+    assert sorted(contract) == ["decisions", "failures", "goal", "id", "tasks"]
+
+
+def test_other_readers_still_return_existing_state(monkeypatch, tmp_path):
+    """The iteration-3 guard must not block a project whose database exists."""
+    state_dir = tmp_path / "state-root"
+    monkeypatch.setenv("SUPERHARNESS_STATE_DIR", str(state_dir))
+    project = tmp_path / "initialised"
+    project.mkdir()
+
+    conn = get_connection(str(project))
+    try:
+        init_db(conn)
+        conn.commit()
+    finally:
+        conn.close()
+
+    assert get_inbox_items(str(project)) == []
+    assert get_handoffs(str(project)) == []
+    assert get_failures(str(project)) == []
+    assert get_decisions(str(project)) == []
+    assert get_ledger_entries(str(project)) == []
+    assert get_contract_doc(str(project))["id"] == "contract"
