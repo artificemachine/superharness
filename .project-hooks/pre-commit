@@ -19,10 +19,16 @@ unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_OBJECT_DIRECTORY \
 # So: a fast, meaningful subset here (~19s), and the full matrix in CI where it
 # belongs. `-m "not network"` keeps provider-dependent tests out of the commit path.
 # Set SUPERHARNESS_FULL_PRECOMMIT=1 to run everything locally anyway.
+# Invoking `.venv/bin/pytest` by path does NOT put `.venv/bin` on PATH. That made
+# `tests/smoke/test_basic.py::test_main_binaries[superharness]` fail here — the test
+# asserts the console script is on PATH — while the same test passed under
+# `uv run pytest`, which prepends the venv bin. Export it explicitly so the hook's
+# environment matches the one the suite is written against; without this every commit
+# is blocked unless the developer already has `.venv/bin` on PATH.
 if [[ "${SUPERHARNESS_FULL_PRECOMMIT:-0}" == "1" ]]; then
-    PYTHONPATH=. .venv/bin/pytest tests -q -m "not network"
+    PATH="$PWD/.venv/bin:$PATH" PYTHONPATH=. .venv/bin/pytest tests -q -m "not network"
 else
-    PYTHONPATH=. .venv/bin/pytest -q -m "not network" \
+    PATH="$PWD/.venv/bin:$PATH" PYTHONPATH=. .venv/bin/pytest -q -m "not network" \
         tests/smoke \
         tests/contract \
         tests/state_machine \
