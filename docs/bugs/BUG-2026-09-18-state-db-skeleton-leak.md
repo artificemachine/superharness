@@ -234,3 +234,49 @@ records escapes that happen before collection;
 `tests/unit/test_state_collection_isolation.py` does not exist yet. Nothing here
 claims "zero skeletons everywhere": the read surface is closed, the
 collection-time surface is not.
+## Progress 2026-09-18 — iteration 1 probed: no collection-time escape reproduced
+
+Iteration 1 of `docs/PLAN-state-db-skeleton-leak.md` ("Fermer les échappements des
+tests") targets state created during pytest **collection**, before the per-test
+`isolated_state_dir` fixture becomes active. That escape is **not reproduced on
+this revision**, so per the iteration's own instruction no correction was
+invented and `tests/conftest.py` is unchanged.
+
+What was measured, twice in a row: collecting the whole suite with a synthetic
+`HOME` and neither `XDG_STATE_HOME` nor `SUPERHARNESS_STATE_DIR` set creates
+**zero** `state.db` files anywhere under that HOME. This matches the plan's
+prerequisite caveat — the 22,485 directories in this report were never reproduced
+against this revision, and the archived databases are not evidence about it.
+
+`tests/unit/test_state_collection_isolation.py` keeps the proof as a regression
+guard rather than a fix:
+
+- `test_collection_state_stays_in_session_root` — collects twice with a synthetic
+  HOME and asserts no state database appears, satisfying the iteration's
+  acceptance criterion "deux exécutions successives ne laissent aucune base dans
+  le HOME synthétique".
+- `test_child_state_is_cleaned_after_session` — runs a child pytest that really
+  opens a database, and asserts it honours the inherited `XDG_STATE_HOME` (so
+  inheritance is exercised, not assumed), leaves HOME clean, and leaves nothing
+  behind once the ephemeral root is removed.
+
+Recorded but deliberately **not** fixed, because it is out of this iteration's
+scope and is not state: collection does write
+`<HOME>/Library/Logs/superharness/superharness.log` (0 bytes), since
+`src/superharness/logging_utils.py:27` resolves the log directory from
+`Path.home()`. Read literally, the iteration's criterion "collection and
+subprocesses write only into temp space" therefore does not hold — for logs.
+Anyone tightening that criterion should treat it as a separate change with its own
+justification, not as part of this defect.
+
+Verified: `uv run pytest tests/unit/test_state_collection_isolation.py
+tests/unit/test_state_dir_isolation_2026_07_09.py -q` run twice — 6 passed each
+time — with the real `~/.local/state/superharness` unchanged at 96 entries
+before and after.
+
+**Status of the plan:** iterations 2 and 3 closed the read surface; iteration 4's
+inventory command is shipped; iteration 1 found nothing to close on the
+collection path. The remaining unverifiable part of this report is its own
+measurement history: the 7.5 Gi of directories existed, but nothing here
+reproduces their creation on the current code. Treat the stated growth rate as
+historical evidence, not as a current property.
