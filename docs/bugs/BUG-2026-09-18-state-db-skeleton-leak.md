@@ -186,3 +186,51 @@ project read through any of them still creates a skeleton. That is iteration 3 o
 the plan ("Étendre aux autres lectures d'état"), and the aggregate
 contract reader `get_contract_doc` is included there. Iteration 1 (closing the
 remaining test-collection escapes) is also still open.
+## Progress 2026-09-18 — iteration 3 landed: the read surface no longer creates state
+
+The public read surface of `engine/state_reader.py` no longer creates a database
+for an absent project. This is iteration 3 of
+`docs/PLAN-state-db-skeleton-leak.md` ("Étendre aux autres lectures d'état").
+
+Covered in this iteration: `get_inbox_items`, `get_handoffs`, `get_failures`,
+`get_decisions`, `get_ledger_entries`, and `_read_project_meta` behind the
+aggregate `get_contract_doc`. Together with iteration 2's `get_tasks`,
+`get_task` and `get_top_level_tasks`, every public reader in the module that
+opens a connection now carries its own guard — checked by walking the module's
+public functions with `ast` and asserting each connection-opening one is guarded.
+`get_contract_doc` is the one aggregate: it opens nothing itself and composes
+`get_tasks`, `get_decisions` and `get_failures`.
+
+Two shared checks, deliberately distinct, because the readers differ:
+
+- `_database_absent(project_dir)` — for readers with no YAML ingest path.
+  Nothing to read means nothing to create.
+- `_no_state_to_read(project_dir)` — database absent *and* no `.superharness/`,
+  for the ingest-capable readers. A project that still carries YAML has work to
+  do, so the explicit migration path is preserved.
+
+Both translate a state-root conflict to `engine.state_errors.ConnectionError`,
+exactly as `get_connection()` does. That also fixes a defect in
+`get_ledger_entries`, whose previous raw `_has_sqlite_db()` check let
+`StateDatabaseConflictError` escape untranslated — a type no caller of a reader
+handles.
+
+`get_contract_doc` composes guarded readers rather than short-circuiting with a
+duplicated default document, so its defaults are preserved by construction: an
+absent project still returns `{"id": "contract", "goal": "", "tasks": [],
+"decisions": [], "failures": []}`, and a future unguarded leaf would be caught by
+the aggregate test rather than silently reintroducing the leak.
+
+Verified: `tests/unit/test_state_reader_no_create.py` (now 25 cases) and
+`tests/unit/test_state_reader_xdg.py` — 29 passed; `tests/unit/` +
+`tests/contract/` 4465 passed / 15 skipped / 2 xfailed; and an out-of-pytest
+end-to-end run on the production branch confirming all six readers plus the
+aggregate create zero directories and zero databases for an absent project, keep
+their defaults, and read back correctly after an explicit write.
+
+**Still unfixed:** iteration 1 of the plan — the test-collection escapes. The
+suite's `isolated_state_dir` fixture pins `XDG_STATE_HOME` per test, but the plan
+records escapes that happen before collection;
+`tests/unit/test_state_collection_isolation.py` does not exist yet. Nothing here
+claims "zero skeletons everywhere": the read surface is closed, the
+collection-time surface is not.
