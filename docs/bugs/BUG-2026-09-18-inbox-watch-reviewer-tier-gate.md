@@ -153,3 +153,42 @@ No behaviour change is asserted for a fixed version, and no fix is proposed here
 beyond the policy questions above. The `mini` → `standard` mutation may be
 deliberate operator policy; what is demonstrable is that it is not the gate its
 comment describes.
+## Progress 2026-09-18 — defect 3 fixed; the reviewer pool now follows the registry
+
+`_auto_close_report_ready` no longer builds its candidate list by hand. The list
+comes from `harnesses.KNOWN_HARNESSES` through a new `_peer_reviewer_candidates()`
+helper — the same canonical source this file already documents using at
+`_cancel_undispatchable_agents`, which is what made the drift here a defect rather
+than a design choice.
+
+**Why this was safe to fix without the owner's policy call.** Policy question 4
+above asked whether `pi` should be a reviewer candidate; the registry already
+answers it, because `pi` is registered. The change is also behaviour-preserving
+for every case that worked: `KNOWN_HARNESSES` is sorted and `pi` sorts last, so
+the first candidate — which is the one the live path picks — is identical for all
+four owners that previously produced a reviewer. The only behaviour that changes is
+the broken one: a `pi`-owned task went from *no reviewer at all* to a reviewer.
+
+**The path had no test coverage whatsoever.** `grep -rln
+'auto_review\|peer_reviewers\|_auto_close_report_ready\|_trigger_auto_review'
+tests/` returned nothing before this change; the existing
+`tests/integration/test_review_autonomous.py` covers `_auto_close_review_passed`,
+a different function. `tests/unit/test_peer_reviewer_candidates.py` now adds seven
+cases, including a wiring guard that inspects `_auto_close_report_ready`'s source
+and fails if it rebuilds a harness list inline again. That guard matters more than
+the helper's own tests: the drift survived because no test could observe a caller
+choosing not to use the correct API.
+
+**Still open, unchanged by this fix.** Defect 1 (the `_select_reviewers`
+`ImportError` in dead code) and defect 2 (the live path's tier gate not being
+enforced) both stand, along with policy questions 1-3: which directory holds
+reviewer tiers, whether mutating the author's `model_tier` from `mini` to
+`standard` is intended policy, and whether an empty qualifying set should skip
+auto-review. `peers[0]` remains an arbitrary pick; this change makes the pool
+correct, not the selection.
+
+Verified: the new tests were RED first (`ImportError: cannot import name
+'_peer_reviewer_candidates'`); `tests/unit/` + `tests/contract/` +
+`tests/integration/test_review_autonomous.py` 4477 passed / 15 skipped / 2 xfailed;
+ruff on `inbox_watch.py` reports 133 findings at HEAD and 133 after, so this
+change added none.
