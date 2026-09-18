@@ -11,11 +11,23 @@ plan's own prerequisites recorded the same caveat — the growth reported in
 BUG-2026-09-18 was never reproduced *against this revision*, and archived
 databases are not evidence about it.
 
-So these tests are not a fix's proof of failure; they are the kept proof that the
-property holds, so a future import-time state access cannot reintroduce the escape
-unnoticed. `tests/conftest.py` is deliberately unchanged: the per-test
-`isolated_state_dir` fixture already covers test bodies, and nothing here found a
-collection-time gap to close.
+Two properties are pinned, and they were measured separately.
+
+**State**: collecting this suite with a synthetic `HOME` creates zero `state.db`
+files under it. That is the negative result described above — no fix was needed.
+
+**Logs**: collection wrote `<HOME>/Library/Logs/superharness/superharness.log`
+(0 bytes), because `logging_utils._default_log_dir()` resolves from
+`Path.home()` on macOS and `_ensure_handler()` creates the directory. No per-test
+fixture can cover that: it happens during collection, before any fixture is
+active. `tests/conftest.py` therefore installs a session `SUPERHARNESS_LOG_FILE`
+/ `SUPERHARNESS_AUDIT_LOG_FILE` at import time, which is the earliest point that
+covers collection and is inherited by spawned subprocesses. Production log
+resolution is untouched — `<HOME>/Library/Logs` is the macOS convention and changing it
+would be a user-visible behaviour change that this defect does not justify.
+
+The children below deliberately inherit none of these overrides, so what they
+exercise is the repository's isolation, not the parent's environment.
 """
 
 from __future__ import annotations
@@ -27,14 +39,21 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
 
-# The two ways a project can pin its state root. Both must be cleared so the child
-# resolves state the way an ordinary developer invocation would: under HOME.
-_STATE_ROOT_ENV = ("XDG_STATE_HOME", "SUPERHARNESS_STATE_DIR")
+# Overrides the child must not inherit, so that it resolves state and logs the
+# way a plain developer invocation would. Any isolation has to come from the
+# repository's own conftest.py, or these tests would be asserting the parent's
+# environment instead of the repository's behaviour.
+_INHERITED_OVERRIDES = (
+    "XDG_STATE_HOME",
+    "SUPERHARNESS_STATE_DIR",
+    "SUPERHARNESS_LOG_FILE",
+    "SUPERHARNESS_AUDIT_LOG_FILE",
+)
 
 
 def _child_env(home: Path, **extra: str) -> dict[str, str]:
     env = {**os.environ, "HOME": str(home)}
-    for name in _STATE_ROOT_ENV:
+    for name in _INHERITED_OVERRIDES:
         env.pop(name, None)
     env.update(extra)
     return env
@@ -127,3 +146,31 @@ def test_child_state_is_cleaned_after_session(tmp_path):
     shutil.rmtree(session_state, ignore_errors=True)
     assert not session_state.exists(), "the session state root could not be removed"
     assert _state_databases(home) == [], "state survived in HOME after cleanup"
+
+
+def test_collection_writes_nothing_into_home(tmp_path):
+    """Acceptance criterion: collection writes only into temporary space.
+
+    Not even a log directory may appear. This is the check that found a real
+    escape: `logging_utils._ensure_handler()` created
+    `<HOME>/Library/Logs/superharness/superharness.log` during collection, because
+    `_default_log_dir()` resolves from `Path.home()` on macOS and no fixture is
+    active at that point.
+    """
+    home = tmp_path / "synthetic-home"
+    home.mkdir()
+
+    result = subprocess.run(
+        [sys.executable, "-m", "pytest", "--collect-only", "-q", "tests/"],
+        cwd=REPO,
+        env=_child_env(home),
+        capture_output=True,
+        text=True,
+        timeout=600,
+    )
+    assert result.returncode == 0, (
+        f"collection failed:\n{result.stdout[-2000:]}\n{result.stderr[-2000:]}"
+    )
+
+    leftovers = sorted(str(p.relative_to(home)) for p in home.rglob("*"))
+    assert leftovers == [], f"collection wrote into the synthetic HOME: {leftovers}"
