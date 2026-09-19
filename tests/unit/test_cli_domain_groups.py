@@ -10,7 +10,6 @@ from click.testing import CliRunner
 from superharness.cli import main
 from superharness.commands.help_catalog import LEGACY_STATE_COMMANDS, legacy_state_present
 
-
 DOMAIN_COMMANDS = {
     "state": {
         "approve": "approve",
@@ -19,6 +18,7 @@ DOMAIN_COMMANDS = {
         "backup": "backup-state",
         "config": "config",
         "export": "export-yaml",
+        "gc": "state-gc",
         "import": "import-yaml",
         "migrate": "migrate-state",
         "pack": "pack",
@@ -103,7 +103,7 @@ def test_each_domain_forwards_to_canonical_callbacks() -> None:
 
     for domain_name, commands in DOMAIN_COMMANDS.items():
         domain = main.get_command(context, domain_name)
-        assert domain is not None, domain_name
+        assert isinstance(domain, click.Group), domain_name
         for child_name, canonical_name in commands.items():
             assert domain.get_command(context, child_name) is main.commands[canonical_name]
 

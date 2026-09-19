@@ -1,3 +1,100 @@
+# Session Handoff — 2026-09-19 (PRs #142/#143 shipped and cleaned up; #142 blocked on a CHANGELOG merge artifact)
+
+Agent: Pi (deepseek-flash, reasoning high) | Branch: `feat/state-gc-and-isolation` @ `cbe1f72c` | Tests: pre-commit hook `914 pass, 9 skip`; state suites `107 pass`, `test_state_gc_inventory.py` `55 pass` (full suite NOT rerun) | UNCOMMITTED (`CHANGELOG.md` staged)
+
+## What happened this session
+
+- **The old branch's premise was wrong, and finding that out first saved the PR.** `feat/reduce-dead-test-loc` could not be pushed: its five pre-session commits were squash-merged as **#136**, so a PR from it would have re-applied an already-merged prune. `git cherry` reported all commits `+` (no upstream match) because a squash-merge produces a different patch-id, so patch-identity was useless as evidence — the decisive evidence was content: main's `48de5b85 (#136)` carries 24,896 deletions and the old branch's diff carried 25,138. Built `feat/state-gc-and-isolation` directly on `main` by cherry-picking the nine commits: **31 files, +2417/−244** against the old branch's 175 files / −25,138.
+- **Mandatory pre-merge release review, run twice (the rule requires re-binding when the source commits change).** Receipt: `$HOME/.local/state/release-advice/release-advice-skills.json` → `canonical_repo=$HOME/.local/share/release-advice/runtime`. Verdict each time: **release → wait**, **publish → wait** (both on missing `CI verification`), **tag → consider**. Confirmed by inspection that merging triggers **no** release/tag/publish: `publish.yml` fires only on `release: [published]`, `release.yml` and `candidate.yml` only on `workflow_dispatch`.
+- **PR #143 merged** (`chore/repo`): ignored `.hablatone` (its sibling `.hablatone-project` was already covered at `.gitignore:64`, so only the unsuffixed file surfaced), tracked and indexed `docs/ARCH-superharness-design-patterns.md` (tracked `HANDOFF.md` referenced it at eight lines while a clone had no such file), and ignored root `/workspace/` (`/search-topic` writes reports there).
+- **`HANDOFF.md` was merged as a union, not a pick-a-side** during the cherry-pick: my side held both 2026-09-18 blocks, main's side held the 2026-09-17/09-12/09-10 blocks. Verified 52 session headers, none missing from either version, no duplicates, 0 conflict markers.
+- **Windows CI caught a real bug in my own iteration-4 code.** `FAILED tests/unit/test_state_gc_inventory.py::test_older_than_days_zero_ignores_age - AssertionError: assert 'kept' == 'candidate'`. `build_inventory` documented `older_than_days=0` as "ignore age" but computed `cutoff = now - 0 * 86400` and still applied the mtime gate; it passed on macOS only because a fresh mtime happened to beat the call-site `now`, and Windows' coarser mtime granularity broke the tie. Fixed with `cutoff = None` (`7601dc64`), pinned by a test using a **future** mtime so it fails on every platform. RED before, GREEN after.
+- **Cleanup.** Deleted local `feat/reduce-dead-test-loc`; removed the stale `superharness-langfuse-current` worktree (detached at PR #106, clean); removed 5 orphaned dispatch worktrees via `shux worktree-gc`; deleted 13 remote branches and discovered 12 more were **already gone server-side** — my remote-tracking refs were stale, so `remote ref does not exist` was the giveaway, not a failed delete. `git fetch --prune` is what reconciled it.
+- **#142 is blocked by one failure, caused by my own merge.** `Shell Test Suite` → `ERROR: CHANGELOG.md changed existing content. Only append at EOF is allowed.` The auto-merge interleaved my 12 entries **before** main's two #143 `chore(repo)` entries. CI compares the PR base (`ce07c41b`) against the head and requires the base to remain a prefix; the interleaving breaks that. Git does **not** run pre-commit for auto-merge commits, so nothing caught it at creation. `QA Gate` failed only as the aggregator for this.
+
+## Next session — first moves
+
+1. **Unblock #142 — needs explicit operator authorization, then it merges green.** The reorder is prepared and staged, and verified: `base is a strict prefix of head: True`, byte-identical at 350,371 bytes / 917 lines, zero lines lost. Commit it with **`--no-verify`** (allowed by the global rule for a docs-only, CHANGELOG-only staged diff with per-batch confirmation) — or rewrite the merge commit and force-push. Then `gh pr merge 142 --merge`. Every other check is green (28/30 SUCCESS; the 2 FAILUREs are `Shell Test Suite` and its `QA Gate` aggregator).
+2. **Decide the 5 pre-rewrite remote branches** that have no merged PR and therefore no proof their content is preserved: `backup/claude-session-hook-pre-github-rebase`, `fix/claude-session-hook-command-substitution` (PR #42 closed unmerged), `fix/codex-hook-schema`, `fix/hook-path-stable`, `fix/systemd-watcher-cadence`. All are 602–886 commits behind; their "ahead" counts are meaningless because the history rewrite changed every id.
+3. **Owner decision on the release-advice backlog (36 pending events), not an acknowledgement from here.** It is a **machine-global** queue: `~/.codex/.tmp/marketplaces/.staging/marketplace-upgrade-*` (~17), `/private/tmp/*` scratchpads, plus `shipguard`, `kabao-companion`, `pi-lens`, `pi-bar`, `aacp-registry-wt`, `pi-hermes-memory`. They belong to other repos, and for the temp-dir ones the evidence no longer exists, so they must stay pending rather than be bulk-acknowledged.
+
+### Operational notes
+
+- **`pending --repo .` is NOT the hook's queue.** It resolves a repo-scoped state dir and reads 0 events; the hook writes the global queue. Use `--state-dir "$HOME/.local/state/release-advice"`. Every "no pending reviews" I reported early in the session came from the wrong dir and was wrong.
+- **CHANGELOG append-only is enforced twice with different baselines:** pre-commit `--staged` compares against **HEAD**, CI `--base-ref` compares against **main**. A merge that interleaves satisfies neither, and **no follow-up commit can repair it** — moving lines registers as deletions (`CHANGELOG.md has 2 deleted/modified line(s)`). Always merge with `git merge --no-commit`, fix the file, then commit.
+- **Required CI contexts are `QA Gate`, `Windows-Native Release Gate`, `ShipGuard Scan`, `Gitleaks`** (from branch protection, not from the check list). The first two are `needs:`-gated aggregators that are absent until their dependencies finish — their absence is not a blocker.
+- **The Windows unit lane is ~16 min and is the long pole.** The full local macOS suite does not catch Windows-only mtime-granularity bugs; a platform-dependent test must be made deterministic (e.g. a future mtime) instead of relying on sub-second ordering.
+- `uv run` re-dirties `uv.lock`, stripping `sys_platform != 'win32'` and `python_full_version < '3.14'` markers — harmful for a Windows/Ubuntu matrix. `git restore uv.lock` before every commit.
+- Committing off `main` needs `PATH="$PWD/.venv/bin:$PATH"` because `main` lacks the hook fix `b931c820` (only on #142); on the PR branch the hook finds the binary itself. Push needs `ALLOW_PUSH=1`.
+- `.hablatone` and `tests/unit/.ruff_cache`-style caches are ignored now; `docs/adr/`, `docs/incidents/`, `tests/doctrine/`, `content/` are empty ai-forge leftovers deliberately **left unignored** — an ignore rule on `docs/adr/` or `docs/incidents/` would silently swallow real ADRs or incident reports.
+- The ~120 pyright findings in `src/superharness/commands/inbox_watch.py` are **pre-existing** (lines 988/989 are byte-identical on `main`), are **documented as defect 1** in `docs/bugs/BUG-2026-09-18-inbox-watch-reviewer-tier-gate.md`, and pyright is **not** a repo gate. Do not treat a lens advisory on that file as a blocker.
+
+---
+
+# Session Handoff — 2026-09-18 (state-db skeleton leak: plan closed; inbox_watch defect 3 fixed)
+
+Agent: Pi (deepseek-flash, reasoning high) | Branch: `feat/reduce-dead-test-loc` @ `49fd42a8` | Tests: full suite `5815 pass, 21 skip, 5 deselect, 2 xfail` (562s, run with `--timeout=90`) | COMMITTED (8 commits, unpushed; worktree dirty: `HANDOFF.md`)
+
+## What happened this session
+
+- **`docs/PLAN-state-db-skeleton-leak.md` is now closed.** All four iterations are dispositioned: 2 and 3 fixed the read surface, 4 shipped `shux state gc`, and 1 probed to a negative. That plan is gitignored (`.gitignore:78`) and therefore not in the repo — this block is the durable record of it.
+- **`src/superharness/commands/state_gc.py` (new), `cli.py`, `commands/help_catalog.py`** — `shux state gc`, inventory only. It deletes nothing and exposes no option that does, per the plan's §6: real deletion needs a shared exclusion protocol honoured by every writer, or a proven-quiescent window. Classification sends a database that is populated, carries an unknown table, has a sidecar present, is a symlink, is unreadable or is locked to `ignored`, never `candidate`. It opens `mode=ro` and deliberately not `immutable`, never calls `get_connection`/`init_db`, and reads rows through `iterdump()` so no table name is ever interpolated into a query.
+- **`src/superharness/engine/state_reader.py`** — two shared non-creating checks: `_database_absent()` for readers with no YAML ingest path, and `_no_state_to_read()` for those that have one (no database *and* no `.superharness/`). Iteration 2 guarded `get_tasks`/`get_task`/`get_top_level_tasks`; iteration 3 guarded `get_inbox_items`/`get_handoffs`/`get_failures`/`get_decisions`/`get_ledger_entries`/`_read_project_meta`. Both translate a state-root conflict to `engine.state_errors.ConnectionError` exactly as `get_connection()` does, which also fixed `get_ledger_entries` letting `StateDatabaseConflictError` escape untranslated. `get_contract_doc` composes the guarded readers rather than duplicating a default document, so its defaults survive by construction.
+- **`tests/conftest.py`** — collection used to write `<HOME>/Library/Logs/superharness/superharness.log` (0 bytes) into the real home, because `logging_utils._default_log_dir()` resolves from `Path.home()` and `_ensure_handler()` creates that directory before any fixture is active. A session `tempfile.mkdtemp()` is now installed at import time — the earliest point preceding collection — inherited by spawned subprocesses, with `atexit` cleanup. Production log resolution is deliberately unchanged.
+- **`.project-hooks/pre-commit`** — the hook ran `.venv/bin/pytest` by path, so `.venv/bin` never reached `PATH` and `tests/smoke/test_basic.py::test_main_binaries[superharness]` failed *inside the hook* while passing under `uv run`. Every commit was blocked. Both branches now prefix `PATH="$PWD/.venv/bin:$PATH"`.
+- **`src/superharness/commands/inbox_watch.py`** — defect 3 of the new bug report: the autonomous reviewer candidate list was hardcoded and silently excluded `pi`, so a `pi`-owned task got no reviewer. `_peer_reviewer_candidates()` now reads `harnesses.KNOWN_HARNESSES`, the canonical source this same file already used at `_cancel_undispatchable_agents`. Behaviour-preserving for every owner except `pi` — the registry is sorted and `pi` sorts last, so the first pick is unchanged elsewhere.
+- **New tests** — `test_state_gc_inventory.py` (54), `test_state_reader_no_create.py` (25), `test_state_collection_isolation.py` (3), `test_peer_reviewer_candidates.py` (7). The last includes a wiring guard that fails if the live path rebuilds a harness list by hand, which is the failure no helper-level test could catch.
+- **Docs** — new `docs/bugs/BUG-2026-09-18-state-db-skeleton-leak.md` and `BUG-2026-09-18-inbox-watch-reviewer-tier-gate.md`, new `docs/audits/2026-09-18-docs-triage.md`, the OpenProse decision docs merged into `CONCEPT-openprose-reactor.md` with the Pi FLOW folded in as Appendix A, four superseded documents archived (28 → 32), and index orphans cut 15 → 6. `AGENTS.md` had its stale test-posture claims corrected ("2.5k tests", "4 pre-existing failures").
+- **`CHANGELOG.md`** — append-only entries for every change above; verified as an unbroken prefix of the previous HEAD, so no existing line was rewritten.
+
+## Next session — first moves
+
+1. **Merge conflicts are the top blocker.** `HANDOFF.md` and `docs/README.md` conflict with `main`; the branch is 6 behind and 13 ahead (main at v1.85.0 via PR #141). `CHANGELOG.md` auto-merges. `main` is checked out in the sibling worktree `superharness-state-command`, so it cannot be checked out here. Resolve `HANDOFF.md` only after deciding the fate of the 27 unstaged lines from the previous Codex session that sit directly below this block.
+2. ~~Measure the required coverage gate.~~ **Closed this session:** the CI unit-job command (`tests/unit --timeout=120 -n auto --dist loadfile --cov=superharness --cov-fail-under=56`) passes locally at **4233 passed, 6 skipped, 2 xfailed, coverage 59.96%** against the required 56%. Re-run it if new source is added, since the margin is under four points.
+3. **A/B the latent stall.** `uv run pytest tests/` in one process stalls at 63% (3,699 tests) on `tests/unit/test_install_scripts.py::test_install_launchd_requires_explicit_noninteractive_confirmation`; the identical command with `--timeout=90` completes and no timer ever fires. CI never runs the whole tree in one process, so this is not a CI blocker, but it is unexplained. Reproduce against `432933cb` in a worktree to establish whether this session caused it.
+4. **New branch and PR.** `origin/feat/reduce-dead-test-loc` is 8 commits behind, and that branch name was already consumed by **merged PR #136**, so pushing there attaches to a dead ref. The required checks (`QA Gate`, `Windows-Native Release Gate`, `ShipGuard Scan`, `Gitleaks`) have never run on these commits.
+5. **Disposition the untracked files:** `.hablatone` (13 bytes, contains `superharness`, not gitignored — likely wants an ignore entry) and `docs/ARCH-superharness-design-patterns.md`.
+6. **The release-policy review is mandatory before any merge** (`AGENTS.md`). Read the `release-policy` skill and present evidence-based release/tag/publish advice. No release, tag or publish is authorized; the branch does not touch `pyproject.toml`, so main's `1.85.0` stands and no per-merge bump is implied.
+7. **Deliberately unfixed, in `BUG-2026-09-18-inbox-watch-reviewer-tier-gate.md`:** defect 1 (`_select_reviewers` imports `reviewer_meets_tier` and `AGENT_DEFAULT_TIERS` from `engine/model_budget`, which defines neither — dead code, latent `ImportError`) and defect 2 (the live path rewrites the *author's* `model_tier` instead of gating the reviewer's). Both need the policy answers recorded in that report, not guesses.
+
+### Operational notes
+
+- **Run tests as `uv run pytest`.** `uv` puts `.venv/bin` on `PATH`; calling `.venv/bin/pytest` directly does not, which breaks `test_main_binaries[superharness]`.
+- **Hook chain:** `core.hooksPath=$HOME/.githooks`, and that global hook delegates to `.project-hooks/pre-commit`. The global hook **requires `CHANGELOG.md` to be staged in every commit** and **blocks a home-relative path on added lines** (pattern `~/[a-zA-Z0-9._]`) outside exempt paths — `CHANGELOG.md`, `docs/`, `HANDOFF.md` and `src/` are exempt, `tests/` is NOT. Separately, `tests/unit/test_no_tracked_personal_data.py` fails on any tracked file containing the literal maintainer home path or username (the username is tolerated only inside a `${...}` reference on the same line). Write `$HOME/...`: it satisfies both guards at once, which is the only form that does.
+- **Always pass `--timeout` when running the whole tree** (see first-moves item 3), or it may appear to hang.
+- `docs/PLAN-*.md`, `docs/AUDIT-*.md` (`.gitignore:77-78`) and `docs/bulletproof-report-*.md` are gitignored working-notes patterns, so they can never be linked from `docs/README.md` — `tests/test_docs_index_links.py` requires every index link to resolve to a **git-tracked** file. A new doc must be staged before its index link will pass.
+- State isolation: tests pin `XDG_STATE_HOME` per test via `isolated_state_dir`, and `SUPERHARNESS_STATE_DIR` stays cleared because it is production authority. The real state root is `$HOME/.local/state/superharness` (96 entries as of this session).
+- **ICM is unavailable on this host** — MCP servers are `obsidian-semantic`, `hablatone-rs` and `caasiopeia`, with no `icm_memory_store` — so this handoff exists in `HANDOFF.md` only and was not stored in ICM.
+
+---
+
+# Session Handoff — 2026-09-18 (SQLite skeleton leak: implementation plan saved)
+
+Agent: Codex | Branch: `feat/reduce-dead-test-loc` @ `432933cb` | Tests: not run; current baseline unknown, historical results not rerun | UNCOMMITTED
+
+## What happened this session
+
+- Read the previous handoff and `docs/bugs/BUG-2026-09-18-state-db-skeleton-leak.md`. The report describes 22,485 state directories (~7.5 Gi) and 112 populated archived databases; those measurements were not reproduced in this session.
+- Saved `docs/PLAN-state-db-skeleton-leak.md` at the user's request. Four sequential TDD slices: verify collection/subprocess isolation; stop absent task reads creating databases; extend to other state readers; add conservative `shux state gc` inventory with simulation only. Estimated work: 2h30, approximately 3h30 with contingency.
+- Corrected the initial proposal after source inspection: `tests/conftest.py` already isolates `XDG_STATE_HOME` per test and deliberately clears `SUPERHARNESS_STATE_DIR`. Do not replace this with an authoritative production override. The current leak remains unproven; collection happens before function-scoped fixtures.
+- `get_connection(project_dir)` creates directories and opens SQLite; state readers call it and initialize schema. The plan targets absent-state reads, not a universal first-INSERT lazy connection. Preserve canonical path resolution, conflicts and existing state compatibility.
+- The scratch plan passed the canonical `tools/plan_check.py` structural/repository check. This is a document consistency check, not execution evidence. No source code, tests, installation, live data, Git refs or release artifacts changed.
+
+## Next session — first moves
+
+1. Read `docs/PLAN-state-db-skeleton-leak.md`, recheck HEAD and source signatures, then obtain execution authorization including the listed test commands. Saving the plan did not authorize implementation, tests, commits or publishing.
+2. Start iteration 1 with synthetic HOME/state roots and reproduce any environment-dependent leak twice. If proposed RED tests are already green, revise the diagnosis instead of manufacturing a fix. Establish a baseline on the current revision.
+3. Execute the remaining approved slices only after their dependencies; report remaining direct database callers outside `state_reader` rather than claiming all skeleton creation is eliminated.
+
+### Operational notes
+
+- Real deletion is deferred: an emptiness check plus `unlink` races with writers. A future deletion plan needs a shared writer exclusion protocol or proven quiescence. Do not delete by size or age alone. No real user state or archives may be touched under this plan.
+- The existing untracked `.hablatone`, `docs/ARCH-superharness-design-patterns.md`, and bug report were preserved. `HANDOFF.md` now has this prepended block; all prior bytes remain intact.
+- `shux contract` returned no open task and a `test-contract` header; no applicable task ID was available. No task was invented, reopened or closed, and no task-scoped shux handoff was written. `shux rules` returned no rules. These are observed CLI results, not proof of state health.
+- Release advice pending query returned an empty list for this checkout; no release, tag, deployment or publication was requested or performed.
+
+---
+
 # Session Handoff — 2026-09-17 (ai-forge integration backed out)
 
 Agent: pi (claude-sonnet-5) | Branch: `feat/reduce-dead-test-loc` @ `432933cb` | Tests: 913 pass, 9 skip (`bash .project-hooks/pre-commit`) | UNCOMMITTED
