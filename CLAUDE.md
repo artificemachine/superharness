@@ -107,7 +107,7 @@ Reference: `superharness/protocol/spec.md`.
 ## Cross-Repo Branch Link — RETIRED (2026-04-16)
 
 > The paired-branch convention is retired as of v1.24.2. See
-> `docs/morpheme-branch-policy.md` → "Retirement note" for rationale.
+> `docs/archive/morpheme-branch-policy.md` → "Retirement note" for rationale.
 >
 > **TL;DR**: adapter-payload schema stabilised at v1.1 (shipping on PyPI).
 > Superharness is the producer; Morpheme is a consumer. All superharness

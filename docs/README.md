@@ -1,6 +1,6 @@
 # superharness — Documentation Index
 
-> Updated 2026-09-10. Run the `docs-organize` skill to audit. On 2026-09-10, 43 superseded or completed docs (~8,150 lines) were pruned: 16 unlinked files under `archive/` plus 27 completed plans/audits/reviews that had been listed in this index. The 4 prior-art analyses cited from the root README's "Prior art" section remain tracked.
+> Updated 2026-09-18. Run the `docs-organize` skill to audit. On 2026-09-10, 43 superseded or completed docs (~8,150 lines) were pruned: 16 unlinked files under `archive/` plus 27 completed plans/audits/reviews that had been listed in this index. The 4 prior-art analyses cited from the root README's "Prior art" section remain tracked.
 
 ---
 
@@ -42,6 +42,8 @@
 | [`CONCEPT-behavioral-profile.md`](CONCEPT-behavioral-profile.md) | Zero-touch adaptive layer — behavioral profile |
 | [`CONCEPT-notifications-and-state-isolation.md`](CONCEPT-notifications-and-state-isolation.md) | Notifications + state isolation concept |
 | [`CONCEPT-content-addressed-context-typed-boundaries.md`](CONCEPT-content-addressed-context-typed-boundaries.md) | Content-addressed context hashing + typed handoff boundaries |
+| [`CONCEPT-openprose-reactor.md`](CONCEPT-openprose-reactor.md) | OpenProse/Reactor adaptation, SDD conditions and pilot gates (merged 2026-09-18) |
+| [`CONCEPT-develop-until-approved.md`](CONCEPT-develop-until-approved.md) | Pi-style `developIssuesUntilApproved` orchestration (includes the former FLOW as Appendix A) |
 
 ## 🔒 Security & Audits
 
@@ -58,6 +60,11 @@
 | [`CLASSIFY-discussion-tier-effort.md`](archive/CLASSIFY-discussion-tier-effort.md) | Task & discussion tier/effort classification |
 | [`COMPARE-ltx2-train-model-skill-vs-lifecycle.md`](archive/COMPARE-ltx2-train-model-skill-vs-lifecycle.md) | LTX-2 `train-model` skill vs the superharness lifecycle |
 | [`ADOPTION-LIST-omnigent-2026-07-19.md`](archive/ADOPTION-LIST-omnigent-2026-07-19.md) | Adoption list — omnigent → superharness (2026-07-19) |
+| [`audits/2026-09-18-docs-triage.md`](audits/2026-09-18-docs-triage.md) | docs/ merge and archive triage — what was merged, archived, and deliberately left |
+| [`audits/2026-09-10-arch-audit.md`](audits/2026-09-10-arch-audit.md) | Architecture audit — current run (0 critical, 3 high, 4 medium, 4 low) |
+| [`archive/2026-08-05-arch-audit.md`](archive/2026-08-05-arch-audit.md) | Architecture audit — superseded run (2026-08-05) |
+| [`archive/2026-07-21-arch-audit.md`](archive/2026-07-21-arch-audit.md) | Architecture audit — superseded run (2026-07-21) |
+| [`archive/2026-08-05-bulletproof.md`](archive/2026-08-05-bulletproof.md) | Claims-vs-reality run — superseded (2026-08-05) |
 
 ## 📋 Plans (Active)
 
@@ -90,6 +97,9 @@
 | [`bugs/2026-05-21_ai-driven-dispatch-failure.md`](bugs/2026-05-21_ai-driven-dispatch-failure.md) | Why `ai_driven` autonomy did not dispatch (morpheme project) |
 | [`bugs/2026-05-21_discuss_cli_ux_bugs.md`](bugs/2026-05-21_discuss_cli_ux_bugs.md) | `shux discuss` UX and retry-alert bugs (v1.62.20) |
 | [`bugs/BUG-2026-06-04-operator-orphans-pytest-swap-storm.md`](bugs/BUG-2026-06-04-operator-orphans-pytest-swap-storm.md) | Operator orphans pytest → 34 GB swap storm |
+| [`bugs/BUG-2026-07-31-test-suite-git-dir-escape.md`](bugs/BUG-2026-07-31-test-suite-git-dir-escape.md) | Test suite escaped into the real repo `.git/config` (`core.bare`, `core.hooksPath`) |
+| [`bugs/BUG-2026-09-18-inbox-watch-reviewer-tier-gate.md`](bugs/BUG-2026-09-18-inbox-watch-reviewer-tier-gate.md) | Auto-review tier gate is not enforced; the function meant to enforce it raises `ImportError` |
+| [`bugs/BUG-2026-09-18-state-db-skeleton-leak.md`](bugs/BUG-2026-09-18-state-db-skeleton-leak.md) | Every project path ever seen gets a 340 KB empty `state.db`; `shux state gc` reports them, deletes nothing |
 | [`bugs/BUGREPORT-discussion-consensus-single-participant.md`](bugs/BUGREPORT-discussion-consensus-single-participant.md) | Discussion consensus reached with only 1 of 3 participants |
 | [`bugs/BUGREPORT-watcher-silent-death-no-recovery.md`](bugs/BUGREPORT-watcher-silent-death-no-recovery.md) | Watcher silent death — no auto-recovery (19+ hour outage) |
 | [`bugs/discussion-dispatch-tier-ignored-double-failure.md`](bugs/discussion-dispatch-tier-ignored-double-failure.md) | Discussion dispatch fails twice — max tier ignored, silent failures |
@@ -109,7 +119,7 @@ Point-in-time claim-vs-reality audits. `docs/bulletproof-report-*.md` is gitigno
 | [`adapter-models.md`](adapter-models.md) | Adapter model-to-tier mapping |
 | [`pack-format.md`](pack-format.md) | shux pack archive format |
 | [`MCP-MEMORY.md`](MCP-MEMORY.md) | Optional MCP memory server setup |
-| [`morpheme-branch-policy.md`](morpheme-branch-policy.md) | Morpheme branch policy (retired) |
+| [`archive/morpheme-branch-policy.md`](archive/morpheme-branch-policy.md) | Morpheme branch policy (retired 2026-04-16; archived 2026-09-18) |
 
 ## 📎 Reports & Misc
 
@@ -120,7 +130,7 @@ Point-in-time claim-vs-reality audits. `docs/bulletproof-report-*.md` is gitigno
 
 ---
 
-## 📦 Archived (28 files in `docs/archive/`)
+## 📦 Archived (32 files in `docs/archive/`)
 
 Obsolete, completed, superseded, or dated docs moved to archive. See `docs/archive/` for:
 - Session handoff notes (`HANDOFF-2026-06-*.md`, `NEXT_SESSION_HANDOFF.md`, `handoff-yaml-cleanup-session-2026-05-13.md`)
@@ -128,6 +138,7 @@ Obsolete, completed, superseded, or dated docs moved to archive. See `docs/archi
 - A dated release checklist (`RELEASE-TODO-v1.62.15.md`)
 - Completed migration/cleanup plans (SQLite migration, contract-YAML removal, module system, onboarding pipeline)
 - Stale comparisons/audits/reviews (pi-hermes comparison, Dorothy comparison, drift audit)
+- Superseded dated audits (the 2026-07-21 and 2026-08-05 architecture audits and the 2026-08-05 bulletproof run, archived 2026-09-18 behind the 2026-09-10 audit) and the retired morpheme branch policy
 
 ---
 

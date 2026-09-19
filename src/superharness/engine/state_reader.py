@@ -20,7 +20,11 @@ import sqlite3
 import sys
 from typing import Any
 
-from superharness.utils.paths import resolve_active_state_db_path
+from superharness.engine.state_errors import ConnectionError
+from superharness.utils.paths import (
+    StateDatabaseConflictError,
+    resolve_active_state_db_path,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +32,43 @@ logger = logging.getLogger(__name__)
 def _has_sqlite_db(project_dir: str) -> bool:
     """Return True if the canonically selected state database exists."""
     return os.path.isfile(resolve_active_state_db_path(project_dir))
+
+
+def _has_legacy_state(project_dir: str) -> bool:
+    """Return True if YAML state an explicit migration would ingest is present.
+
+    `.superharness/` is where pre-SQLite state lives, so its presence is what
+    separates "nothing to read" from "legacy state still to ingest".
+    """
+    return os.path.isdir(os.path.join(project_dir, ".superharness"))
+
+
+def _database_absent(project_dir: str) -> bool:
+    """True when the canonically selected state database does not exist.
+
+    A caller that gets True must return its empty value and must not open a
+    connection: opening one is exactly what creates the 340 KB `state.db`
+    skeleton measured in BUG-2026-09-18. Non-creating by construction — it
+    consults the canonical resolver and the filesystem and nothing else.
+
+    A state-root conflict is translated to `ConnectionError` exactly as
+    `get_connection()` translates it, so a misconfigured root still raises rather
+    than becoming a false "this project has nothing to read".
+    """
+    try:
+        return not _has_sqlite_db(project_dir)
+    except StateDatabaseConflictError as exc:
+        raise ConnectionError(str(exc)) from exc
+
+
+def _no_state_to_read(project_dir: str) -> bool:
+    """True when an ingest-capable read has nothing to read.
+
+    Stricter than `_database_absent` for readers that hydrate SQLite from YAML:
+    those still have work to do when `.superharness/` exists but no database
+    does, so only a project with no state at all short-circuits.
+    """
+    return _database_absent(project_dir) and not _has_legacy_state(project_dir)
 
 
 def _get_backend(project_dir: str) -> str:
@@ -88,6 +129,8 @@ def get_inbox_items(project_dir: str) -> list[dict]:
     Production (sqlite_only) reads SQLite directly. The legacy ingest
     helper runs only inside pytest test fixtures.
     """
+    if _no_state_to_read(project_dir):
+        return []
     if _production_path(project_dir):
         return _inbox_from_sqlite(project_dir)
     return _legacy_ingest_then_inbox(project_dir)
@@ -104,8 +147,9 @@ def _inbox_row_to_yaml_shape(row: dict) -> dict:
 
 def _inbox_from_sqlite(project_dir: str) -> list[dict]:
     from dataclasses import asdict
-    from superharness.engine.db import get_connection, init_db
+
     from superharness.engine import inbox_dao
+    from superharness.engine.db import get_connection, init_db
 
     conn = get_connection(project_dir)
     try:
@@ -165,6 +209,8 @@ def get_tasks(project_dir: str) -> list[dict]:
     SQLite errors propagate — there is no silent YAML fallback. The
     legacy YAML auto-ingest path runs only inside pytest test fixtures.
     """
+    if _no_state_to_read(project_dir):
+        return []
     # sqlite_only: production path raises on SQLite errors instead of
     # silently returning [] like the legacy test path does.
     if _production_path(project_dir):
@@ -175,11 +221,13 @@ def get_tasks(project_dir: str) -> list[dict]:
 def get_task(project_dir: str, task_id: str) -> dict | None:
     """Return a single task by ID from SQLite (post-YAML removal).
     Production reads SQLite directly; sqlite_only enforces no YAML."""
+    if _no_state_to_read(project_dir):
+        return None
     if not _production_path(project_dir):
         # Pytest fixtures may seed contract.yaml; hydrate before reading.
         _legacy_ingest_then_tasks(project_dir)
-    from superharness.engine.db import get_connection, init_db
     from superharness.engine import tasks_dao
+    from superharness.engine.db import get_connection, init_db
 
     conn = get_connection(project_dir)
     try:
@@ -259,6 +307,8 @@ def get_contract_doc(project_dir: str) -> dict:
 
 def _read_project_meta(project_dir: str) -> tuple[str, str]:
     """Read contract id and goal from the project_meta SQLite table."""
+    if _database_absent(project_dir):
+        return "contract", ""
     try:
         from superharness.engine.db import get_connection, init_db
 
@@ -281,6 +331,8 @@ def _read_project_meta(project_dir: str) -> tuple[str, str]:
 
 def get_top_level_tasks(project_dir: str) -> list[dict]:
     """Return only top-level tasks (parent_id IS NULL), excluding subtasks."""
+    if _no_state_to_read(project_dir):
+        return []
     if not _production_path(project_dir):
         _legacy_ingest_then_tasks(project_dir)  # hydrate legacy fixtures
     try:
@@ -293,8 +345,8 @@ def get_top_level_tasks(project_dir: str) -> list[dict]:
 
 
 def _tasks_from_sqlite(project_dir: str, *, top_level_only: bool = False) -> list[dict]:
-    from superharness.engine.db import get_connection, init_db
     from superharness.engine import tasks_dao
+    from superharness.engine.db import get_connection, init_db
 
     conn = get_connection(project_dir)
     try:
@@ -307,6 +359,8 @@ def _tasks_from_sqlite(project_dir: str, *, top_level_only: bool = False) -> lis
 
 def get_handoffs(project_dir: str, task_id: str | None = None) -> list[dict]:
     """Return handoff rows from SQLite."""
+    if _database_absent(project_dir):
+        return []
     try:
         return _handoffs_from_sqlite(project_dir, task_id)
     except Exception as e:
@@ -321,8 +375,9 @@ def _handoffs_from_sqlite(project_dir: str, task_id: str | None) -> list[dict]:
     returns all handoffs newest-first.
     """
     from dataclasses import asdict
-    from superharness.engine.db import get_connection, init_db
+
     from superharness.engine import handoffs_dao
+    from superharness.engine.db import get_connection, init_db
 
     conn = get_connection(project_dir)
     try:
@@ -343,9 +398,12 @@ def _handoffs_from_sqlite(project_dir: str, task_id: str | None) -> list[dict]:
 
 def get_failures(project_dir: str) -> list[dict]:
     """Return all failure records from the SQLite failures table."""
+    if _database_absent(project_dir):
+        return []
     from dataclasses import asdict
-    from superharness.engine.db import get_connection, init_db
+
     from superharness.engine import failures_dao
+    from superharness.engine.db import get_connection, init_db
 
     conn = get_connection(project_dir)
     try:
@@ -363,9 +421,12 @@ def get_failures(project_dir: str) -> list[dict]:
 
 def get_decisions(project_dir: str) -> list[dict]:
     """Return all decision records from the SQLite decisions table."""
+    if _database_absent(project_dir):
+        return []
     from dataclasses import asdict
-    from superharness.engine.db import get_connection, init_db
+
     from superharness.engine import decisions_dao
+    from superharness.engine.db import get_connection, init_db
 
     conn = get_connection(project_dir)
     try:
@@ -389,13 +450,14 @@ def get_ledger_entries(
     YAML ledger.md is an export-only artifact — do not read it here.
     Use state_writer.backfill_ledger_from_yaml() for one-time import.
     """
-    if not _has_sqlite_db(project_dir):
+    if _database_absent(project_dir):
         return []
 
     try:
         from dataclasses import asdict
-        from superharness.engine.db import get_connection, init_db
+
         from superharness.engine import ledger_dao
+        from superharness.engine.db import get_connection, init_db
 
         conn = get_connection(project_dir)
         try:

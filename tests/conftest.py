@@ -7,6 +7,7 @@ import os
 import shutil
 import sys
 import tempfile
+from datetime import UTC
 from pathlib import Path
 
 import pytest
@@ -27,6 +28,25 @@ os.environ.setdefault("SUPERHARNESS_PYTHON", sys.executable)
 # Block tests from auto-installing real LaunchAgents on the user's system.
 # session-start.sh and friends honor this flag and skip ensure-launchd-inbox-watcher.sh.
 os.environ["SUPERHARNESS_NO_AUTO_INSTALL"] = "1"
+
+# Logging resolves its directory from Path.home() on macOS, and
+# `logging_utils._ensure_handler()` creates it — so any process that configures a
+# logger writes <HOME>/Library/Logs/superharness. That happens during *collection*,
+# before any fixture is active, which is why a per-test fixture cannot cover it:
+# collecting this suite used to leave a stray log directory in the real HOME.
+# Point both log files at a session temp directory here, at import time. conftest
+# is imported before test modules are collected, and the values are inherited by
+# the subprocesses the suite spawns. Production log resolution is deliberately
+# unchanged — <HOME>/Library/Logs is the macOS convention, and moving it would be a
+# user-visible behaviour change this defect does not justify.
+_SESSION_LOG_DIR = tempfile.mkdtemp(prefix="superharness-pytest-logs-")
+os.environ["SUPERHARNESS_LOG_FILE"] = os.path.join(
+    _SESSION_LOG_DIR, "superharness.log"
+)
+os.environ["SUPERHARNESS_AUDIT_LOG_FILE"] = os.path.join(
+    _SESSION_LOG_DIR, "superharness-audit.log"
+)
+atexit.register(shutil.rmtree, _SESSION_LOG_DIR, ignore_errors=True)
 
 # Tests are offline by default. `SUPERHARNESS_ALLOW_LIVE_TESTS=1` is the
 # explicit opt-in for provider smoke tests that deliberately contact a real
@@ -169,9 +189,7 @@ def _assert_ephemeral_state_dir() -> None:
     resolved_str = str(resolved)
     tmp_root = str(Path(tempfile.gettempdir()).resolve())
     is_ephemeral = (
-        resolved_str.startswith(tmp_root)
-        or resolved_str.startswith("/tmp")
-        or resolved_str.startswith("/private/tmp")
+        resolved_str.startswith((tmp_root, "/tmp", "/private/tmp"))
         or any(part.startswith("pytest-") for part in resolved.parts)
     )
     if not is_ephemeral:
@@ -257,8 +275,8 @@ def _launchd_leak_guard():
         return
 
     from tests.unit.test_launchd_test_pollution import (
-        find_leaked_labels,
         _current_labels,
+        find_leaked_labels,
     )
 
     before = _current_labels()
@@ -277,9 +295,9 @@ def past_iso(minutes_ago: int) -> str:
     Used to set up timeout-related test fixtures without needing time-mocking
     libraries. Example: `paused_at=past_iso(31)` to test a 30-minute timeout.
     """
-    from datetime import datetime, timedelta, timezone
+    from datetime import datetime, timedelta
 
-    return (datetime.now(timezone.utc) - timedelta(minutes=minutes_ago)).strftime(
+    return (datetime.now(UTC) - timedelta(minutes=minutes_ago)).strftime(
         "%Y-%m-%dT%H:%M:%SZ"
     )
 

@@ -37,6 +37,7 @@ DOMAIN_COMMANDS: dict[str, dict[str, str]] = {
         "backup": "backup-state",
         "config": "config",
         "export": "export-yaml",
+        "gc": "state-gc",
         "import": "import-yaml",
         "migrate": "migrate-state",
         "pack": "pack",
