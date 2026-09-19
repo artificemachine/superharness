@@ -61,6 +61,8 @@ json
 .superharness/events.jsonl
 # Local agent auth-mode marker — machine-specific, not source
 .superharness/agent-auth-state.json
+# Hablatone voice-mode project marker — machine-specific, not source
+.hablatone
 .hablatone-project
 .ship-check-passed
 # ShipGuard runtime state — written relative to the scan cwd, so it appears in
