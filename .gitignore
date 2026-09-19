@@ -69,6 +69,9 @@ json
 # any subdirectory that has been scanned, not just the repo root.
 .shipguard/
 
+# /search-topic skill output — local research reports, not source
+/workspace/
+
 .env
 *.key
 *.pem
