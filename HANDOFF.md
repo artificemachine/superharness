@@ -20,7 +20,7 @@ Agent: Pi (deepseek-flash, reasoning high) | Branch: `feat/state-gc-and-isolatio
 
 ### Operational notes
 
-- **`pending --repo .` is NOT the hook's queue.** It resolves a repo-scoped state dir and reads 0 events; the hook writes the global queue. Use `--state-dir '/Users/airm2max/.local/state/release-advice'`. Every "no pending reviews" I reported early in the session came from the wrong dir and was wrong.
+- **`pending --repo .` is NOT the hook's queue.** It resolves a repo-scoped state dir and reads 0 events; the hook writes the global queue. Use `--state-dir "$HOME/.local/state/release-advice"`. Every "no pending reviews" I reported early in the session came from the wrong dir and was wrong.
 - **CHANGELOG append-only is enforced twice with different baselines:** pre-commit `--staged` compares against **HEAD**, CI `--base-ref` compares against **main**. A merge that interleaves satisfies neither, and **no follow-up commit can repair it** — moving lines registers as deletions (`CHANGELOG.md has 2 deleted/modified line(s)`). Always merge with `git merge --no-commit`, fix the file, then commit.
 - **Required CI contexts are `QA Gate`, `Windows-Native Release Gate`, `ShipGuard Scan`, `Gitleaks`** (from branch protection, not from the check list). The first two are `needs:`-gated aggregators that are absent until their dependencies finish — their absence is not a blocker.
 - **The Windows unit lane is ~16 min and is the long pole.** The full local macOS suite does not catch Windows-only mtime-granularity bugs; a platform-dependent test must be made deterministic (e.g. a future mtime) instead of relying on sub-second ordering.
