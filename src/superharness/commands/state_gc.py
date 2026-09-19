@@ -217,12 +217,16 @@ def _open_failure_reason(exc: sqlite3.Error) -> str:
     return "unreadable"
 
 
-def classify_directory(directory: Path, cutoff: float) -> Verdict:
+def classify_directory(directory: Path, cutoff: float | None) -> Verdict:
     """Classify one candidate directory. Pure: touches nothing, writes nothing.
 
     Every uncertainty resolves to `ignored` rather than `candidate`, because a
     wrongly ignored directory costs only the chance to reclaim it, while a
     wrongly reported candidate invites a deletion that does not need to happen.
+
+    `cutoff` is `None` when age is to be ignored. The mtime is then never
+    consulted, so `recently used` cannot be returned and a content-free
+    directory is a candidate whatever its timestamp.
     """
     size = _directory_size(directory)
 
@@ -263,7 +267,7 @@ def classify_directory(directory: Path, cutoff: float) -> Verdict:
         if reason == "holds rows":
             return Verdict(directory.name, KEPT, f"holds rows ({name})", size)
 
-    if _newest_mtime(directory) >= cutoff:
+    if cutoff is not None and _newest_mtime(directory) >= cutoff:
         return Verdict(directory.name, KEPT, "recently used", size)
 
     return Verdict(directory.name, CANDIDATE, "content-free", size)
@@ -285,7 +289,7 @@ def build_inventory(
 
     root = Path(state_root)
     now = time.time() if now is None else now
-    cutoff = now - older_than_days * 86400
+    cutoff = None if older_than_days == 0 else now - older_than_days * 86400
 
     verdicts: list[Verdict] = []
     if root.is_dir():
