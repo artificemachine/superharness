@@ -353,6 +353,28 @@ def test_older_than_days_zero_ignores_age(tmp_path):
     assert _verdict(root, older_than_days=0)["bucket"] == CANDIDATE
 
 
+def test_older_than_days_zero_ignores_a_future_mtime(tmp_path):
+    """`--older-than-days 0` means "ignore age", not "compare against now".
+
+    A directory touched an hour in the future is still a candidate, because with
+    the age gate disabled there is nothing for its mtime to be compared to.
+
+    This pins the documented contract without depending on filesystem mtime
+    resolution. The previous implementation computed `cutoff = now - 0 * 86400`
+    and compared against it anyway, so it passed on macOS only because a freshly
+    touched file's mtime happened to be strictly earlier than the call-site
+    `now`; on Windows the coarser granularity put mtime at or past that cutoff
+    and returned `kept`. A future mtime makes the same defect fail everywhere.
+    """
+    root = tmp_path / "state"
+    directory = _make_dir(root, age_s=FRESH)
+    future = time.time() + 3600
+    for entry in [directory, *directory.rglob("*")]:
+        os.utime(entry, (future, future))
+
+    assert _verdict(root, older_than_days=0)["bucket"] == CANDIDATE
+
+
 def test_negative_age_is_refused(tmp_path):
     with pytest.raises(ValueError):
         build_inventory(tmp_path, older_than_days=-1)
