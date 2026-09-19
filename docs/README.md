@@ -21,6 +21,7 @@
 | Doc | What |
 |-----|------|
 | [`ARCHITECTURE.md`](ARCHITECTURE.md) | Architecture overview and design decisions |
+| [`ARCH-superharness-design-patterns.md`](ARCH-superharness-design-patterns.md) | Current architecture and the proposed hexagonal target (Mermaid); `reconcile` extraction first |
 | [`DESIGN-risky-choices.md`](archive/DESIGN-risky-choices.md) | Documented sharp edges and risky choices |
 | [`ROADMAP-phases.md`](ROADMAP-phases.md) | **Master phase roadmap** (single source of truth) |
 | [`IMPLEMENTATION-status.md`](archive/IMPLEMENTATION-status.md) | Implementation status across all audits |
