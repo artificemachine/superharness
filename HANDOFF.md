@@ -1,3 +1,67 @@
+# Session Handoff — 2026-09-18 (state-db skeleton leak: plan closed; inbox_watch defect 3 fixed)
+
+Agent: Pi (deepseek-flash, reasoning high) | Branch: `feat/reduce-dead-test-loc` @ `49fd42a8` | Tests: full suite `5815 pass, 21 skip, 5 deselect, 2 xfail` (562s, run with `--timeout=90`) | COMMITTED (8 commits, unpushed; worktree dirty: `HANDOFF.md`)
+
+## What happened this session
+
+- **`docs/PLAN-state-db-skeleton-leak.md` is now closed.** All four iterations are dispositioned: 2 and 3 fixed the read surface, 4 shipped `shux state gc`, and 1 probed to a negative. That plan is gitignored (`.gitignore:78`) and therefore not in the repo — this block is the durable record of it.
+- **`src/superharness/commands/state_gc.py` (new), `cli.py`, `commands/help_catalog.py`** — `shux state gc`, inventory only. It deletes nothing and exposes no option that does, per the plan's §6: real deletion needs a shared exclusion protocol honoured by every writer, or a proven-quiescent window. Classification sends a database that is populated, carries an unknown table, has a sidecar present, is a symlink, is unreadable or is locked to `ignored`, never `candidate`. It opens `mode=ro` and deliberately not `immutable`, never calls `get_connection`/`init_db`, and reads rows through `iterdump()` so no table name is ever interpolated into a query.
+- **`src/superharness/engine/state_reader.py`** — two shared non-creating checks: `_database_absent()` for readers with no YAML ingest path, and `_no_state_to_read()` for those that have one (no database *and* no `.superharness/`). Iteration 2 guarded `get_tasks`/`get_task`/`get_top_level_tasks`; iteration 3 guarded `get_inbox_items`/`get_handoffs`/`get_failures`/`get_decisions`/`get_ledger_entries`/`_read_project_meta`. Both translate a state-root conflict to `engine.state_errors.ConnectionError` exactly as `get_connection()` does, which also fixed `get_ledger_entries` letting `StateDatabaseConflictError` escape untranslated. `get_contract_doc` composes the guarded readers rather than duplicating a default document, so its defaults survive by construction.
+- **`tests/conftest.py`** — collection used to write `<HOME>/Library/Logs/superharness/superharness.log` (0 bytes) into the real home, because `logging_utils._default_log_dir()` resolves from `Path.home()` and `_ensure_handler()` creates that directory before any fixture is active. A session `tempfile.mkdtemp()` is now installed at import time — the earliest point preceding collection — inherited by spawned subprocesses, with `atexit` cleanup. Production log resolution is deliberately unchanged.
+- **`.project-hooks/pre-commit`** — the hook ran `.venv/bin/pytest` by path, so `.venv/bin` never reached `PATH` and `tests/smoke/test_basic.py::test_main_binaries[superharness]` failed *inside the hook* while passing under `uv run`. Every commit was blocked. Both branches now prefix `PATH="$PWD/.venv/bin:$PATH"`.
+- **`src/superharness/commands/inbox_watch.py`** — defect 3 of the new bug report: the autonomous reviewer candidate list was hardcoded and silently excluded `pi`, so a `pi`-owned task got no reviewer. `_peer_reviewer_candidates()` now reads `harnesses.KNOWN_HARNESSES`, the canonical source this same file already used at `_cancel_undispatchable_agents`. Behaviour-preserving for every owner except `pi` — the registry is sorted and `pi` sorts last, so the first pick is unchanged elsewhere.
+- **New tests** — `test_state_gc_inventory.py` (54), `test_state_reader_no_create.py` (25), `test_state_collection_isolation.py` (3), `test_peer_reviewer_candidates.py` (7). The last includes a wiring guard that fails if the live path rebuilds a harness list by hand, which is the failure no helper-level test could catch.
+- **Docs** — new `docs/bugs/BUG-2026-09-18-state-db-skeleton-leak.md` and `BUG-2026-09-18-inbox-watch-reviewer-tier-gate.md`, new `docs/audits/2026-09-18-docs-triage.md`, the OpenProse decision docs merged into `CONCEPT-openprose-reactor.md` with the Pi FLOW folded in as Appendix A, four superseded documents archived (28 → 32), and index orphans cut 15 → 6. `AGENTS.md` had its stale test-posture claims corrected ("2.5k tests", "4 pre-existing failures").
+- **`CHANGELOG.md`** — append-only entries for every change above; verified as an unbroken prefix of the previous HEAD, so no existing line was rewritten.
+
+## Next session — first moves
+
+1. **Merge conflicts are the top blocker.** `HANDOFF.md` and `docs/README.md` conflict with `main`; the branch is 6 behind and 13 ahead (main at v1.85.0 via PR #141). `CHANGELOG.md` auto-merges. `main` is checked out in the sibling worktree `superharness-state-command`, so it cannot be checked out here. Resolve `HANDOFF.md` only after deciding the fate of the 27 unstaged lines from the previous Codex session that sit directly below this block.
+2. ~~Measure the required coverage gate.~~ **Closed this session:** the CI unit-job command (`tests/unit --timeout=120 -n auto --dist loadfile --cov=superharness --cov-fail-under=56`) passes locally at **4233 passed, 6 skipped, 2 xfailed, coverage 59.96%** against the required 56%. Re-run it if new source is added, since the margin is under four points.
+3. **A/B the latent stall.** `uv run pytest tests/` in one process stalls at 63% (3,699 tests) on `tests/unit/test_install_scripts.py::test_install_launchd_requires_explicit_noninteractive_confirmation`; the identical command with `--timeout=90` completes and no timer ever fires. CI never runs the whole tree in one process, so this is not a CI blocker, but it is unexplained. Reproduce against `432933cb` in a worktree to establish whether this session caused it.
+4. **New branch and PR.** `origin/feat/reduce-dead-test-loc` is 8 commits behind, and that branch name was already consumed by **merged PR #136**, so pushing there attaches to a dead ref. The required checks (`QA Gate`, `Windows-Native Release Gate`, `ShipGuard Scan`, `Gitleaks`) have never run on these commits.
+5. **Disposition the untracked files:** `.hablatone` (13 bytes, contains `superharness`, not gitignored — likely wants an ignore entry) and `docs/ARCH-superharness-design-patterns.md`.
+6. **The release-policy review is mandatory before any merge** (`AGENTS.md`). Read the `release-policy` skill and present evidence-based release/tag/publish advice. No release, tag or publish is authorized; the branch does not touch `pyproject.toml`, so main's `1.85.0` stands and no per-merge bump is implied.
+7. **Deliberately unfixed, in `BUG-2026-09-18-inbox-watch-reviewer-tier-gate.md`:** defect 1 (`_select_reviewers` imports `reviewer_meets_tier` and `AGENT_DEFAULT_TIERS` from `engine/model_budget`, which defines neither — dead code, latent `ImportError`) and defect 2 (the live path rewrites the *author's* `model_tier` instead of gating the reviewer's). Both need the policy answers recorded in that report, not guesses.
+
+### Operational notes
+
+- **Run tests as `uv run pytest`.** `uv` puts `.venv/bin` on `PATH`; calling `.venv/bin/pytest` directly does not, which breaks `test_main_binaries[superharness]`.
+- **Hook chain:** `core.hooksPath=$HOME/.githooks`, and that global hook delegates to `.project-hooks/pre-commit`. The global hook **requires `CHANGELOG.md` to be staged in every commit** and **blocks a home-relative path on added lines** (pattern `~/[a-zA-Z0-9._]`) outside exempt paths — `CHANGELOG.md`, `docs/`, `HANDOFF.md` and `src/` are exempt, `tests/` is NOT. Separately, `tests/unit/test_no_tracked_personal_data.py` fails on any tracked file containing the literal maintainer home path or username (the username is tolerated only inside a `${...}` reference on the same line). Write `$HOME/...`: it satisfies both guards at once, which is the only form that does.
+- **Always pass `--timeout` when running the whole tree** (see first-moves item 3), or it may appear to hang.
+- `docs/PLAN-*.md`, `docs/AUDIT-*.md` (`.gitignore:77-78`) and `docs/bulletproof-report-*.md` are gitignored working-notes patterns, so they can never be linked from `docs/README.md` — `tests/test_docs_index_links.py` requires every index link to resolve to a **git-tracked** file. A new doc must be staged before its index link will pass.
+- State isolation: tests pin `XDG_STATE_HOME` per test via `isolated_state_dir`, and `SUPERHARNESS_STATE_DIR` stays cleared because it is production authority. The real state root is `$HOME/.local/state/superharness` (96 entries as of this session).
+- **ICM is unavailable on this host** — MCP servers are `obsidian-semantic`, `hablatone-rs` and `caasiopeia`, with no `icm_memory_store` — so this handoff exists in `HANDOFF.md` only and was not stored in ICM.
+
+---
+
+# Session Handoff — 2026-09-18 (SQLite skeleton leak: implementation plan saved)
+
+Agent: Codex | Branch: `feat/reduce-dead-test-loc` @ `432933cb` | Tests: not run; current baseline unknown, historical results not rerun | UNCOMMITTED
+
+## What happened this session
+
+- Read the previous handoff and `docs/bugs/BUG-2026-09-18-state-db-skeleton-leak.md`. The report describes 22,485 state directories (~7.5 Gi) and 112 populated archived databases; those measurements were not reproduced in this session.
+- Saved `docs/PLAN-state-db-skeleton-leak.md` at the user's request. Four sequential TDD slices: verify collection/subprocess isolation; stop absent task reads creating databases; extend to other state readers; add conservative `shux state gc` inventory with simulation only. Estimated work: 2h30, approximately 3h30 with contingency.
+- Corrected the initial proposal after source inspection: `tests/conftest.py` already isolates `XDG_STATE_HOME` per test and deliberately clears `SUPERHARNESS_STATE_DIR`. Do not replace this with an authoritative production override. The current leak remains unproven; collection happens before function-scoped fixtures.
+- `get_connection(project_dir)` creates directories and opens SQLite; state readers call it and initialize schema. The plan targets absent-state reads, not a universal first-INSERT lazy connection. Preserve canonical path resolution, conflicts and existing state compatibility.
+- The scratch plan passed the canonical `tools/plan_check.py` structural/repository check. This is a document consistency check, not execution evidence. No source code, tests, installation, live data, Git refs or release artifacts changed.
+
+## Next session — first moves
+
+1. Read `docs/PLAN-state-db-skeleton-leak.md`, recheck HEAD and source signatures, then obtain execution authorization including the listed test commands. Saving the plan did not authorize implementation, tests, commits or publishing.
+2. Start iteration 1 with synthetic HOME/state roots and reproduce any environment-dependent leak twice. If proposed RED tests are already green, revise the diagnosis instead of manufacturing a fix. Establish a baseline on the current revision.
+3. Execute the remaining approved slices only after their dependencies; report remaining direct database callers outside `state_reader` rather than claiming all skeleton creation is eliminated.
+
+### Operational notes
+
+- Real deletion is deferred: an emptiness check plus `unlink` races with writers. A future deletion plan needs a shared writer exclusion protocol or proven quiescence. Do not delete by size or age alone. No real user state or archives may be touched under this plan.
+- The existing untracked `.hablatone`, `docs/ARCH-superharness-design-patterns.md`, and bug report were preserved. `HANDOFF.md` now has this prepended block; all prior bytes remain intact.
+- `shux contract` returned no open task and a `test-contract` header; no applicable task ID was available. No task was invented, reopened or closed, and no task-scoped shux handoff was written. `shux rules` returned no rules. These are observed CLI results, not proof of state health.
+- Release advice pending query returned an empty list for this checkout; no release, tag, deployment or publication was requested or performed.
+
+---
+
 # Session Handoff — 2026-09-17 (ai-forge integration backed out)
 
 Agent: pi (claude-sonnet-5) | Branch: `feat/reduce-dead-test-loc` @ `432933cb` | Tests: 913 pass, 9 skip (`bash .project-hooks/pre-commit`) | UNCOMMITTED
