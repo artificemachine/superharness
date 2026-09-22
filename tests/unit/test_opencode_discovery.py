@@ -121,18 +121,30 @@ def test_stubbed_cli_populates_cache_and_resolves(
     assert resolved == "opencode/deepseek-v4-flash"
 
 
-def test_resolve_model_for_tier_falls_back_to_manifest_when_cache_empty(
+def test_resolve_model_for_tier_uses_runtime_binding_when_cache_empty(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Integration: empty cache → resolve falls back to the manifest model."""
+    """Integration: empty cache → resolve uses the configured runtime binding."""
     from superharness.engine import model_router
 
     monkeypatch.setattr(
         model_router, "_model_discovery_cache_path", lambda p: str(tmp_path / "state.sqlite3")
     )
+    bindings_path = tmp_path / "model-bindings.yaml"
+    bindings_path.write_text(
+        """schema: 2
+harnesses:
+  codex-cli:
+    default_provider: openai
+    bindings:
+      openai:
+        bulk:
+          id: configured-codex-mini
+"""
+    )
+    monkeypatch.setattr(model_router, "_runtime_model_bindings_path", lambda: bindings_path)
     resolved = model_router.resolve_model_for_tier("codex-cli", "mini", str(tmp_path))
-    # Manifest fallback: codex-cli mini maps to gpt-5.1-codex-mini (hardcoded).
-    assert resolved == "gpt-5.1-codex-mini"
+    assert resolved == "configured-codex-mini"
 
 
 # ---------------------------------------------------------------------------

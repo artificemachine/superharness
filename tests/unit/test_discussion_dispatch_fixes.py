@@ -868,15 +868,33 @@ class TestPerAgentTierRouting:
             f"gemini-cli on max discussion should be capped at standard (2.5-pro), got {m2}"
         )
 
-    def test_max_tier_opencode_gets_v4_pro(self, tmp_path):
-        """opencode on max-tier discussion must get deepseek-v4-pro, not v4-flash."""
+    def test_max_tier_opencode_uses_runtime_binding(self, tmp_path, monkeypatch):
+        """OpenCode max-tier discussion resolves from its runtime binding."""
         from superharness.commands.inbox_dispatch import (
             DispatchContext,
             _prepare_launch_context,
         )
+        from superharness.engine import model_router
 
         sh = tmp_path / ".superharness"
         sh.mkdir()
+        bindings_path = tmp_path / "model-bindings.yaml"
+        bindings_path.write_text(
+            """schema: 2
+harnesses:
+  opencode:
+    default_provider: test-provider
+    bindings:
+      test-provider:
+        escalate-1:
+          id: runtime-opencode-max
+"""
+        )
+        monkeypatch.setattr(
+            model_router, "_runtime_model_bindings_path", lambda: bindings_path
+        )
+        monkeypatch.setattr(model_router, "_model_discovery_cache_path", lambda p: None)
+        monkeypatch.setattr(model_router, "_discover_for_agent", lambda *args, **kwargs: [])
 
         mock_task = MagicMock()
         mock_task.model_tier = "max"
@@ -914,9 +932,7 @@ class TestPerAgentTierRouting:
             "opencode discussion dispatch must include --model"
         )
         m = ctx.launch_args[ctx.launch_args.index("--model") + 1]
-        assert "v4-pro" in m or "deepseek-v4-pro" in m, (
-            f"opencode on max discussion should get deepseek-v4-pro, got {m!r}"
-        )
+        assert m == "runtime-opencode-max"
 
 
 # ---------------------------------------------------------------------------

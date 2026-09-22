@@ -1,9 +1,8 @@
 # Adapter model tiers
 
-This document records the model-to-tier mappings superharness ships in
-`src/superharness/adapter_manifests/*.yaml`, plus the rationale and sources
-behind each choice. Update this file whenever you bump a model in an adapter
-manifest.
+Runtime bindings are the configured model authority. Adapter manifests hold
+authentication-compatible fallback metadata and historical defaults; this
+document records those defaults and their rationale.
 
 ## Tier semantics
 
@@ -18,7 +17,7 @@ rules in `~/.claude/MODEL_SELECTION.md`:
 
 ## claude-code adapter
 
-Source of truth: `src/superharness/adapter_manifests/claude-code.yaml`.
+Fallback metadata: `src/superharness/adapter_manifests/claude-code.yaml`.
 
 | Tier | Model id (default `*`) | Label | Notes |
 |---|---|---|---|
@@ -44,7 +43,7 @@ Opus 4.8 is priced at $5/$25 per MTok input/output (same as 4.7/4.6).
 
 ## codex-cli adapter
 
-Source of truth: `src/superharness/adapter_manifests/codex-cli.yaml`.
+Fallback metadata: `src/superharness/adapter_manifests/codex-cli.yaml`.
 
 | Tier | Model id | Label |
 |---|---|---|
@@ -84,7 +83,7 @@ Alternatives considered but not chosen:
 
 ## pi adapter
 
-Source of truth: `src/superharness/adapter_manifests/pi.yaml`.
+Fallback metadata: `src/superharness/adapter_manifests/pi.yaml`.
 
 | Tier | Provider-qualified model id | Label |
 |---|---|---|
@@ -161,10 +160,9 @@ contract.
 
 ## How to bump a model
 
-1. Edit the adapter manifest under `src/superharness/adapter_manifests/`.
-2. Update **both** `id` and `label` in the relevant tier.
-3. Append a dated row under the relevant adapter section here explaining the
-   choice.
+1. Update the harness tier in the runtime bindings.
+2. Validate it through the harness under the active authentication mode.
+3. Update manifest compatibility metadata only when the fallback chain changes.
 4. Do **not** bump `schema_version` in `adapter_payload.py` — model bumps are
    content changes, not schema changes. Schema is only bumped when fields
    are added/removed.
