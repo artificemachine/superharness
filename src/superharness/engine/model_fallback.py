@@ -20,9 +20,10 @@ from __future__ import annotations
 
 import logging
 import time
-from typing import Callable, Any
+from collections.abc import Callable
+from typing import Any
 
-from superharness.engine.model_router import MODEL_MAP, _FALLBACK_TIER
+from superharness.engine.model_router import _FALLBACK_TIER, _resolve_configured_model
 
 logger = logging.getLogger(__name__)
 
@@ -44,12 +45,14 @@ _TIER_ORDER: list[str] = ["max", "standard", "mini"]
 
 def _fallback_sequence(agent: str, starting_tier: str = "standard") -> list[str]:
     """Return model names from starting_tier down to mini, skipping unknowns."""
-    agent_map = MODEL_MAP.get(agent, {})
     start_idx = _TIER_ORDER.index(starting_tier) if starting_tier in _TIER_ORDER else 1
     result: list[str] = []
     for tier in _TIER_ORDER[start_idx:]:
-        model = agent_map.get(tier)
-        if model:
+        try:
+            model = _resolve_configured_model(agent, tier)
+        except (KeyError, TypeError, ValueError):
+            continue
+        if model and model not in result:
             result.append(model)
     return result
 

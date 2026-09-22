@@ -146,32 +146,44 @@ class TestOrchestratorDecompose:
 
 
 class TestSubtaskDispatch:
-    def test_dispatch_maps_tier_to_model(self):
+    def test_dispatch_maps_tier_to_model(self, monkeypatch):
+        monkeypatch.setattr(
+            "superharness.engine.orchestrator._resolve_configured_model",
+            lambda _agent, tier: f"configured-{tier}",
+        )
         dispatch = SubtaskDispatch.from_subtask(
             subtask=SAMPLE_DECOMPOSITION["subtasks"][0],
             task_id="T-42",
             project_dir="/tmp/test",
         )
-        assert dispatch.model == "claude-sonnet-4-6"
+        assert dispatch.model == "configured-standard"
         assert dispatch.tier == "standard"
 
-    def test_dispatch_mini_uses_haiku(self):
+    def test_dispatch_mini_uses_haiku(self, monkeypatch):
+        monkeypatch.setattr(
+            "superharness.engine.orchestrator._resolve_configured_model",
+            lambda _agent, tier: f"configured-{tier}",
+        )
         dispatch = SubtaskDispatch.from_subtask(
             subtask=SAMPLE_DECOMPOSITION["subtasks"][1],
             task_id="T-42",
             project_dir="/tmp/test",
         )
-        assert dispatch.model == "claude-haiku-4-5-20251001"
+        assert dispatch.model == "configured-mini"
         assert dispatch.tier == "mini"
 
-    def test_dispatch_max_uses_opus(self):
+    def test_dispatch_max_uses_opus(self, monkeypatch):
+        monkeypatch.setattr(
+            "superharness.engine.orchestrator._resolve_configured_model",
+            lambda _agent, tier: f"configured-{tier}",
+        )
         subtask = {**SAMPLE_DECOMPOSITION["subtasks"][0], "model_tier": "max"}
         dispatch = SubtaskDispatch.from_subtask(
             subtask=subtask,
             task_id="T-42",
             project_dir="/tmp/test",
         )
-        assert dispatch.model == "claude-opus-4-8"
+        assert dispatch.model == "configured-max"
         assert dispatch.tier == "max"
 
     def test_dispatch_includes_subtask_prompt(self):

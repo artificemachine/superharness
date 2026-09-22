@@ -20,29 +20,28 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from superharness.engine import pi_runtime
-from superharness.engine.adapter_registry import fallback_flagship, flagship
 from superharness.engine.cost_estimator import (
     estimate_task_cost,
     CostEstimate,
 )
-from superharness.engine.model_router import MODEL_MAP
+from superharness.engine.model_router import _resolve_configured_model
 from superharness.engine.taxonomy import VALID_EFFORTS
 
 logger = logging.getLogger(__name__)
 
-DECOMPOSER_MODEL = flagship()
-DECOMPOSER_FALLBACK = fallback_flagship()  # N-1 fallback within claude
+DECOMPOSER_MODEL = _resolve_configured_model("claude-code", "max")
+DECOMPOSER_FALLBACK = _resolve_configured_model("claude-code", "standard")
 
 # Cross-agent orchestrator chain: (binary, model_id, label)
 # Tries the best model from each agent. Randomly shuffled per call so
 # different models get a chance — quality scores accumulate over time.
 _ORCHESTRATOR_CHAIN: list[tuple[str, str, str]] = [
-    ("claude", flagship(), f"Claude {flagship()} (max)"),
-    ("claude", fallback_flagship(), f"Claude {fallback_flagship()} (fallback)"),
-    ("codex", "gpt-5.5", "Codex GPT-5.5 (max)"),
-    ("gemini", "gemini-3.1-pro-preview", "Gemini 3.1 Pro (max)"),
-    ("opencode", "deepseek/deepseek-v4-pro", "DeepSeek V4 Pro (max)"),
-    ("pi", "deepseek/deepseek-v4-pro", "Pi DeepSeek V4 Pro (max)"),
+    ("claude", DECOMPOSER_MODEL, "Claude max"),
+    ("claude", DECOMPOSER_FALLBACK, "Claude fallback"),
+    ("codex", _resolve_configured_model("codex-cli", "max"), "Codex max"),
+    ("gemini", _resolve_configured_model("gemini-cli", "max"), "Gemini max"),
+    ("opencode", _resolve_configured_model("opencode", "max"), "OpenCode max"),
+    ("pi", _resolve_configured_model("pi", "max"), "Pi max"),
 ]
 
 
@@ -376,7 +375,7 @@ class SubtaskDispatch:
         project_dir: str,
     ) -> SubtaskDispatch:
         tier = subtask.get("model_tier", "standard")
-        model = MODEL_MAP.get("claude-code", {}).get(tier, "sonnet")
+        model = _resolve_configured_model("claude-code", tier)
 
         prompt = (
             f"You are a sub-agent executing subtask {subtask['id']} "
