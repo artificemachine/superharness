@@ -58,12 +58,9 @@ def test_models_yaml_shipped_as_package_data():
 def test_model_doctrine_names_runtime_bindings():
     """Active resolver documentation names runtime bindings as configured authority."""
     root = Path(__file__).resolve().parents[2]
-    for relative_path in (
-        "docs/adapter-models.md",
-        "docs/PLAN-dynamic-model-selection.md",
-    ):
-        text = (root / relative_path).read_text().lower()
-        assert "runtime binding" in text
+    # Tracked docs only: docs/PLAN-*.md is gitignored, so it is absent in CI.
+    text = (root / "docs/adapter-models.md").read_text().lower()
+    assert "runtime binding" in text
 
 
 # ---------------------------------------------------------------------------
