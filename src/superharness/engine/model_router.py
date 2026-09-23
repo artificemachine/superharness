@@ -9,6 +9,9 @@ from __future__ import annotations
 import logging
 import os
 import subprocess
+from pathlib import Path
+
+import yaml
 
 from superharness.engine.taxonomy import VALID_EFFORTS
 from superharness.engine.config_loader import load_yaml_config
@@ -40,6 +43,12 @@ MODEL_MAP: dict[str, dict[str, str]] = {
 }
 
 VALID_TIERS = {"mini", "standard", "max"}
+
+_RUNTIME_BINDING_TIERS = {
+    "mini": "bulk",
+    "standard": "default",
+    "max": "escalate-1",
+}
 
 _FALLBACK_TIER = "standard"
 _FALLBACK_EFFORT = "medium"
@@ -80,7 +89,7 @@ def cheap_model(agent: str = "claude-code") -> str:
     Used by batch / non-interactive callers (e.g. memory distillation) that
     want the lowest-cost model without running the full classifier chain.
     """
-    return MODEL_MAP.get(agent, MODEL_MAP["claude-code"])["mini"]
+    return _resolve_configured_model(agent, "mini")
 
 
 def _normalize_classification(tier: str, effort: str) -> tuple[str, str]:
@@ -804,13 +813,75 @@ def _apply_chatgpt_auth_override(
     return overrides[model]
 
 
-def resolve_model(target: str, tier: str, project_dir: str | None = None) -> str:
-    """Map a tier to the agent's actual model name via YAML config or adapter registry.
+def _runtime_model_bindings_path() -> Path:
+    """Return the installed schema-2 runtime bindings manifest path."""
+    config_home = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config"))
+    return config_home / "modrouter" / "model-bindings.yaml"
 
-    1. Check _load_model_map (bundled or project override).
-    2. Fall back to adapter registry.
-    3. Fall back to MODEL_MAP then sonnet.
-    4. For codex-cli: apply chatgpt_account_overrides if user is on ChatGPT auth.
+
+def _resolve_runtime_binding_model(target: str, tier: str) -> str | None:
+    """Resolve a dispatch tier from the installed harness runtime bindings."""
+    binding_tier = _RUNTIME_BINDING_TIERS.get(tier)
+    if binding_tier is None:
+        return None
+
+    try:
+        data = yaml.safe_load(_runtime_model_bindings_path().read_text()) or {}
+        if not isinstance(data, dict) or data.get("schema") != 2:
+            return None
+        harnesses = data.get("harnesses")
+        if not isinstance(harnesses, dict):
+            return None
+        harness = harnesses.get(target)
+        if not isinstance(harness, dict):
+            return None
+        provider = harness.get("default_provider")
+        if not isinstance(provider, str) or not provider:
+            return None
+        bindings = harness.get("bindings")
+        if not isinstance(bindings, dict):
+            return None
+        provider_bindings = bindings.get(provider)
+        if not isinstance(provider_bindings, dict):
+            return None
+        binding = provider_bindings.get(binding_tier)
+        if not isinstance(binding, dict):
+            return None
+        model_id = binding.get("id")
+        return model_id.strip() if isinstance(model_id, str) and model_id.strip() else None
+    except (OSError, TypeError, yaml.YAMLError):
+        return None
+
+
+def _resolve_manifest_model(target: str, tier: str) -> str:
+    """Resolve from the adapter manifest without per-harness static models."""
+    from superharness.engine.adapter_registry import resolve_model as _resolve
+
+    auth_mode = detect_auth_mode_for_agent(target)
+    chain = _tier_accept_chain(target, tier, auth_mode)
+    if chain:
+        return chain[0]
+
+    resolved = _resolve(target, tier)
+    model_id = resolved.get("id", "")
+    if model_id and model_id != tier:
+        return model_id
+    raise ValueError(f"no configured model for {target!r} tier {tier!r}")
+
+
+def _resolve_configured_model(target: str, tier: str) -> str:
+    """Resolve from runtime bindings, then adapter compatibility metadata."""
+    return _resolve_runtime_binding_model(target, tier) or _resolve_manifest_model(
+        target, tier
+    )
+
+
+def resolve_model(target: str, tier: str, project_dir: str | None = None) -> str:
+    """Resolve a legacy direct lookup from project YAML or adapter manifests.
+
+    New production selectors use :func:`_resolve_configured_model`; this
+    compatibility function remains for callers that explicitly depend on the
+    project model-map API.
     """
     mmap = _load_model_map(project_dir)
     if target in mmap and tier in mmap[target]:
@@ -937,8 +1008,9 @@ def resolve_model_for_tier(
                     pass
             return chosen.id
 
-    # 3. Manifest preferred (legacy)
-    return resolve_model(target, tier, project_dir)
+    # 3. Runtime bindings select the current model for this harness. When
+    # bindings are absent or invalid, use the adapter's auth-compatible chain.
+    return _resolve_configured_model(target, tier)
 
 
 def _tier_accept_chain(target: str, tier: str, auth_mode: str) -> list[str]:
