@@ -1178,12 +1178,11 @@ def test_pi_orchestrator_evidence_record_is_complete() -> None:
     assert _orchestrator_evidence_record(document) is not None
 
 
-def test_chain_pi_model_matches_manifest_max() -> None:
+def test_chain_pi_model_matches_runtime_binding() -> None:
+    from superharness.engine.model_router import _resolve_configured_model
     from superharness.engine.orchestrator import _ORCHESTRATOR_CHAIN
 
-    manifest = yaml.safe_load(_PI_MANIFEST.read_text())
-    manifest_max = manifest["model_tiers"]["max"]["preferred"]
     pi_entries = [entry for entry in _ORCHESTRATOR_CHAIN if entry[0] == "pi"]
 
     assert len(pi_entries) == 1
-    assert pi_entries[0][1] == manifest_max
+    assert pi_entries[0][1] == _resolve_configured_model("pi", "max")

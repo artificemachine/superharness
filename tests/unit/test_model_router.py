@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import subprocess
 from importlib import resources
+from pathlib import Path
 from unittest import mock
 
 import pytest
@@ -17,29 +18,23 @@ from superharness.engine.model_router import (
 )
 
 
-def test_delegate_wires_chatgpt_auth_override_into_resolution_path():
-    """Regression: commands/delegate.py MUST call _apply_chatgpt_auth_override
-    after all model-resolution paths (CLI, task field, auto-classify via
-    adapter_registry, profile, fallback, tier-reroute) so codex-cli on a
-    ChatGPT account gets gpt-5.3-codex → gpt-5-codex remapped before
-    invoking the codex CLI. Without this call site the bundled override
-    map is dead code on the dispatch path (see
-    docs/bugs/2026-05-11_discuss_dispatch_bugs.md Bug C)."""
+def test_delegate_does_not_apply_legacy_chatgpt_override():
+    """Dispatch must preserve the model returned by the current resolver."""
     import inspect
     from superharness.commands import delegate as _delegate_mod
 
     src = inspect.getsource(_delegate_mod.delegate)
-    assert "_apply_chatgpt_auth_override" in src, (
-        "delegate() must call _apply_chatgpt_auth_override on the resolved "
-        "model. Removing this re-introduces Bug C."
-    )
-    # Order matters: the override must run AFTER the tier-reroute block so
-    # it covers every path. The tier-reroute imports resolve_tier; the
-    # override must appear later in the function body.
-    assert src.find("_apply_chatgpt_auth_override") > src.find("resolve_tier"), (
-        "_apply_chatgpt_auth_override must run after the tier-reroute block "
-        "so it covers every resolution path."
-    )
+    assert "_apply_chatgpt_auth_override" not in src
+
+
+def test_production_selectors_use_configured_resolver():
+    """Live selectors must not import the retired per-harness model map."""
+    import inspect
+
+    from superharness.engine import model_fallback, orchestrator
+
+    assert "MODEL_MAP" not in inspect.getsource(model_fallback)
+    assert "MODEL_MAP" not in inspect.getsource(orchestrator.SubtaskDispatch.from_subtask)
 
 
 def test_models_yaml_shipped_as_package_data():
@@ -60,12 +55,45 @@ def test_models_yaml_shipped_as_package_data():
     )
 
 
+def test_model_doctrine_names_runtime_bindings():
+    """Active resolver documentation names runtime bindings as configured authority."""
+    root = Path(__file__).resolve().parents[2]
+    # Tracked docs only: docs/PLAN-*.md is gitignored, so it is absent in CI.
+    text = (root / "docs/adapter-models.md").read_text().lower()
+    assert "runtime binding" in text
+
+
 # ---------------------------------------------------------------------------
 # resolve_model
 # ---------------------------------------------------------------------------
 
 
 class TestResolveModel:
+    def test_direct_resolution_prefers_runtime_binding(self, tmp_path, monkeypatch):
+        """Configured bindings override the retired static model map."""
+        from superharness.engine import model_router
+
+        bindings_path = tmp_path / "model-bindings.yaml"
+        bindings_path.write_text(
+            """schema: 2
+harnesses:
+  codex-cli:
+    default_provider: test-provider
+    bindings:
+      test-provider:
+        default:
+          id: configured-standard
+"""
+        )
+        monkeypatch.setattr(
+            model_router, "_runtime_model_bindings_path", lambda: bindings_path
+        )
+
+        assert (
+            model_router._resolve_configured_model("codex-cli", "standard")
+            == "configured-standard"
+        )
+
     @pytest.mark.parametrize(
         "tier,expected",
         [

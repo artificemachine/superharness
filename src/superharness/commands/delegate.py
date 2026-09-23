@@ -1109,19 +1109,6 @@ def delegate(
     except Exception as e:
         logger.warning("delegate.py unexpected error: %s", e, exc_info=True)
         pass
-    # Apply ChatGPT-account overrides last so every resolution path
-    # (CLI, task field, auto-classify via adapter_registry, profile,
-    # fallback, tier-reroute) gets remapped when codex is signed in via
-    # ChatGPT. Without this, gpt-5.3-codex reaches the codex CLI and 400s.
-    try:
-        from superharness.engine.model_router import _apply_chatgpt_auth_override
-
-        resolved_model = _apply_chatgpt_auth_override(
-            target, resolved_model, project_dir
-        )
-    except Exception as e:
-        logger.warning("delegate.py unexpected error: %s", e, exc_info=True)
-        pass
     # -----------------------------------------------------------------------
     # Auto-orchestrate: let the best model decide owner+tier+effort+decompose.
     # Default path. Skip with --no-orchestrate for trivial tasks.

@@ -93,19 +93,57 @@ def test_discovery_success_uses_accept_chain_match(
     assert cached is not None and cached.id == "gpt-5-codex-mini"
 
 
-def test_discovery_failure_falls_back_to_manifest(
+def test_discovery_failure_falls_back_to_auth_compatible_manifest(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     """Unit: discovery failure → manifest preferred (legacy resolve_model)."""
     db = tmp_path / "state.sqlite3"
     monkeypatch.setattr(model_router, "_model_discovery_cache_path", lambda p: str(db))
+    monkeypatch.setattr(model_router, "_runtime_model_bindings_path", lambda: tmp_path / "missing.yaml")
     monkeypatch.setattr(model_router, "detect_auth_mode_for_agent", lambda a: "chatgpt")
     monkeypatch.setattr(model_router, "_discover_for_agent", lambda a, m="unknown", c=None: [])
 
-    # Manifest preferred for codex-cli mini is gpt-5.1-codex-mini (legacy
-    # schema still in the bundled manifest at this iteration).
+    # The ChatGPT compatibility chain must win when runtime bindings are
+    # unavailable and discovery cannot find a working model.
     resolved = resolve_model_for_tier("codex-cli", "mini", str(tmp_path))
-    assert resolved == "gpt-5.1-codex-mini"
+    assert resolved == "gpt-5.4"
+
+
+def test_chatgpt_fallback_uses_manifest_compatible_model(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Regression: ChatGPT fallback must not use a deprecated static override."""
+    monkeypatch.setattr(model_router, "_model_discovery_cache_path", lambda p: None)
+    monkeypatch.setattr(model_router, "_runtime_model_bindings_path", lambda: tmp_path / "missing.yaml")
+    monkeypatch.setattr(model_router, "detect_auth_mode_for_agent", lambda a: "chatgpt")
+    monkeypatch.setattr(model_router, "detect_codex_auth_mode", lambda: "chatgpt")
+    monkeypatch.setattr(model_router, "_discover_for_agent", lambda a, m="unknown", c=None: [])
+
+    assert resolve_model_for_tier("codex-cli", "standard", str(tmp_path)) == "gpt-5.4"
+
+
+@pytest.mark.parametrize("target", ("claude-code", "codex-cli", "opencode", "pi"))
+def test_runtime_bindings_replace_per_harness_fallback(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, target: str
+) -> None:
+    """Dispatch fallback reads the configured harness model rather than MODEL_MAP."""
+    bindings_path = tmp_path / "model-bindings.yaml"
+    bindings_path.write_text(
+        """schema: 2
+harnesses:
+  {target}:
+    default_provider: test-provider
+    bindings:
+      test-provider:
+        default:
+          id: runtime-{target}
+""".format(target=target)
+    )
+    monkeypatch.setattr(model_router, "_model_discovery_cache_path", lambda p: None)
+    monkeypatch.setattr(model_router, "_runtime_model_bindings_path", lambda: bindings_path)
+    monkeypatch.setattr(model_router, "_discover_for_agent", lambda a, m="unknown", c=None: [])
+
+    assert resolve_model_for_tier(target, "standard", str(tmp_path)) == f"runtime-{target}"
 
 
 # ---------------------------------------------------------------------------
@@ -245,11 +283,12 @@ def test_chaos_corrupt_cache_skipped(
     conn.close()
 
     monkeypatch.setattr(model_router, "_model_discovery_cache_path", lambda p: str(db))
+    monkeypatch.setattr(model_router, "_runtime_model_bindings_path", lambda: tmp_path / "missing.yaml")
     monkeypatch.setattr(model_router, "detect_auth_mode_for_agent", lambda a: "chatgpt")
     monkeypatch.setattr(model_router, "_discover_for_agent", lambda a, m="unknown", c=None: [])
-    # Must not raise; falls through to manifest.
+    # Must not raise; falls through to the auth-compatible manifest chain.
     resolved = resolve_model_for_tier("codex-cli", "mini", str(tmp_path))
-    assert resolved == "gpt-5.1-codex-mini"
+    assert resolved == "gpt-5.4"
 
 
 # ---------------------------------------------------------------------------

@@ -1,12 +1,10 @@
 """Runtime/integration coverage for bugs C and F from
 docs/bugs/2026-05-11_discuss_dispatch_bugs.md §9.
 
-Bug C — ChatGPT-account override applied at the dispatch path. Unit
-        tests in test_model_router.py already cover the helper and
-        the bundled override map. This file exercises the FULL
-        delegate() resolution path with print_only=True and captures
-        the printed "Model: ..." line to confirm the remap happens at
-        runtime, not just in the helper.
+Bug C — ChatGPT-compatible model resolution at the dispatch path. This
+        file exercises the FULL delegate() resolution path with
+        print_only=True and captures the printed "Model: ..." line to
+        confirm the adapter compatibility chain reaches dispatch unchanged.
 
 Bug F — `--verdict abstain` counts toward round completion. Unit tests
         cover cmd_check_round counting DB rows. This file walks the
@@ -68,19 +66,24 @@ def _seed_codex_project(tmp_path: Path, task_id: str = "t-codex-bug-c") -> Path:
 
 
 class TestBugCRuntime:
-    def test_chatgpt_auth_remaps_codex_model_at_dispatch_time(
+    def test_chatgpt_auth_preserves_compatible_codex_model_at_dispatch_time(
         self, tmp_path, monkeypatch
     ):
         """End-to-end: delegate(target=codex-cli) with ChatGPT auth must
-        print `Model: gpt-5-codex (...)` not `gpt-5.3-codex`. This is
-        the exact runtime path that §8 reported as unverified."""
+        print the adapter's compatible model unchanged at dispatch time."""
         from superharness.commands import delegate as delegate_mod
+        from superharness.engine import model_router
         from superharness.engine.model_router import _reset_codex_auth_cache
 
         project = _seed_codex_project(tmp_path)
+        monkeypatch.setattr(
+            model_router,
+            "_runtime_model_bindings_path",
+            lambda: tmp_path / "missing-model-bindings.yaml",
+        )
         _reset_codex_auth_cache()
 
-        # Force the bundled override to fire by faking ChatGPT auth.
+        # Force adapter compatibility selection by faking ChatGPT auth.
         chatgpt_auth = subprocess.CompletedProcess(
             args=[],
             returncode=0,
@@ -88,9 +91,8 @@ class TestBugCRuntime:
             stderr="",
         )
 
-        # Pin auto-classifier output so we deterministically exercise
-        # the auto-classify resolution path (the one that bypassed the
-        # override in 1.56.0–1.56.2 and was wired correctly in 1.56.3).
+        # Pin auto-classifier output so we deterministically exercise the
+        # auto-classify resolution path.
         with (
             mock.patch(
                 "superharness.engine.model_router.subprocess.run",
@@ -134,12 +136,11 @@ class TestBugCRuntime:
 
             stdout = buf.getvalue()
 
-        # The override must have remapped the model.
-        assert "Model: gpt-5-codex" in stdout, (
-            f"expected `Model: gpt-5-codex` in delegate stdout, got:\n{stdout!r}"
+        assert "Model: gpt-5.4" in stdout, (
+            f"expected `Model: gpt-5.4` in delegate stdout, got:\n{stdout!r}"
         )
         assert "Model: gpt-5.3-codex" not in stdout, (
-            f"override did NOT fire — raw model leaked to dispatch:\n{stdout!r}"
+            f"incompatible model leaked to dispatch:\n{stdout!r}"
         )
 
 

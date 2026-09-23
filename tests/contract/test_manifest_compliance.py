@@ -262,42 +262,22 @@ class TestOrchestratorChain:
             f"Chain has: {owners_in_chain}. Adapters: {all_owners}."
         )
 
-    def test_chain_models_match_manifest_max(self):
-        """Orchestrator chain max-tier models match manifest max-tier."""
+    def test_chain_models_match_configured_runtime_bindings(self):
+        """Orchestrator chain models come from configured runtime bindings."""
         from superharness.engine.orchestrator import _ORCHESTRATOR_CHAIN
-        from superharness.engine.adapter_registry import (
-            resolve_model,
-            clear_manifest_cache,
-        )
+        from superharness.engine.model_router import _resolve_configured_model
 
-        # Ensure fresh manifest cache
-        clear_manifest_cache()
+        harnesses = {
+            "claude": "claude-code",
+            "codex": "codex-cli",
+            "gemini": "gemini-cli",
+            "opencode": "opencode",
+            "pi": "pi",
+        }
 
         for binary, model_id, label in _ORCHESTRATOR_CHAIN:
-            manifest_max = resolve_model(binary, "max")
-            if isinstance(manifest_max, dict):
-                manifest_id = manifest_max.get("id", "")
-            else:
-                manifest_id = str(manifest_max)
-
-            # Skip comparison if resolution returned a tier name (cache/graph issue)
-            if manifest_id in ("mini", "standard", "max", ""):
-                continue
-
-            # claude has two entries (Opus 4.8 + fallback Opus 4.7)
-            if binary == "claude":
-                assert model_id in ("claude-opus-4-8", "claude-opus-4-7"), (
-                    f"Claude orchestrator model {model_id} not recognized"
-                )
-            elif binary == "opencode":
-                assert "deepseek" in model_id.lower(), (
-                    f"OpenCode orchestrator model {model_id} doesn't look like DeepSeek"
-                )
-            else:
-                assert model_id == manifest_id, (
-                    f"Orchestrator chain has {model_id} for {binary} "
-                    f"but manifest max tier resolves to {manifest_id}"
-                )
+            tier = "standard" if binary == "claude" and "fallback" in label else "max"
+            assert model_id == _resolve_configured_model(harnesses[binary], tier)
 
 
 # ── Model resolution edge cases ───────────────────────────────────────────────
