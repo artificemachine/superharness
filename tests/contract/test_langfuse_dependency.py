@@ -37,7 +37,7 @@ def test_uv_lock_contains_langfuse_for_the_project_extra():
 
 
 def test_langfuse_runbook_has_secure_operator_contract():
-    runbook = ROOT / "docs" / "langfuse-observability.md"
+    runbook = ROOT / "docs" / "guides" / "langfuse-observability.md"
     text = runbook.read_text(encoding="utf-8")
 
     assert len(text.splitlines()) <= 50
@@ -61,4 +61,4 @@ def test_langfuse_runbook_has_secure_operator_contract():
 def test_langfuse_runbook_is_indexed():
     index = (ROOT / "docs" / "README.md").read_text(encoding="utf-8")
 
-    assert "[`langfuse-observability.md`](langfuse-observability.md)" in index
+    assert "[`langfuse-observability.md`](guides/langfuse-observability.md)" in index

@@ -1,7 +1,7 @@
 """RED tests for iteration 4 of PLAN-superharness-L5.md: quality-ranked fallback routing.
 
 review_dao.rank_owners has 1,393 live outcome rows in production and zero
-callers — a fully dormant learning signal (docs/brain-scan-2026-07-12.md,
+callers — a fully dormant learning signal (docs/reports/brain-scan-2026-07-12.md,
 "Dormant intelligence"). _rank_fallback_agents wires it into
 _auto_recover_exhausted_failures_sqlite's fallback selection: recorded
 outcomes now change which agent gets retried next.

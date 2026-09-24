@@ -24,12 +24,26 @@ SUPERHARNESS_ALLOW_LIVE_TESTS=1 RUN_PROVIDER_SMOKE=1 pytest tests/integration/te
 4. Run the offline `pytest tests/ -q` suite and `shipguard scan .` — both must pass
 5. Open a PR against `main`
 
+## Commit conventions
+
+Use [Conventional Commits](https://www.conventionalcommits.org/):
+
+- `feat:` new feature
+- `fix:` bug fix
+- `docs:` documentation only
+- `test:` adding or updating tests
+- `chore:` maintenance, deps, CI
+
+Every commit appends an entry at the end of `CHANGELOG.md`. The file is
+append-only: never reorder, edit, or delete existing lines.
+
 ## Code conventions
 
 - Python 3.11+ only; type hints on public functions
 - Keep CLI modules in `src/superharness/commands/`
 - Engine logic (no I/O) in `src/superharness/engine/`
 - New CLI commands need at least one unit test that invokes the command via subprocess
+- Do not introduce a new runtime dependency without opening an issue for discussion first
 
 ## Regression tests
 
@@ -83,3 +97,8 @@ shipguard scan .           # SAST + secrets
 pytest tests/ -q           # full suite
 superharness demo          # smoke test
 ```
+
+## Reporting issues
+
+Open a GitHub issue with steps to reproduce, the output of `superharness doctor`,
+and your platform and shell version.

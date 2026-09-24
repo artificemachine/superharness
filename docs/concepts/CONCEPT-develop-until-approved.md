@@ -425,8 +425,8 @@ Source: r/PiCodingAgent — "pi-extensible-workflows: deterministic multi-agent"
 
 Diagrams:
 
-![Full agent flow v1](images/DevelopIssuesUntilApproved_FullAgentFlow_v1.webp)
-![Full agent flow v2](images/DevelopIssuesUntilApproved_FullAgentFlow_v2.webp)
+![Full agent flow v1](../images/DevelopIssuesUntilApproved_FullAgentFlow_v1.webp)
+![Full agent flow v2](../images/DevelopIssuesUntilApproved_FullAgentFlow_v2.webp)
 
 A deterministic script orchestrates disposable subagents: code controls the loop, agents do the work.
 

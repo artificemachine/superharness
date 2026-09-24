@@ -295,7 +295,7 @@ gate's ergonomics.
   dashboard UI? Yes, but that is a dashboard concern tracked separately;
   this plan only guarantees the state is representable and readable.
 - Does adapter-payload need a schema bump to carry `cancelled`? If the
-  payload exposes subtask status, yes — check `docs/adapter-payload-spec.md`
+  payload exposes subtask status, yes — check `docs/reference/adapter-payload-spec.md`
   during PR 1 and bump if so.
 
 ## Acceptance criteria (whole feature)
