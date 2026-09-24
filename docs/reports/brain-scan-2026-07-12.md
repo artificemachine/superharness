@@ -65,7 +65,7 @@ Smallest legitimate move to L5: pull the configured fleet model in Ollama (or po
 
 ## Correction (same day, post-scan)
 
-The brains inventory above is incomplete: **opencode is a 4th live agent brain**, missed by a truncated grep. Evidence: `MODEL_MAP["opencode"]` model_router.py:31-35 (deepseek tiers); 3rd in the classifier chain (`opencode run -m {model}`, line 208); primary reasoner equal to claude in `_DISCUSSION_TIER_ROUTING` (lines 650-667, gemini/codex capped at standard while claude/opencode get max). Verdict unaffected (adds another LIVE row to the inventory; no gate changes). Full detail: `docs/brain-multi-agent-tiers-fleet.md`.
+The brains inventory above is incomplete: **opencode is a 4th live agent brain**, missed by a truncated grep. Evidence: `MODEL_MAP["opencode"]` model_router.py:31-35 (deepseek tiers); 3rd in the classifier chain (`opencode run -m {model}`, line 208); primary reasoner equal to claude in `_DISCUSSION_TIER_ROUTING` (lines 650-667, gemini/codex capped at standard while claude/opencode get max). Verdict unaffected (adds another LIVE row to the inventory; no gate changes). Full detail: `docs/reports/brain-multi-agent-tiers-fleet.md`.
 
 ## Fleet fix applied (same day, post-scan)
 

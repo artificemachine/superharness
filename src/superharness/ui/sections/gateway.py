@@ -10,7 +10,7 @@ All backends write credentials to ~/.config/superharness/credentials.env
 checklist and a non-sensitive `backend` field for display.
 
 Inbound commands (e.g. /approve via chat) are NOT enabled by Phase 1.
-See docs/gateway-security.md for the threat model.
+See docs/security/gateway-security.md for the threat model.
 """
 
 from __future__ import annotations
@@ -168,7 +168,7 @@ def run(project_dir: Path, non_interactive: bool = False) -> None:
     print_info(
         "Outbound notifications only. Inbound chat commands are disabled in this phase."
     )
-    print_info("See docs/gateway-security.md for the threat model.")
+    print_info("See docs/security/gateway-security.md for the threat model.")
     print_info(f"Credentials saved to: {credentials_path()} (mode 0600)")
     print_info("")
 

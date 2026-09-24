@@ -1,6 +1,6 @@
 # PLAN — superharness L5: close G5c, wire dormant learning loops, prevent fleet-brain regressions
 
-Target repo: `~/DevOpsSec/superharness`. All paths repo-relative unless stated. Source verdict and gate definitions: `docs/brain-scan-2026-07-12.md` (L4.5; blocker = G5c "loop demonstrably fired" unobserved; dormant: `rank_owners` uncalled).
+Target repo: `~/DevOpsSec/superharness`. All paths repo-relative unless stated. Source verdict and gate definitions: `docs/reports/brain-scan-2026-07-12.md` (L4.5; blocker = G5c "loop demonstrably fired" unobserved; dormant: `rank_owners` uncalled).
 
 ## 1. Scope summary
 
@@ -8,7 +8,7 @@ Take superharness from L4.5 to an evidence-backed L5 and make the level durable.
 
 Smallest possible v1: Iteration 6 alone (the harness + one live run) closes G5c and moves the verdict; everything else is durability.
 
-Source docs: `docs/brain-scan-2026-07-12.md`, `docs/brain-multi-agent-tiers-fleet.md`.
+Source docs: `docs/reports/brain-scan-2026-07-12.md`, `docs/reports/brain-multi-agent-tiers-fleet.md`.
 
 ## 2. Prerequisites
 
@@ -29,7 +29,7 @@ Source docs: `docs/brain-scan-2026-07-12.md`, `docs/brain-multi-agent-tiers-flee
 **Source references:**
 - src/superharness/commands/doctor.py — the fleet block (~311-327) prints PASS from `_load_fleet_config()` alone, never contacting the endpoint; the new check extends this block.
 - src/superharness/engine/model_router.py — `_call_fleet` (215-244) shows the endpoint shape (`{endpoint}/chat/completions`); the health check hits `{endpoint}/models` (OpenAI-compatible list) with a short timeout.
-- docs/brain-scan-2026-07-12.md — the "Fleet fix applied" section documents the exact failure modes this gate must detect (endpoint serving a different store; configured model absent).
+- docs/reports/brain-scan-2026-07-12.md — the "Fleet fix applied" section documents the exact failure modes this gate must detect (endpoint serving a different store; configured model absent).
 
 **Files touched:**
 - src/superharness/engine/model_router.py (modified — new public `fleet_health(timeout: float = 3.0) -> list[tuple[str, str, str]]` returning `(tier, model, status)` where status ∈ {"ok", "endpoint-unreachable", "model-missing"})
@@ -58,7 +58,7 @@ Source docs: `docs/brain-scan-2026-07-12.md`, `docs/brain-multi-agent-tiers-flee
 - Integration: N/A — doctor block + router function tested at their seam via the patched-function test
 - State machine: N/A
 - Contract: the health statuses are a 3-value contract asserted exhaustively by the unit tests
-- Regression: this iteration IS the regression guard for the 2026-07-12 fleet outage class (docs/brain-scan-2026-07-12.md "Fleet fix applied"); `test_fleet_health_model_missing` is the named regression test
+- Regression: this iteration IS the regression guard for the 2026-07-12 fleet outage class (docs/reports/brain-scan-2026-07-12.md "Fleet fix applied"); `test_fleet_health_model_missing` is the named regression test
 - Chaos: `test_fleet_health_endpoint_unreachable` (network failure injection via mocked URLError) + add timeout case in the same test file
 - E2E: N/A
 - Performance: 3s timeout cap asserted in the unreachable test (doctor must not hang)
@@ -82,7 +82,7 @@ Source docs: `docs/brain-scan-2026-07-12.md`, `docs/brain-multi-agent-tiers-flee
 
 **Source references:**
 - src/superharness/commands/onboard.py — `_section_fleet` (651+): the Ollama probe at ~688 (`http://localhost:11434/api/tags`), the written endpoint at ~697, and the interactive prompt defaults at ~716-717 all use `localhost`; every occurrence changes to `127.0.0.1`. The probe matters as much as the written value — probing `localhost` can detect a DIFFERENT server (IPv6-bound) than the one `127.0.0.1` reaches.
-- docs/brain-multi-agent-tiers-fleet.md — records why: two servers shared the port, IPv6-first resolution.
+- docs/reports/brain-multi-agent-tiers-fleet.md — records why: two servers shared the port, IPv6-first resolution.
 
 **Files touched:**
 - src/superharness/commands/onboard.py (modified — all `localhost:11434` literals → `127.0.0.1:11434`; a module-level `_OLLAMA_BASE = "http://127.0.0.1:11434"` constant replaces the scattered literals)
@@ -180,7 +180,7 @@ Source docs: `docs/brain-scan-2026-07-12.md`, `docs/brain-multi-agent-tiers-flee
 **Source references:**
 - src/superharness/commands/inbox_watch.py — fallback selection at 1536-1565: `fallback_agents` filters `_FALLBACK_ORDER` (line 1247) by not-tried + not-quota-limited + `_agent_cli_reachable`, then takes `fallback_agents[0]`. The change re-orders the FILTERED list by quality before `[0]`; the three filters stay exactly as they are.
 - src/superharness/engine/review_dao.py — `rank_owners(conn, *, task_type=None, min_task_count=3)` (67-105) returns `list[OwnerStats]` best-first; owners absent from the ranking (fewer than min_task_count rows) must sort AFTER ranked ones, preserving `_FALLBACK_ORDER` relative order among themselves.
-- docs/brain-scan-2026-07-12.md — "Dormant intelligence": `rank_owners` zero callers is the finding this iteration closes.
+- docs/reports/brain-scan-2026-07-12.md — "Dormant intelligence": `rank_owners` zero callers is the finding this iteration closes.
 
 **Files touched:**
 - src/superharness/commands/inbox_watch.py (modified — new module-level `_rank_fallback_agents(conn, candidates: list[str]) -> list[str]`; called between the filter and the `fallback_agents[0]` pick; wrapped in try/except returning `candidates` unchanged on any error)
@@ -283,7 +283,7 @@ Source docs: `docs/brain-scan-2026-07-12.md`, `docs/brain-multi-agent-tiers-flee
 - src/superharness/commands/inbox_watch.py — the reinforce failure path: window query at 3630-3641 reads `inbox WHERE status='failed' AND failed_at >= window_start` grouped by `target_agent`, requires ≥2 failures per agent (`if len(failures) < 2: continue`), calls `analyze_failure` (3662-3668), tries `_self_heal` (3673), emits `trace_event(project_dir, "reinforce_analysis", {...})` (3685-3692), pauses via `_maybe_pause_agent` (3524) only on `permanent_block`. The harness seeds exactly what this query reads: two failed inbox rows for one agent with `failed_at` inside `_REINFORCE_WINDOW_MINUTES` (30, line 3519).
 - src/superharness/engine/trace.py — `trace_event` signature and the JSONL shape the assertions parse.
 - src/superharness/engine/model_router.py — `analyze_failure` (279-300): the mocked boundary in the e2e test; the REAL call in the live script.
-- docs/brain-scan-2026-07-12.md — G5c definition ("demonstrably fired — evidence in live data or logs"); the live run's captured event is appended here by the operator afterwards.
+- docs/reports/brain-scan-2026-07-12.md — G5c definition ("demonstrably fired — evidence in live data or logs"); the live run's captured event is appended here by the operator afterwards.
 
 **Files touched:**
 - tests/e2e/test_reinforce_loop_fires.py (new)
@@ -320,7 +320,7 @@ Source docs: `docs/brain-scan-2026-07-12.md`, `docs/brain-multi-agent-tiers-flee
 **Acceptance criteria (binary):**
 - [ ] `pytest tests/e2e/test_reinforce_loop_fires.py -q` green (fleet mocked, CI-safe)
 - [ ] One live `scripts/verify-l5-loop.sh` run prints a `reinforce_analysis` event whose classification is a valid taxonomy word produced by the real local fleet model
-- [ ] The live event block is appended to docs/brain-scan-2026-07-12.md as the G5c closure evidence
+- [ ] The live event block is appended to docs/reports/brain-scan-2026-07-12.md as the G5c closure evidence
 
 **Estimated effort:** M
 
@@ -334,10 +334,10 @@ Source docs: `docs/brain-scan-2026-07-12.md`, `docs/brain-multi-agent-tiers-flee
 
 **Source references:**
 - src/superharness/engine/model_router.py — `_load_fleet_config` (~155-177) and iteration 3's `_fleet_candidates`: per-tier `endpoints.{mini,standard,max}` already resolve; no code gap.
-- docs/brain-multi-agent-tiers-fleet.md — records that vLLM speaks the same OpenAI-compatible API and that the user fleet config already sketches the per-tier block commented out.
+- docs/reports/brain-multi-agent-tiers-fleet.md — records that vLLM speaks the same OpenAI-compatible API and that the user fleet config already sketches the per-tier block commented out.
 
 **Files touched:**
-- docs/fleet-vllm-enablement.md (new — how to enable per-tier vLLM endpoints, the reachability prerequisite, the doctor verification step, and the localhost-vs-explicit-IP lesson)
+- docs/guides/fleet-vllm-enablement.md (new — how to enable per-tier vLLM endpoints, the reachability prerequisite, the doctor verification step, and the localhost-vs-explicit-IP lesson)
 - tests/unit/test_fleet_per_tier_config.py (new)
 
 **Commit message:**
@@ -368,7 +368,7 @@ Source docs: `docs/brain-scan-2026-07-12.md`, `docs/brain-multi-agent-tiers-flee
 
 **Acceptance criteria (binary):**
 - [ ] `pytest tests/unit/test_fleet_per_tier_config.py -q` green
-- [ ] docs/fleet-vllm-enablement.md exists and contains the doctor verification step
+- [ ] docs/guides/fleet-vllm-enablement.md exists and contains the doctor verification step
 - [ ] Either a vLLM endpoint answers the models-list probe and is enabled in the user fleet config, OR the doc records the unreachability finding with the probe command used
 
 **Estimated effort:** S
@@ -395,7 +395,7 @@ Deduplicated acceptance criteria:
 - `grep -c "localhost:11434" src/superharness/commands/onboard.py` = 0
 - `rank_owners` has a production caller; seeded-outcome test flips fallback order
 - launchd label count identical before/after a full local unit-suite run
-- One live `scripts/verify-l5-loop.sh` run captured a `reinforce_analysis` event with a real fleet classification; event appended to docs/brain-scan-2026-07-12.md
+- One live `scripts/verify-l5-loop.sh` run captured a `reinforce_analysis` event with a real fleet classification; event appended to docs/reports/brain-scan-2026-07-12.md
 - vLLM enablement doc exists with verification steps; per-tier config shape pinned by tests
 
 The demo script (manual E2E):

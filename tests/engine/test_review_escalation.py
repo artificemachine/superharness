@@ -139,7 +139,7 @@ def test_review_escalation_dual_mode_writes_contract_yaml(
     `contract_file` and `doc` without ever defining them — a NameError,
     silently swallowed by a broad except, that lost the ledger write and
     the YAML mirror on every dual-mode escalation. `STATE_BACKEND=dual` is
-    a documented emergency-rollback mode (docs/yaml-inventory.md), still
+    a documented emergency-rollback mode (docs/reference/yaml-inventory.md), still
     reachable in production, not dead code. Found by the 2026-07-21
     portfolio-ready audit's ruff pass (F821 undefined-name).
     """

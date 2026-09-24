@@ -16,5 +16,5 @@ Do not infer a Superharness integration from those documents. Any future integra
 Superharness-specific adaptation decisions, the conditions for treating the
 combined system as spec-driven development, and the bounded proof-of-concept
 decision and evidence gates are all recorded in
-[`CONCEPT-openprose-reactor.md`](CONCEPT-openprose-reactor.md) — Parts 1, 3 and 2
+[`CONCEPT-openprose-reactor.md`](docs/concepts/CONCEPT-openprose-reactor.md) — Parts 1, 3 and 2
 respectively.

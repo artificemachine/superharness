@@ -2,7 +2,7 @@
 
 All credentials live in ~/.config/superharness/credentials.env (machine-level,
 mode 0600) — never in any project's .superharness/ directory. See
-docs/gateway-security.md for the threat model that motivates this split.
+docs/security/gateway-security.md for the threat model that motivates this split.
 
 Credential keys (any subset may be present):
     SUPERHARNESS_RELAY_SSH_HOST       — SSH config alias (e.g. mybox)

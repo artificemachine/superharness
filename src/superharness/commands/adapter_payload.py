@@ -4,7 +4,7 @@ Reads the current project state and emits a single stable JSON payload for
 consumption by Morpheme (and any future adapter that reads superharness data).
 
 Schema version: 1.0
-Spec: docs/adapter-payload-spec.md
+Spec: docs/reference/adapter-payload-spec.md
 """
 
 from __future__ import annotations
