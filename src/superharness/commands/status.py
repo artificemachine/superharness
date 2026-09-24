@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import json
 import os
 import platform
 import re
 import subprocess
 import sys
+import time
 from collections import defaultdict
 from datetime import datetime, timezone
 
@@ -171,7 +173,42 @@ def _heartbeat_status(project_dir: str, harness_dir: str) -> tuple[str, str]:
         if src[0] == "ok":
             return src
 
+    # A watcher that has not finished its first cycle looks exactly like a
+    # dead one: the heartbeat on disk is the previous run's. A live operator
+    # started within the freshness window means the first cycle is pending.
+    if result[0] in ("stale", "missing"):
+        started_ago = _operator_started_ago(project_dir, stale_seconds)
+        if started_ago is not None:
+            return (
+                "starting",
+                f"operator started {started_ago}s ago, first watcher cycle pending",
+            )
+
     return result
+
+
+def _operator_started_ago(project_dir: str, window_seconds: int) -> int | None:
+    """Seconds since a live operator started, or None outside the window.
+
+    None when operator-state.json is absent or unreadable, names no pid, names
+    a dead pid, or records a start older than ``window_seconds``.
+    """
+    from superharness.engine.operator import _OPERATOR_STATE_FILE
+
+    state_path = os.path.join(project_dir, _OPERATOR_STATE_FILE)
+    try:
+        with open(state_path, encoding="utf-8") as state_file:
+            state = json.load(state_file)
+        pid = int(state.get("operator_pid", 0))
+        started_at = float(state.get("operator_started_at", 0))
+    except (OSError, ValueError, TypeError, AttributeError):
+        return None
+    if not pid or not started_at or not pid_alive(pid):
+        return None
+    age = int(time.time() - started_at)
+    if age < 0 or age > window_seconds:
+        return None
+    return age
 
 
 # ---------------------------------------------------------------------------
@@ -1173,6 +1210,9 @@ def main(argv: list[str] | None = None) -> None:
     if watcher_level == "bad" and heartbeat_status == "ok":
         watcher_level = "ok"
         watcher_msg = f"foreground ({heartbeat_detail})"
+    elif watcher_level == "bad" and heartbeat_status == "starting":
+        watcher_level = "ok"
+        watcher_msg = f"starting ({heartbeat_detail})"
     elif watcher_level == "bad" and heartbeat_status == "stale":
         watcher_msg = f"not loaded, heartbeat stale ({heartbeat_detail})"
     elif watcher_level == "bad" and heartbeat_status == "missing":

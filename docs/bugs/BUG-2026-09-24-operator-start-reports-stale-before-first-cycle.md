@@ -54,3 +54,10 @@ ps -p <printed monitor pid>,<printed daemon pid> -o pid,command       # only the
 - Print the monitor pid from the child after the fork, or print only the daemon pid.
 - Regression tests: status within one cycle of start is not `bad`, and the printed pid is alive
   after `operator start` returns.
+
+## Resolution (2026-09-24)
+
+Fixed with a TDD cycle; `tests/unit/test_operator_start_first_cycle.py` failed on the previous source (3 of 6) and passes with the fix.
+
+- Defect 1: `_heartbeat_status` returns `starting` instead of `stale` or `missing` when `operator-state.json` names a live operator that started within the 120 s freshness window. `shux status` then shows `watcher: starting (operator started <n>s ago, first watcher cycle pending)` and prescribes nothing. No heartbeat is faked: a dead operator pid or an older start still reports `stale`.
+- Defect 2 was wider than the printed line: `_write_daemon_info` recorded the parent pid in `operator-state.json`, so the singleton check saw a dead operator and would allow a second one. After the fork the parent now calls `Operator.record_operator_pid(<child pid>)` and prints `monitor pid: <child pid>`; the foreground paths print their own pid.
