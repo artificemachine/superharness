@@ -6,6 +6,7 @@ Cross-platform: macOS, Linux, Windows.
 from __future__ import annotations
 
 import importlib.resources as _importlib_resources
+import json
 import logging
 import os
 import shutil
@@ -918,6 +919,56 @@ def cmd_update(args):
         )
 
 
+def _codex_hook_stdout(name: str, stdout: str) -> str:
+    """Translate Claude-format adapter hook output into Codex's wire schema.
+
+    The adapter scripts speak Claude Code's hook format. Codex rejects an
+    explicit ``permissionDecision: allow`` and has no ``ask`` decision, and it
+    expects SessionStart context under ``hookSpecificOutput``. Anything this
+    function does not recognise (deny decisions, non-JSON output) passes
+    through unchanged so enforcement is never weakened.
+    """
+    if not stdout.strip():
+        return ""
+
+    try:
+        payload = json.loads(stdout)
+    except json.JSONDecodeError:
+        return stdout
+    if not isinstance(payload, dict):
+        return stdout
+
+    hook_name = name.removesuffix(".sh")
+    if hook_name == "session-start":
+        context = payload.get("additionalContext")
+        if context is not None:
+            return (
+                json.dumps(
+                    {
+                        "hookSpecificOutput": {
+                            "hookEventName": "SessionStart",
+                            "additionalContext": context,
+                        }
+                    }
+                )
+                + "\n"
+            )
+
+    if hook_name in {"scope-guard", "branch-guard"}:
+        hook_output = payload.get("hookSpecificOutput") or {}
+        decision = hook_output.get("permissionDecision")
+        if decision == "allow":
+            # Codex treats a successful empty output as allow.
+            return ""
+        if decision == "ask":
+            # Keep the warning as a supported systemMessage; Codex's own
+            # permission mode decides whether to ask.
+            reason = hook_output.get("permissionDecisionReason", "")
+            return json.dumps({"systemMessage": reason}) + "\n"
+
+    return stdout
+
+
 @main.command(
     name="hook",
     context_settings={
@@ -926,16 +977,25 @@ def cmd_update(args):
         "help_option_names": [],
     },
 )
+@click.option(
+    "--target",
+    type=click.Choice(("claude", "codex")),
+    default="claude",
+    envvar="SUPERHARNESS_HOOK_TARGET",
+    show_default=True,
+    help="Agent whose hook wire schema the output must follow.",
+)
 @click.argument("name")
 @click.argument("args", nargs=-1, type=click.UNPROCESSED)
-def cmd_hook(name, args):
+def cmd_hook(target, name, args):
     """Run an adapter hook script by NAME (e.g. 'shux hook ledger-append').
 
     Resolves the hook script from the installed package at runtime, so hook
     configs (~/.claude/settings.json, ~/.codex/hooks.json) reference a stable
     `shux hook <name>` command instead of a versioned venv path that breaks
     whenever the tool's Python minor version changes (a uv-on-Linux reality).
-    stdin/stdout/stderr pass straight through to the script.
+    For Claude, stdin/stdout/stderr pass straight through to the script; with
+    ``--target codex`` stdout is translated to Codex's hook schema.
     """
     import superharness as _sh
 
@@ -949,7 +1009,21 @@ def cmd_hook(name, args):
     script = os.path.join(hooks_dir, fname)
     if not os.path.isfile(script):
         sys.exit(f"hook script not found: {script}")
-    result = subprocess.run(["bash", script, *args])
+    if target != "codex":
+        result = subprocess.run(["bash", script, *args])
+        sys.exit(result.returncode)
+
+    result = subprocess.run(
+        ["bash", script, *args],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    translated = _codex_hook_stdout(name, result.stdout)
+    if translated:
+        click.echo(translated, nl=False)
+    if result.stderr:
+        click.echo(result.stderr, err=True, nl=False)
     sys.exit(result.returncode)
 
 
