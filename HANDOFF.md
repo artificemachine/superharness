@@ -1,5 +1,14 @@
-# Session Handoff — 2026-09-19 (PRs #142/#143 shipped and cleaned up; #142 blocked on a CHANGELOG merge artifact)
+## Autopilot decisions — 2026-09-25
+Goal: fix BUG-2026-09-24 (dashboard `watcher_start` destroys the project's real `.superharness`) | Branch: `fix/dashboard-watcher-rmtree` (worktree `../superharness-fix-watcher-rmtree`) | Tests: unit 4242 passed + 1 env-artifact fail → **4253 passed, 0 failed** | Passes used: 0/8 | Cost: not reported (max_iter is the only bound)
+- Worktree isolation (`../superharness-fix-watcher-rmtree`) / why: the main checkout holds the unrelated staged ai-forge batch; a pathspec commit on `chore/ai-forge-init-level4` would have mixed concerns / rejected: committing on the ai-forge branch.
+- RED-phase side effect: pre-fix guard test runs invoked the real `service_installer` and registered two macOS LaunchAgents (`com.superharness.inbox.nested-worker`, `...random-worker`); both plists deleted + snapshot reset; the shipped tests monkeypatch install (success-path) or exit before install (refusal-path) / rejected: leaving the pollution.
+- Baseline env-artifact: `test_model_doctrine_names_runtime_bindings` reads untracked `docs/PLAN-dynamic-model-selection.md` and fails in a fresh worktree; file copied in, never staged / rejected: skipping the test.
+- Version bump deferred / why: repo convention bumps `pyproject.toml` in owner release commits (pyproject says 1.85.0 while tag v1.86.4 already shipped — NO RELEASE rule); a 1.85.1 bump would add a third state / rejected: bumping it myself.
+- doctrine-guard gate skipped / why: `tests/doctrine/doctrine-guard.sh` does not exist at base `7e84b592` (it lives only in the main checkout's uncommitted ai-forge batch).
+- `uv.lock` churn from local `uv run` restored (uv-version marker drift, unrelated to the fix).
+- skipped: the `shux recap` naive/aware datetime crash (separate live bug, out of scope — recorded in failure memory); push (not authorized).
 
+# Session Handoff — 2026-09-19 (PRs #142/#143 shipped and cleaned up; #142 blocked on a CHANGELOG merge artifact)
 Agent: Pi (deepseek-flash, reasoning high) | Branch: `feat/state-gc-and-isolation` @ `cbe1f72c` | Tests: pre-commit hook `914 pass, 9 skip`; state suites `107 pass`, `test_state_gc_inventory.py` `55 pass` (full suite NOT rerun) | UNCOMMITTED (`CHANGELOG.md` staged)
 
 ## What happened this session
