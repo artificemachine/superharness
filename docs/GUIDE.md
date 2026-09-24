@@ -198,6 +198,8 @@ Use `shux demo` to orient a new team member or verify that your superharness ins
 
 **Adapter hooks bundled in the package:** Since v1.11.0, the Claude Code adapter hooks (`adapters/claude-code/hooks/`) are bundled inside the installed package. `shux install-hooks` and `shux onboard` now work correctly after a `pip install superharness` or `pipx install superharness` without requiring a repo checkout.
 
+**Codex CLI hooks:** `shux install-hooks --target codex` writes `~/.codex/hooks.json` with `shux hook --target codex <name>` commands. The adapter scripts emit Claude Code's hook format; `--target codex` translates it to the Codex schema (an `allow` decision becomes empty output, `ask` becomes a `systemMessage`, SessionStart context moves under `hookSpecificOutput`). Re-run `shux install-hooks --target codex` after upgrading to rewrite older entries.
+
 ---
 
 ## Terminal Reference — Alternative Interface
