@@ -1,6 +1,6 @@
 # Skill Genericity Review — 2026-05-26
 
-**Location:** `docs/SKILL_GENERICITY_REVIEW.md`
+**Location:** `docs/reports/SKILL_GENERICITY_REVIEW.md`
 
 ## Context
 

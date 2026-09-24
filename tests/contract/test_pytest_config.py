@@ -1,4 +1,4 @@
-"""Iteration 1 of docs/CONCEPT-enforcement-parity.md — pin the pytest
+"""Iteration 1 of docs/concepts/CONCEPT-enforcement-parity.md — pin the pytest
 configuration that makes an unregistered marker fail collection instead of
 silently decorating a test with a marker nobody enforces.
 
@@ -22,7 +22,7 @@ def _pytest_ini_options() -> dict:
 
 def test_addopts_enables_strict_markers():
     """A typo'd @pytest.mark.* must fail collection, not pass silently.
-    See docs/CONCEPT-enforcement-parity.md Iteration 1.
+    See docs/concepts/CONCEPT-enforcement-parity.md Iteration 1.
 
     The literal recipe from crossprose (`addopts = "-ra --strict-markers"`)
     does NOT actually enable enforcement under this repo's pytest (9.0.2):

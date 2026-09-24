@@ -44,7 +44,7 @@ Auth is not in scope. Morpheme runs locally on a trusted machine; identity witho
 6. Adapter-payload schema v1.4:
    - Top-level `project_settings: { autonomy, workflow: { default_preset, require_tdd } }`
    - Per-task: `workflow`, `development_method`, `autonomy`, `require_tdd`
-7. Docs: `docs/adapter-payload-spec.md` v1.4 section.
+7. Docs: `docs/reference/adapter-payload-spec.md` v1.4 section.
 8. CHANGELOG entry + v1.28.0 release (PyPI + GitHub).
 
 **Out (follow-up tasks):**
@@ -224,7 +224,7 @@ Each iteration is one commit: RED (failing tests) → GREEN (minimal impl) → R
 **Files:**
 - MODIFY: `src/superharness/commands/adapter_payload.py`
 - MODIFY: `tests/unit/test_adapter_payload.py`
-- MODIFY: `docs/adapter-payload-spec.md` — add v1.4 section with field reference
+- MODIFY: `docs/reference/adapter-payload-spec.md` — add v1.4 section with field reference
 
 ---
 

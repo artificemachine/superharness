@@ -56,7 +56,7 @@ Options:
   -n, --dry-run           Print planned actions without writing files
   --with-watcher          Also install macOS launchd background watcher (default: off)
   --from-profile FILE     Read project name, stack, and status from a profile.yaml
-                          (written by an AI agent — see docs/INSTALL-AGENT.md)
+                          (written by an AI agent — see docs/guides/INSTALL-AGENT.md)
   --detect                Run engine/detect.rb and use its output for project name,
                           stack, and status (skips positional args)
   --interactive           Run a guided questionnaire to configure and initialize

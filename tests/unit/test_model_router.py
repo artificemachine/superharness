@@ -59,7 +59,7 @@ def test_model_doctrine_names_runtime_bindings():
     """Active resolver documentation names runtime bindings as configured authority."""
     root = Path(__file__).resolve().parents[2]
     # Tracked docs only: docs/PLAN-*.md is gitignored, so it is absent in CI.
-    text = (root / "docs/adapter-models.md").read_text().lower()
+    text = (root / "docs/reference/adapter-models.md").read_text().lower()
     assert "runtime binding" in text
 
 

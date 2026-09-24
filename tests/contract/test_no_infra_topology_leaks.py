@@ -112,7 +112,7 @@ LEAK_ALLOWLIST: dict[str, tuple[str, ...]] = {
 # Superharness observability contract. Keep the exemption path-scoped so the
 # local blocklist still rejects the same domain everywhere else.
 PUBLIC_BLOCKLIST_ALLOWLIST: dict[str, tuple[str, ...]] = {
-    "docs/langfuse-observability.md": ("gitsilence.net",),
+    "docs/guides/langfuse-observability.md": ("gitsilence.net",),
     "tests/contract/test_langfuse_dependency.py": ("gitsilence.net",),
 }
 
