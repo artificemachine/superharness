@@ -11,7 +11,7 @@
 | [`README.md`](../README.md) | Project overview, quickstart |
 | [`INSTALL-AGENT.md`](guides/INSTALL-AGENT.md) | Installation guide for agents |
 | [`GUIDE.md`](GUIDE.md) | Full command and dashboard appearance reference |
-| [`CONTRIBUTING.md`](CONTRIBUTING.md) | Contributing guide, test instructions |
+| [`CONTRIBUTING.md`](../CONTRIBUTING.md) | Contributing guide, test instructions |
 | [`DISCUSS.md`](reference/DISCUSS.md) | Multi-agent discussion protocol |
 | [`WHY-TUI.md`](concepts/WHY-TUI.md) | Why a TUI for superharness |
 | [`UNATTENDED.md`](guides/UNATTENDED.md) | Overnight unattended agent execution |
