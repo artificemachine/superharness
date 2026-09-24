@@ -299,6 +299,17 @@ class Operator:
                 info["dashboard_started_at"] = now
         _write_operator_state(op_file, info)
 
+    def record_operator_pid(self, pid: int) -> None:
+        """Record ``pid`` as the running operator, keeping the start time.
+
+        Called by the parent after the daemonizing fork, whose own pid was
+        recorded by ``_write_daemon_info`` and exits immediately.
+        """
+        op_file = self.project_dir / _OPERATOR_STATE_FILE
+        info = _read_operator_state(op_file)
+        info["operator_pid"] = pid
+        _write_operator_state(op_file, info)
+
     def _spawn_watcher(self):
         """Launch the background watcher (one-shot cycle)."""
         cmd = [

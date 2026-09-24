@@ -1252,7 +1252,6 @@ def operator_start(project, port, no_open, use_dashboard, no_daemon):
         handle_cli_error(e)
     if use_dashboard:
         click.echo(f"dashboard: http://127.0.0.1:{port}")
-    click.echo(f"monitor pid: {os.getpid()}")
 
     if not use_dashboard:
         click.echo("  (watcher cycles every 15s)")
@@ -1260,6 +1259,7 @@ def operator_start(project, port, no_open, use_dashboard, no_daemon):
         click.echo("  (watcher cycles every 15s, dashboard auto-restarts on crash)")
 
     if no_daemon:
+        click.echo(f"monitor pid: {os.getpid()}")
         op.monitor_and_recover()
         return
 
@@ -1272,11 +1272,15 @@ def operator_start(project, port, no_open, use_dashboard, no_daemon):
         click.echo(
             "  (no fork on this platform — running in foreground; Ctrl-C to stop)"
         )
+        click.echo(f"monitor pid: {os.getpid()}")
         op.monitor_and_recover()
         return
     pid = os.fork()
     if pid:
-        click.echo(f"  daemon pid: {pid}")
+        # start_stack recorded this (parent) pid, which exits now; the child
+        # runs the monitor loop, so it is the operator to record and report.
+        op.record_operator_pid(pid)
+        click.echo(f"monitor pid: {pid}")
         return  # parent exits, CLI returns
 
     # Child: detach from terminal, close stdio, run monitor
