@@ -157,7 +157,9 @@ def test_operator_start_prints_and_records_the_daemon_pid(tmp_path):
     with (
         patch("superharness.cli._resume_installed_operator", return_value=False),
         patch.object(Operator, "start_stack", _start_stack_state_only),
-        patch("superharness.cli.os.fork", return_value=_CHILD_PID),
+        # create=True: Windows has no os.fork; the test drives the parent
+        # side of the fork on every platform.
+        patch("superharness.cli.os.fork", return_value=_CHILD_PID, create=True),
     ):
         result = CliRunner().invoke(main, ["operator", "start", "--project", str(project)])
 
