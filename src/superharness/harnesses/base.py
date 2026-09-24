@@ -91,12 +91,16 @@ def discover_via_probe(
 
 
 def build_generic_invocation(
-    name: str, task: dict, project_dir: str, non_interactive: bool
+    name: str, task: dict, project_dir: str, non_interactive: bool,
+    *, prefix_model: bool = False,
 ) -> Invocation:
     """Shared argv assembly for adapters that wrap a bash launcher with
     --project/--prompt/--non-interactive/--yolo/--codex-bypass/--model/
-    --effort flags and apply provider/model prefixing
-    (codex-cli, gemini-cli, opencode).
+    --effort flags (codex-cli, gemini-cli, opencode, pi).
+
+    Provider/model prefixing (e.g. ``anthropic/claude-...``) is applied only
+    when ``prefix_model=True``. Codex and Gemini CLIs reject the prefix and
+    expect the bare model id; OpenCode and Pi expect ``provider/model``.
 
     claude-code is deliberately NOT built via this helper — Claude CLI
     rejects the anthropic/ prefix, so ClaudeHarness never prefixes its model.
@@ -111,7 +115,7 @@ def build_generic_invocation(
 
     prompt = str(task.get("prompt", ""))
     model = str(task.get("model") or "")
-    if model:
+    if model and prefix_model:
         model = apply_model_prefix(model)
     effort = str(task.get("effort") or "")
     yolo = bool(task.get("yolo", False))
