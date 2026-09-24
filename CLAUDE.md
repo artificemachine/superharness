@@ -121,14 +121,14 @@ Historical pairing (preserved for context):
 | `superharness` (this repo) | `feat/superharness-integration-morpheme` | `shux adapter-payload --json` command + spec |
 | `artificemachine/morpheme` | `feat/superharness-integration-morpheme` | Adapter boundary, Phase 2 renderer work |
 
-Spec: `docs/adapter-payload-spec.md`. Model mappings: `docs/adapter-models.md`.
+Spec: `docs/reference/adapter-payload-spec.md`. Model mappings: `docs/reference/adapter-models.md`.
 
 Schema version: `1.0` — validated by `ADAPTER_SCHEMA_VERSION` in Morpheme's `adapter.js`.
 ## Runtime Environment
 - Claude Code uses the **Claude Agent SDK** (Python) for autonomous dispatch.
 - This allows bypassing permission prompts and inheriting session context (warm-start).
 - For manual troubleshooting, use `shux delegate --via cli`.
-- See `docs/CONCEPT-sdk-vs-cli.md` for details.
+- See `docs/concepts/CONCEPT-sdk-vs-cli.md` for details.
 
 ## Self-Improvement Health Check
 

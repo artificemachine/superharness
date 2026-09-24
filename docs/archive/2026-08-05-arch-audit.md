@@ -32,7 +32,7 @@ None found.
 
 ### Concept documentation advertises command surfaces that do not exist
 
-- Evidence: `docs/CONCEPT-notifications-and-state-isolation.md:455-489` presents `shux state {dump,schema,size,vacuum,export,diff,shell,info}` as available. The registered CLI commands at `src/superharness/cli.py:140-165` contain `backup-state`, `archive-yaml`, and `export-yaml`, but no `state` command.
+- Evidence: `docs/concepts/CONCEPT-notifications-and-state-isolation.md:455-489` presents `shux state {dump,schema,size,vacuum,export,diff,shell,info}` as available. The registered CLI commands at `src/superharness/cli.py:140-165` contain `backup-state`, `archive-yaml`, and `export-yaml`, but no `state` command.
 - Risk: a new user following the public design document reaches nonexistent commands and cannot distinguish a proposal from supported functionality.
 - Recommended fix: mark the document as a proposal, or rewrite those sections to the implemented CLI.
 - Suggested phase: same public-documentation correction.

@@ -79,9 +79,9 @@ json
 *.pfx
 # Session working docs — handoffs, audits, plans, reports
 docs/HANDOFF-*.md
-docs/AUDIT-*.md
-docs/PLAN-*.md
-docs/bulletproof-report-*.md
+docs/audits/AUDIT-*.md
+docs/plans/PLAN-*.md
+docs/audits/bulletproof-report-*.md
 # Portfolio-ready audit artifacts (command renamed from job-ready 2026-07-21)
 # — working docs, not repo content. Kept local so a findings report cannot
 # re-leak the PII it documents into a tracked file (see the 2026-07-21 audit
