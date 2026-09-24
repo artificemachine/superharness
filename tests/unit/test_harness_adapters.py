@@ -35,6 +35,11 @@ def _scripts_dir() -> str:
 
 
 def test_codex_invocation_parity():
+    """Codex CLI rejects the provider/model prefix; it expects the bare model id.
+
+    Bug F-03: dispatch used to launch `codex exec --model openai/gpt-5.6-luna`,
+    which codex rejects. This pins the bare-id contract.
+    """
     launcher = resolve_launcher("codex-cli", _scripts_dir())
     invocation = get_harness("codex-cli").build_invocation(
         task={"prompt": "do the thing", "model": "gpt-5-codex", "effort": "high"},
@@ -50,7 +55,7 @@ def test_codex_invocation_parity():
         "do the thing",
         "--non-interactive",
         "--model",
-        "openai/gpt-5-codex",
+        "gpt-5-codex",
         "--effort",
         "high",
     )
@@ -58,6 +63,7 @@ def test_codex_invocation_parity():
 
 
 def test_gemini_invocation_parity():
+    """Gemini CLI expects the bare model id, not a provider/model prefix."""
     launcher = resolve_launcher("gemini-cli", _scripts_dir())
     invocation = get_harness("gemini-cli").build_invocation(
         task={"prompt": "do the thing", "model": "gemini-3-pro"},
@@ -73,7 +79,29 @@ def test_gemini_invocation_parity():
         "do the thing",
         "--non-interactive",
         "--model",
-        "google/gemini-3-pro",
+        "gemini-3-pro",
+    )
+    assert invocation.cwd == "/tmp/proj"
+
+
+def test_opencode_invocation_parity_stays_prefixed():
+    """OpenCode is the one harness whose CLI needs the provider/model prefix."""
+    launcher = resolve_launcher("opencode", _scripts_dir())
+    invocation = get_harness("opencode").build_invocation(
+        task={"prompt": "do the thing", "model": "gpt-5-codex"},
+        project_dir="/tmp/proj",
+        non_interactive=True,
+    )
+    assert invocation.argv == (
+        "bash",
+        launcher,
+        "--project",
+        "/tmp/proj",
+        "--prompt",
+        "do the thing",
+        "--non-interactive",
+        "--model",
+        "openai/gpt-5-codex",
     )
     assert invocation.cwd == "/tmp/proj"
 
