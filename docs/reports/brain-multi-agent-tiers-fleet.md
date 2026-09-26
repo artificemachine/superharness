@@ -1,6 +1,6 @@
 # superharness brain — why 4 agent CLIs, what tiers mean, Ollama + vLLM fleet
 
-Saved from brain-scan follow-up session, 2026-07-12. Companion to `docs/brain-scan-2026-07-12.md`.
+Saved from brain-scan follow-up session, 2026-07-12. Companion to `docs/reports/brain-scan-2026-07-12.md`.
 
 ## Correction to the 2026-07-12 brain scan
 

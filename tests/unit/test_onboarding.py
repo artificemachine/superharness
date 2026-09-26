@@ -117,8 +117,8 @@ class TestWindowsDocumentation:
         assert "pipx install superharness" in content
 
     def test_install_agent_doc_mentions_windows(self):
-        """docs/INSTALL-AGENT.md includes Windows compatibility notes."""
-        install_doc = Path(__file__).parent.parent.parent / "docs" / "INSTALL-AGENT.md"
+        """docs/guides/INSTALL-AGENT.md includes Windows compatibility notes."""
+        install_doc = Path(__file__).parent.parent.parent / "docs" / "guides" / "INSTALL-AGENT.md"
         if install_doc.exists():
             content = install_doc.read_text().lower()
             # Cross-platform or explicit Windows mention

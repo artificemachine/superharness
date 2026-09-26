@@ -254,3 +254,110 @@ class TestOrchestrateMode:
         call_args = mock_instance.route.call_args[0][0]
         assert call_args["owner"] == "codex-cli"
         assert rc == 0
+
+
+# ---------------------------------------------------------------------------
+# F-02: --no-orchestrate must be honored on the non-JSON CLI path
+# ---------------------------------------------------------------------------
+
+
+class TestNoOrchestrateFlagNonJsonPath:
+    def test_no_orchestrate_skips_orchestrator_via_main(self, tmp_path):
+        """`shux delegate --no-orchestrate` (non-JSON CLI entry) must not
+        invoke the Orchestrator at all. Previously the non-JSON call site
+        omitted `no_orchestrate=opts.no_orchestrate` when calling
+        `delegate(...)`, so the flag was silently ignored."""
+        from superharness.commands.delegate import main as delegate_main
+        from tests.helpers import seed_sqlite_from_yaml
+
+        project = _setup_project(tmp_path)
+        seed_sqlite_from_yaml(project)
+
+        with patch("superharness.engine.orchestrator.Orchestrator") as MockOrch:
+            mock_instance = MockOrch.return_value
+            mock_instance.route.return_value = MOCK_ROUTING
+
+            with patch("superharness.commands.delegate._launch_agent"):
+                with patch(
+                    "superharness.commands.delegate.sdk_available",
+                    return_value=False,
+                ):
+                    with pytest.raises(SystemExit) as exc_info:
+                        delegate_main(
+                            [
+                                "--to",
+                                "claude-code",
+                                "--task",
+                                "T-42",
+                                "--project",
+                                str(project),
+                                "--no-orchestrate",
+                            ]
+                        )
+
+        assert exc_info.value.code == 0
+        mock_instance.route.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# F-01: an explicit --to target must not be overridden by orchestrator routing
+# ---------------------------------------------------------------------------
+
+
+MOCK_ROUTING_REROUTE = RoutingPlan(
+    owner="codex-cli",
+    tier="standard",
+    effort="high",
+    decompose=False,
+    rationale="orchestrator thinks codex-cli is the better fit",
+    subtasks=[],
+    total_estimated_cost_usd=0.0,
+    recommended_budget_usd=0.0,
+)
+
+
+class TestExplicitTargetWinsOverOrchestrator:
+    def test_explicit_to_target_is_not_overridden(self, tmp_path):
+        """An explicitly requested --to target always wins over the
+        orchestrator's owner pick. The orchestrator may still set
+        tier/effort, but never the dispatch target. Changing the agent
+        stays reserved for the explicit --force-reassign path
+        (superharness.commands.inbox_enqueue)."""
+        from superharness.commands.delegate import delegate
+        from tests.helpers import seed_sqlite_from_yaml
+
+        project = _setup_project(tmp_path)
+        seed_sqlite_from_yaml(project)
+
+        captured_target = {}
+
+        def _fake_launch(target, *args, **kwargs):
+            captured_target["target"] = target
+
+        with patch("superharness.engine.orchestrator.Orchestrator") as MockOrch:
+            mock_instance = MockOrch.return_value
+            mock_instance.route.return_value = MOCK_ROUTING_REROUTE
+
+            with patch(
+                "superharness.commands.delegate._launch_agent",
+                side_effect=_fake_launch,
+            ):
+                with patch(
+                    "superharness.commands.delegate.sdk_available",
+                    return_value=False,
+                ):
+                    rc = delegate(
+                        project_dir=str(project),
+                        target="opencode",
+                        task_id="T-42",
+                        print_only=False,
+                        non_interactive=False,
+                        codex_bypass=False,
+                        no_auto_model=True,
+                    )
+
+        assert rc == 0
+        mock_instance.route.assert_called_once()
+        assert captured_target.get("target") == "opencode", (
+            "explicit --to opencode must win over orchestrator owner codex-cli"
+        )

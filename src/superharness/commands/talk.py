@@ -28,7 +28,7 @@ $SUPERHARNESS_TALK_INSTANCE (or $HERDR_PANE_ID, or "shared"). Co-located
 agents sharing an OS user MUST NOT share one identity file — whoever
 registers last would win — so give each an instance id.
 
-See docs/inter-agent-talk-protocol.md for the channel-split protocol
+See docs/reference/inter-agent-talk-protocol.md for the channel-split protocol
 (talk = interactive conversation; append-only mailbox files = durable
 handoffs/receipts/decisions).
 """

@@ -216,8 +216,112 @@ class TestInstallHooks:
         ]
         assert cmds, "no hook commands written"
         for cmd in cmds:
-            assert " hook " in cmd and ".sh" not in cmd, cmd
+            assert " hook --target codex " in cmd and ".sh" not in cmd, cmd
             assert "/lib/python3." not in cmd, cmd
+
+    def test_claude_target_keeps_untranslated_command(
+        self, tmp_path: Path, repo_root: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Claude entries must not gain the Codex translator flag."""
+        from superharness.commands.install_hooks import install_hooks
+
+        hooks_dir = repo_root / "adapters" / "claude-code" / "hooks"
+        monkeypatch.setenv("HOME", str(tmp_path))
+        assert install_hooks(hooks_dir=hooks_dir, targets=["claude"]) == 0
+        data = json.loads((tmp_path / ".claude" / "settings.json").read_text())
+        cmds = [
+            h["command"]
+            for entries in data["hooks"].values()
+            for entry in entries
+            for h in entry.get("hooks", [])
+        ]
+        assert cmds, "no hook commands written"
+        assert all("--target" not in cmd for cmd in cmds), cmds
+
+    def test_codex_reinstall_is_idempotent(
+        self, tmp_path: Path, repo_root: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Re-running the Codex install matches existing entries by hook name."""
+        from superharness.commands.install_hooks import install_hooks
+
+        hooks_dir = repo_root / "adapters" / "claude-code" / "hooks"
+        monkeypatch.setenv("HOME", str(tmp_path))
+        assert install_hooks(hooks_dir=hooks_dir, targets=["codex"]) == 0
+        first = (tmp_path / ".codex" / "hooks.json").read_text()
+        assert install_hooks(hooks_dir=hooks_dir, targets=["codex"]) == 0
+        assert (tmp_path / ".codex" / "hooks.json").read_text() == first
+
+
+class TestCodexHookTranslation:
+    """Claude-format hook output is rewritten into Codex's wire schema."""
+
+    def test_session_start_uses_codex_context_shape(self) -> None:
+        from superharness.cli import _codex_hook_stdout
+
+        output = _codex_hook_stdout(
+            "session-start", json.dumps({"additionalContext": "contract context"})
+        )
+        assert json.loads(output) == {
+            "hookSpecificOutput": {
+                "hookEventName": "SessionStart",
+                "additionalContext": "contract context",
+            }
+        }
+
+    def test_pretool_allow_is_successful_empty_output(self) -> None:
+        from superharness.cli import _codex_hook_stdout
+
+        payload = {
+            "hookSpecificOutput": {
+                "hookEventName": "PreToolUse",
+                "permissionDecision": "allow",
+            }
+        }
+        assert _codex_hook_stdout("branch-guard", json.dumps(payload)) == ""
+
+    def test_pretool_ask_becomes_supported_warning(self) -> None:
+        from superharness.cli import _codex_hook_stdout
+
+        payload = {
+            "hookSpecificOutput": {
+                "hookEventName": "PreToolUse",
+                "permissionDecision": "ask",
+                "permissionDecisionReason": "check this command",
+            }
+        }
+        output = _codex_hook_stdout("branch-guard", json.dumps(payload))
+        assert json.loads(output) == {"systemMessage": "check this command"}
+
+    def test_pretool_deny_remains_enforced(self) -> None:
+        from superharness.cli import _codex_hook_stdout
+
+        payload = {
+            "hookSpecificOutput": {
+                "hookEventName": "PreToolUse",
+                "permissionDecision": "deny",
+                "permissionDecisionReason": "blocked",
+            }
+        }
+        output = _codex_hook_stdout("scope-guard", json.dumps(payload))
+        assert json.loads(output) == payload
+
+    def test_non_json_output_passes_through(self) -> None:
+        from superharness.cli import _codex_hook_stdout
+
+        assert _codex_hook_stdout("ledger-append", "plain text\n") == "plain text\n"
+
+    def test_cli_codex_target_emits_no_allow_decision(self, tmp_path: Path) -> None:
+        """End to end: branch-guard on an empty payload must not print allow."""
+        result = subprocess.run(
+            [sys.executable, "-m", "superharness", "hook", "--target", "codex", "branch-guard"],
+            input="",
+            capture_output=True,
+            text=True,
+            cwd=tmp_path,
+            timeout=60,
+        )
+        assert result.returncode == 0, result.stderr
+        assert "permissionDecision" not in result.stdout, result.stdout
 
 
 class TestEphemeralGuard:

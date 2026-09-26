@@ -2,7 +2,7 @@
 
 _section_fleet probed and wrote "localhost:11434" — ambiguous under IPv6-first
 resolution, which is exactly what caused the fleet brain's six-month silent
-death (see docs/brain-multi-agent-tiers-fleet.md: two Ollama servers shared
+death (see docs/reports/brain-multi-agent-tiers-fleet.md: two Ollama servers shared
 port 11434, "localhost" resolved to the wrong one). Must always use explicit
 127.0.0.1.
 """

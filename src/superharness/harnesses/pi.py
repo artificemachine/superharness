@@ -88,4 +88,11 @@ class PiHarness:
     def build_invocation(
         self, task: dict, project_dir: str, non_interactive: bool
     ) -> Invocation:
-        return build_generic_invocation(self.name, task, project_dir, non_interactive)
+        # Pi's model tiers are configured as provider/model ids (e.g.
+        # deepseek/deepseek-v4-pro; see adapter_manifests/pi.yaml and the
+        # activation evidence in docs/reference/adapter-models.md, which logs
+        # "Requested provider/model: deepseek/deepseek-v4-pro" accepted by
+        # Pi CLI 0.73.1's --model flag), so Pi needs the prefix like OpenCode.
+        return build_generic_invocation(
+            self.name, task, project_dir, non_interactive, prefix_model=True
+        )

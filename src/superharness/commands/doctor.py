@@ -360,7 +360,7 @@ def main(argv: list[str] | None = None) -> None:
                 print("INFO mcp:memory server configured (optional enhancement)")
             else:
                 print(
-                    "INFO mcp:no memory server detected (optional — see docs/MCP-MEMORY.md)"
+                    "INFO mcp:no memory server detected (optional — see docs/reference/MCP-MEMORY.md)"
                 )
         except Exception as e:
             logger.warning("doctor.py unexpected error: %s", e, exc_info=True)

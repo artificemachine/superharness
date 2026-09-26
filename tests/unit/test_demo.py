@@ -84,3 +84,17 @@ def test_demo_keep_flag_preserves_dir(repo_root, tmp_path) -> None:
             break
     else:
         pytest.fail("Could not find 'Demo directory kept at:' line in output")
+
+
+def test_demo_completes_the_task_lifecycle_without_cli_errors(repo_root, tmp_path) -> None:
+    result = _run_demo_py(tmp_path, args=["--no-interactive"])
+    output = result.stdout + result.stderr
+
+    assert result.returncode == 0, output
+    assert "handoff write: error:" not in output
+    assert "approve: error:" not in output
+    assert "blocked:" not in output
+    assert "error: --tdd-refactor required" not in output
+    assert "forbidden: actor" not in output
+    assert "Cannot close task" not in output
+    assert "Closed task 'demo-task' (actor=codex-cli)" in output

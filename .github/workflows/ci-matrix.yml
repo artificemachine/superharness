@@ -4,7 +4,7 @@ name: Windows-Native CI Matrix
 # Runs the cross-platform baseline tests and the Windows-native e2e matrix
 # on all three supported OSes.
 #
-# Exit criteria (from docs/windows-native-full-fix-tdd-plan.md):
+# Exit criteria (from docs/plans/windows-native-full-fix-tdd-plan.md):
 #   All OS matrix jobs pass for: init → watch → enqueue → dispatch → status
 
 on:

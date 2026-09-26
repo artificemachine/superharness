@@ -155,7 +155,7 @@ walks the adapter manifest for `owner` and looks up `tier` in `model_tiers`.
 Unknown owner or tier falls back to `{id: tier, label: tier}` so the payload
 stays well-formed even during one-off dispatches.
 
-See `docs/adapter-payload-spec.md` (Resolved model section) for the on-wire
+See `docs/reference/adapter-payload-spec.md` (Resolved model section) for the on-wire
 contract.
 
 ## How to bump a model

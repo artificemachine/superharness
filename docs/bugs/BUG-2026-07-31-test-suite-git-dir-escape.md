@@ -93,4 +93,4 @@ So whatever set `core.bare = true` during the original incident, **it was not a 
 
 ## Why this blocks `shux develop`
 
-`docs/CONCEPT-develop-until-approved.md` proposes an orchestration engine that creates git worktrees, commits inside them, and merges branches back — all through the same subprocess-git layer, and its own tests would exercise exactly that. The identical escape there would not stop at config drift; it would merge agent branches into the real repo. Fix this before implementing Iteration 3.
+`docs/concepts/CONCEPT-develop-until-approved.md` proposes an orchestration engine that creates git worktrees, commits inside them, and merges branches back — all through the same subprocess-git layer, and its own tests would exercise exactly that. The identical escape there would not stop at config drift; it would merge agent branches into the real repo. Fix this before implementing Iteration 3.
