@@ -1157,8 +1157,11 @@ def delegate(
                 if print_only:
                     return 0
 
-                # Override target/model/effort from routing plan
-                target = routing.owner
+                # Apply routing: tier/effort only. The explicitly requested
+                # --to target always wins; the orchestrator's owner pick is
+                # advisory (shown above) and never reassigns the dispatch.
+                # Changing the agent stays reserved for the explicit
+                # --force-reassign path (superharness.commands.inbox_enqueue).
                 if not resolved_model:
                     resolved_model = resolve_model_for_tier(
                         target, routing.tier, project_dir
@@ -1168,8 +1171,8 @@ def delegate(
                 model_source = "orchestrator"
             else:
                 print("  Plan:     direct dispatch (no decomposition)")
-                # Apply routing: override target/model/effort
-                target = routing.owner
+                # Apply routing: tier/effort only. See the note above for why
+                # target is never reassigned here.
                 resolved_model = resolve_model_for_tier(
                     target, routing.tier, project_dir
                 )
@@ -1753,6 +1756,7 @@ def main(argv: list[str] | None = None) -> None:
         no_auto_model=opts.no_auto_model,
         via_sdk=True if opts.via == "sdk" else (False if opts.via == "cli" else None),
         orchestrate=opts.orchestrate,
+        no_orchestrate=opts.no_orchestrate,
         skip_preflight=opts.skip_preflight,
         force=opts.force,
         plan_only=opts.plan_only,

@@ -661,7 +661,7 @@ Acceptance gates:
 ### 8.8 Documentation surfaces
 
 Must update or create:
-- `docs/CONCEPT-notifications-and-state-isolation.md` — this file (the spec).
+- `docs/concepts/CONCEPT-notifications-and-state-isolation.md` — this file (the spec).
 - `docs/notify-security.md` — threat model, key rotation, kill switch (`SUPERHARNESS_NOTIFY_DISABLED`).
 - `docs/backup-guide.md` — the 6-tier matrix from Section 6.2, with copy-paste examples per tier.
 - `docs/state-locations.md` — XDG layout, env-var overrides, "where is my data" reference.
