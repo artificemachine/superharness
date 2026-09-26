@@ -14,9 +14,14 @@ logger = logging.getLogger(__name__)
 
 def _parse_iso(ts: str) -> datetime | None:
     try:
-        return datetime.fromisoformat(ts.replace("Z", "+00:00"))
+        dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
     except (ValueError, TypeError):
         return None
+    # Naive timestamps (no offset) are interpreted as UTC so they can be
+    # compared against timezone-aware cutoffs without TypeError.
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt
 
 
 def _within_window(ts: str, cutoff: datetime) -> bool:

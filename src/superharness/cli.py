@@ -1142,17 +1142,73 @@ def operator_check(project):
     default=False,
     help="Run in foreground (for debugging; default detaches)",
 )
-def operator_start(project, port, no_open, use_dashboard, no_daemon):
+@click.option(
+    "--operator-nonce",
+    "operator_nonce",
+    default=None,
+    hidden=True,
+)
+def operator_start(project, port, no_open, use_dashboard, no_daemon, operator_nonce):
     """Start the Superharness Guardian (Watcher + optional Dashboard).
 
     By default, daemonizes via fork+setsid so the watcher survives the
     invoking shell session. Use --no-daemon for foreground debugging.
     """
+    import time
+    import uuid
     from pathlib import Path
 
-    from superharness.engine.operator import Operator
+    from superharness.engine.operator import (
+        Operator,
+        _read_operator_state,
+        _write_operator_state,
+    )
 
     project_dir = Path(project).resolve()
+
+    # #156 nonce bootstrap: the daemon runs in-process (fork+setsid child),
+    # so the verification nonce must be in argv from the very start — a
+    # later state write cannot retroactively tag the process's command line.
+    # Re-exec this same process once with the nonce appended. The flag's
+    # absence is the loop guard: the re-exec'd process always carries
+    # --operator-nonce, so it never re-execs again. The argv-shape guard is
+    # for in-process callers (click's CliRunner, embedding) where sys.argv
+    # is NOT this CLI invocation — re-exec would restart the wrong process
+    # entirely, so record the nonce best-effort instead, like the no-execv
+    # fallback below (no crash, no daemon-side identity, legacy stop guard
+    # still applies there).
+    if operator_nonce is None:
+        operator_nonce = uuid.uuid4().hex
+        _argv_is_this_invocation = "operator" in sys.argv[1:] and "start" in sys.argv[1:]
+        if hasattr(os, "execv") and _argv_is_this_invocation:
+            # R1: `operator stop` verifies the daemon against the RESOLVED
+            # project_dir (state file path AND the ps command line). A
+            # verbatim sys.argv copy is unverifiable for the default `-p .`
+            # (and for any relative/symlinked path) — carry the resolved
+            # project in the re-exec argv instead: replace an existing
+            # -p/--project value, otherwise append --project <resolved>.
+            _new_argv = (
+                [sys.executable] + list(sys.argv) + ["--operator-nonce", operator_nonce]
+            )
+            _resolved_project = str(project_dir)
+            _project_flag_replaced = False
+            for _i, _arg in enumerate(_new_argv):
+                if _arg in ("-p", "--project") and _i + 1 < len(_new_argv):
+                    _new_argv[_i + 1] = _resolved_project
+                    _project_flag_replaced = True
+                elif _arg.startswith("--project="):
+                    _new_argv[_i] = f"--project={_resolved_project}"
+                    _project_flag_replaced = True
+            if not _project_flag_replaced:
+                _new_argv += ["--project", _resolved_project]
+            os.execv(sys.executable, _new_argv)
+    op_state_file = project_dir / ".superharness" / "operator-state.json"
+    # R2: the nonce is NOT written here. This block used to run BEFORE
+    # _resume_installed_operator() and BEFORE start_stack()'s singleton
+    # check, so a duplicate `operator start` clobbered the running daemon's
+    # nonce and made verified stop impossible for it. The state nonce is now
+    # written only AFTER start_stack() succeeds, and only by the process
+    # actually carrying its nonce in argv (below).
     if use_dashboard:
         from superharness.engine.launchd_health import (
             operator_label_for_project,
@@ -1176,6 +1232,24 @@ def operator_start(project, port, no_open, use_dashboard, no_daemon):
         )
     except SuperharnessError as e:
         handle_cli_error(e)
+    # R2: stamp the nonce (plus this process's pid/started_at) only once the
+    # stack actually started (singleton check passed) AND only for the
+    # process whose own argv carries that nonce — i.e. the re-exec'd
+    # operator. If execv was skipped (in-process callers: CliRunner,
+    # embedding), do NOT write a nonce: that process can never present the
+    # nonce in its ps command line, so the legacy stop guard stays its route.
+    if operator_nonce and operator_nonce in sys.argv:
+        try:
+            _op_state = _read_operator_state(op_state_file)
+            _op_state["operator_nonce"] = operator_nonce
+            _op_state["operator_pid"] = os.getpid()
+            _op_state["operator_started_at"] = time.time()
+            _write_operator_state(op_state_file, _op_state)
+        except OSError as _stamp_err:
+            print(
+                f"operator: could not stamp operator state: {_stamp_err}",
+                file=sys.stderr,
+            )
     if use_dashboard:
         click.echo(f"dashboard: http://127.0.0.1:{port}")
     click.echo(f"monitor pid: {os.getpid()}")
@@ -1207,6 +1281,25 @@ def operator_start(project, port, no_open, use_dashboard, no_daemon):
 
     # Child: detach from terminal, close stdio, run monitor
     os.setsid()
+    # R3: every state stamp so far (start_stack's _write_daemon_info and the
+    # post-start nonce stamp) carries the SHORT-LIVED fork parent's pid; the
+    # parent would otherwise remain in operator-state.json forever, so
+    # `operator stop` would signal a dead — possibly recycled — pid. The
+    # child restamps operator_pid with its own pid here, before its stdio is
+    # closed. The parent writes nothing after fork (it only echoes and
+    # returns), so this is the LAST write of operator_pid.
+    try:
+        _child_state = _read_operator_state(op_state_file)
+        _child_state["operator_pid"] = os.getpid()
+        _child_state["operator_started_at"] = time.time()
+        _write_operator_state(op_state_file, _child_state)
+    except Exception as _restamp_err:
+        # Bookkeeping must never kill the daemon; stop degrades to the
+        # legacy guard if the stamp is missing.
+        print(
+            f"operator: could not restamp daemon pid in operator state: {_restamp_err}",
+            file=sys.stderr,
+        )
     os.chdir(project)
     # Redirect stdio to /dev/null
     devnull = os.open(os.devnull, os.O_RDWR)
@@ -1491,13 +1584,28 @@ def operator_stop(project):
                 text=True,
                 check=False,
             ).stdout or ""
+            # #156: verify by the start-time nonce in argv (works for any
+            # launcher, including the `shux` console script), with the old
+            # module-form string check as legacy fallback only for operators
+            # started before nonces existed.
+            nonce = state.get("operator_nonce")
+            verified = bool(nonce) and nonce in command and str(project_dir) in command
             expected = "superharness.cli operator start"
-            if expected in command and str(project_dir) in command:
+            legacy_verified = (
+                not nonce
+                and expected in command
+                and str(project_dir) in command
+            )
+            if verified or legacy_verified:
                 import signal as _signal
                 os.kill(pid, _signal.SIGTERM)
                 click.echo(f"Sent SIGTERM to operator (pid={pid}).")
             else:
+                # Refusal: keep operator_pid/operator_started_at (state loss
+                # made later diagnosis impossible) and exit non-zero. The
+                # surrounding `except Exception` does not catch SystemExit.
                 click.echo(f"Refusing to signal unverified operator PID {pid}.")
+                raise SystemExit(2)
         state.pop("operator_pid", None)
         state.pop("operator_started_at", None)
         if state:
