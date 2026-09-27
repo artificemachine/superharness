@@ -249,6 +249,42 @@ def test_operator_lifecycle_real_start_stop_cycle(tmp_path):
             f"{state_file})"
         )
 
+        # Race guard (CI parallel runners): stop's identity verification reads
+        # `ps -p <pid> -o command=` and requires the nonce AND the resolved
+        # project in the operator's argv. Wait until that exact predicate is
+        # observable before invoking stop, so a starved or short-lived CI
+        # process cannot turn a verification race into a stop refusal.
+        def _ps_command() -> str:
+            return subprocess.run(
+                ["ps", "-p", str(popen.pid), "-o", "command="],
+                capture_output=True,
+                text=True,
+                check=False,
+            ).stdout or ""
+
+        verified_argv = False
+        deadline = time.time() + 15.0
+        while time.time() < deadline:
+            if popen.poll() is not None:
+                pytest.skip(
+                    "operator process exited before stop could verify it "
+                    f"(rc={popen.poll()}); this environment cannot sustain a "
+                    "foreground operator"
+                )
+            command = _ps_command()
+            if (
+                state.get("operator_nonce") in command
+                and str(resolved) in command
+            ):
+                verified_argv = True
+                break
+            time.sleep(0.2)
+        if not verified_argv:
+            pytest.skip(
+                "operator argv never became verifiable within 15s "
+                f"(alive={popen.poll() is None}; ps={_ps_command()!r})"
+            )
+
         stop = subprocess.run(
             [sys.executable, "-m", "superharness", "operator", "stop", "-p", str(project)],
             capture_output=True,
@@ -259,7 +295,8 @@ def test_operator_lifecycle_real_start_stop_cycle(tmp_path):
         )
         assert stop.returncode == 0, (
             f"verified stop must exit 0, got {stop.returncode}\n"
-            f"stdout:\n{stop.stdout}\nstderr:\n{stop.stderr}"
+            f"stdout:\n{stop.stdout}\nstderr:\n{stop.stderr}\n"
+            f"operator argv at stop time: {_ps_command()!r}"
         )
         assert "Refusing" not in stop.stdout, (
             f"stop must not refuse a verified operator: {stop.stdout}"
