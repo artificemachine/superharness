@@ -1371,7 +1371,7 @@ def operator_start(project, port, no_open, use_dashboard, no_daemon, operator_no
         _child_state["operator_pid"] = os.getpid()
         _child_state["operator_started_at"] = time.time()
         _write_operator_state(op_state_file, _child_state)
-    except Exception as _restamp_err:
+    except (OSError, ValueError) as _restamp_err:
         # Bookkeeping must never kill the daemon; stop degrades to the
         # legacy guard if the stamp is missing.
         print(
@@ -1690,7 +1690,10 @@ def operator_stop(project):
             _write_operator_state(state_file, state)
         else:
             state_file.unlink(missing_ok=True)
-    except Exception as e:
+    except (OSError, RuntimeError, ValueError) as e:
+        # Narrowed per the source ratchet: OSError covers ps/kill/state-file
+        # failures, RuntimeError the launchd helpers, ValueError bad state
+        # JSON. Anything else is a bug and should fail loud.
         click.echo(f"Error stopping operator: {e}", err=True)
 
 
