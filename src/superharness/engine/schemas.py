@@ -53,6 +53,10 @@ class InboxStatus(str, Enum):
     failed = "failed"
     stale = "stale"
     paused = "paused"
+    # Iteration 5 (report_ready reconcile): the agent produced its report and
+    # the item now awaits human review. Non-terminal — inbox_dispatch already
+    # emits this status; the schema must be able to speak it.
+    waiting_review = "waiting_review"
 
 
 class ModelTier(str, Enum):

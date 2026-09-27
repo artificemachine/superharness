@@ -59,9 +59,8 @@ def test_operator_stop_refuses_unverified_fallback_pid(tmp_path):
     from superharness.engine import launchd_health
 
     project = _project(tmp_path)
-    (project / ".superharness" / "operator-state.json").write_text(
-        json.dumps({"operator_pid": 91, "dashboard_pid": 92})
-    )
+    state_file = project / ".superharness" / "operator-state.json"
+    state_file.write_text(json.dumps({"operator_pid": 91, "dashboard_pid": 92}))
 
     with (
         patch.object(
@@ -75,9 +74,13 @@ def test_operator_stop_refuses_unverified_fallback_pid(tmp_path):
         run.return_value.stdout = "python dashboard-ui.py --project elsewhere"
         result = CliRunner().invoke(main, ["operator", "stop", "--project", str(project)])
 
-    assert result.exit_code == 0, result.output
+    # #156: a refusal must exit non-zero (silent success was the defect) ...
+    assert result.exit_code != 0, result.output
     assert "unverified" in result.output.lower()
     kill.assert_not_called()
+    # ... and must NOT drop operator_pid/operator_started_at from state.
+    saved = json.loads(state_file.read_text())
+    assert saved["operator_pid"] == 91
 
 
 def test_operator_stop_disables_legacy_label_for_the_same_project(tmp_path):

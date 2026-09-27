@@ -272,6 +272,84 @@ def _git_worktree_remove(project_dir: str, worktree_dir: str) -> bool:
     return True
 
 
+def _branch_detached_worktree_commits(
+    project_dir: str, worktree_dir: str, task_id: str
+) -> str | None:
+    """Iteration 4 (F-06 core): preserve detached-HEAD worktree commits.
+
+    A dispatch worktree is created with ``--detach``; any commit made on
+    that detached HEAD is unreachable from every branch, so ``worktree
+    remove --force`` destroys it. Before removal, when the worktree HEAD
+    is detached and holds commits unreachable from any branch, create the
+    branch ``superharness/dispatch/<sanitized-task>`` at HEAD so the work
+    survives teardown. Returns the branch name, or None when there is
+    nothing to preserve (or the branch could not be created — logged,
+    never raised: removal still proceeds).
+    """
+    from superharness.engine.worktree_ops import sanitize_task_id
+
+    head_ref = subprocess.run(
+        ["git", "-C", worktree_dir, "symbolic-ref", "-q", "--short", "HEAD"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if head_ref.returncode == 0 and head_ref.stdout.strip():
+        return None  # attached branch: commits are reachable, nothing to do
+    unmerged = subprocess.run(
+        [
+            "git",
+            "-C",
+            worktree_dir,
+            "rev-list",
+            "--count",
+            "HEAD",
+            "--not",
+            "--branches",
+            "--tags",
+            "--remotes",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if unmerged.returncode != 0:
+        return None
+    try:
+        count = int(unmerged.stdout.strip() or "0")
+    except ValueError:
+        return None
+    if count <= 0:
+        return None
+    branch_name = f"superharness/dispatch/{sanitize_task_id(task_id)}"
+    try:
+        r = subprocess.run(
+            ["git", "-C", worktree_dir, "branch", branch_name, "HEAD"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except OSError as e:
+        print(
+            f"warning: could not preserve detached worktree commits for"
+            f" {task_id}: {e}",
+            file=sys.stderr,
+        )
+        return None
+    if r.returncode != 0:
+        print(
+            f"warning: could not preserve detached worktree commits for"
+            f" {task_id}: {r.stderr.strip()}",
+            file=sys.stderr,
+        )
+        return None
+    print(
+        f"Preserved detached worktree commits: branch {branch_name}"
+        f" ({count} commit(s)) created before worktree removal"
+    )
+    return branch_name
+
+
 def _has_dirty_worktree(project_dir: str) -> bool:
     try:
         r = subprocess.run(
@@ -573,6 +651,11 @@ def _mark_item_failed(
     ) or _set_inbox_status(
         inbox_file, item_id, "running", "failed", failed_at, "failed_at"
     )
+    if ok:
+        # R4: `failed` is terminal — always overwrite the in-flight
+        # result. The only caller (_handle_failure) otherwise left the
+        # launch stamp result="in_progress" on a permanently failed item.
+        _set_inbox_field(inbox_file, item_id, "result", "failed")
     if ok and reason:
         _set_inbox_field(inbox_file, item_id, "failed_reason", reason)
     lock.release()
@@ -906,6 +989,9 @@ def _do_dispatch(
     # 7. Cleanup
     if ctx.worktree_dir:
         worktree_source = ctx.worktree_source_dir or ctx.project_dir
+        _branch_detached_worktree_commits(
+            worktree_source, ctx.worktree_dir, ctx.item_task
+        )
         if _git_worktree_remove(worktree_source, ctx.worktree_dir):
             print(f"Worktree removed: {ctx.worktree_dir}")
         else:
@@ -1051,6 +1137,99 @@ def _transition_to_launched(ctx: DispatchContext, lock: _MkdirLock) -> int | Non
     return None
 
 
+def _record_reconcile_decision(
+    ctx: DispatchContext, reconcile_now: str, result: str, reason: str
+) -> None:
+    """F-05/F-06: persist a reconcile decision on the inbox item itself.
+
+    Every non-terminal or failure decision taken by ``_reconcile_state`` must
+    leave a machine-readable trace: ``result`` (``skipped`` | ``blocked``), a
+    non-empty ``failed_reason`` (skip sites use the ``"skipped: <reason>"``
+    format already used by ``_skip_already_done_discussion_round``) and a
+    refreshed ``last_heartbeat`` stamp, so stale-heartbeat recovery never
+    double-counts an item whose reconcile outcome was never recorded.
+    """
+    _set_inbox_field(ctx.inbox_file, ctx.item_id, "result", result)
+    if reason:
+        _set_inbox_field(ctx.inbox_file, ctx.item_id, "failed_reason", reason)
+    _set_inbox_field(ctx.inbox_file, ctx.item_id, "last_heartbeat", reconcile_now)
+
+
+def _mark_item_in_progress_at_launch(ctx: DispatchContext, launch_now: str) -> None:
+    """F-05/F-06 slice 2: make an in-flight dispatch observable at launch.
+
+    At the real launch point the local task must leave `plan_approved` for
+    `in_progress` and the inbox item must carry an in-flight trace —
+    ``result="in_progress"`` (the canonical in-flight value, same word as the
+    task status the transition produces; decision outcomes ``skipped``/
+    ``blocked`` overwrite it only after the run ends), ``dispatch_started_at``
+    (FIRST value wins: an idempotent re-entry never overwrites the original
+    start stamp) and a refreshed ``last_heartbeat`` so stale-heartbeat
+    recovery sees a live item. Idempotent and fail-soft: a task already
+    ``in_progress`` is a no-op success, an unreadable/illegal task state is
+    logged, never raised — the launch must not depend on the bookkeeping.
+    """
+    # 1. Local task: approved -> in_progress. set_task_status is idempotent
+    # (same status = no-op True) and refuses illegal transitions by return
+    # code, so this can neither crash nor corrupt the state machine here.
+    try:
+        from superharness.engine import state_reader as _sw_read
+        from superharness.engine import state_writer as _sw_write
+
+        task_row = _sw_read.get_task(ctx.project_dir, ctx.item_task)
+        if task_row and str(task_row.get("status", "")) != "in_progress":
+            transitioned = _sw_write.set_task_status(
+                ctx.project_dir, ctx.item_task, "in_progress"
+            )
+            if transitioned is False:
+                _log.warning(
+                    "inbox_dispatch: task %s transition to in_progress was"
+                    " refused by set_task_status; leaving task status unchanged",
+                    ctx.item_task,
+                )
+    except Exception as e:
+        _log.warning(
+            "inbox_dispatch: could not mark task %s in_progress at launch: %s",
+            ctx.item_task,
+            e,
+            exc_info=True,
+        )
+
+    # 2. In-flight result trace on the item (first-writer-wins start stamp).
+    _set_inbox_field(ctx.inbox_file, ctx.item_id, "result", "in_progress")
+    if not ctx.item.get("dispatch_started_at"):
+        _set_inbox_field(
+            ctx.inbox_file, ctx.item_id, "dispatch_started_at", launch_now
+        )
+        ctx.item["dispatch_started_at"] = launch_now
+    _set_inbox_field(ctx.inbox_file, ctx.item_id, "last_heartbeat", launch_now)
+    ctx.item["last_heartbeat"] = launch_now
+
+
+def _reconcile_mirror_reason(
+    ctx: DispatchContext, r_status: str, final_state: str
+) -> str:
+    """F-05/F-06 (review finding b): build the failed_reason mirrored to SQLite.
+
+    The YAML path persists ``failed_reason`` via ``_record_reconcile_decision``;
+    the SQLite mirror must carry the same cause, otherwise a sqlite_primary
+    item loses its failure cause entirely. Mirrors the same words the YAML
+    path uses so both backends tell one story.
+    """
+    if r_status == "failed":
+        return (
+            getattr(ctx, "classification_explain", "")
+            or "dispatch failed (reason not reported)"
+        )
+    if r_status == "waiting_review":
+        return "waiting_review: report ready for human review"
+    if r_status == "paused":
+        if final_state == "pending_user_approval":
+            return "paused: awaiting_user_approval"
+        return "paused: dirty worktree at reconcile"
+    return ""
+
+
 def _reconcile_state(ctx: DispatchContext) -> int:
     # Reconcile in non-interactive mode
     if ctx.non_interactive and not ctx.print_only:
@@ -1136,6 +1315,11 @@ def _reconcile_state(ctx: DispatchContext) -> int:
                 ctx.inbox_file, ctx.item_id, "running", "done", reconcile_now, "done_at"
             ):
                 reconciled = 1
+                # R4: `done` is terminal — record the decision so the launch
+                # stamp result="in_progress" is overwritten. Without this a
+                # completed item kept in_progress forever, indistinguishable
+                # from a crashed one (same stale word, no terminal trace).
+                _record_reconcile_decision(ctx, reconcile_now, "done", "")
         elif final_state == "failed":
             if _set_inbox_status(
                 ctx.inbox_file,
@@ -1152,6 +1336,15 @@ def _reconcile_state(ctx: DispatchContext) -> int:
                 reconcile_now,
                 "failed_at",
             ):
+                # F-05: a reconciled launch failure with no agent-supplied
+                # reason must still carry a non-empty failed_reason.
+                _record_reconcile_decision(
+                    ctx,
+                    reconcile_now,
+                    "blocked",
+                    ctx.classification_explain
+                    or "dispatch failed (reason not reported)",
+                )
                 reconciled = 1
         elif final_state == "pending_user_approval":
             if _set_inbox_status(
@@ -1175,8 +1368,83 @@ def _reconcile_state(ctx: DispatchContext) -> int:
                     "pause_reason",
                     "awaiting_user_approval",
                 )
+                _record_reconcile_decision(
+                    ctx,
+                    reconcile_now,
+                    "skipped",
+                    "skipped: awaiting_user_approval",
+                )
                 reconciled = 3
+        elif final_state == "report_ready":
+            # F-05/F-06 (iteration 5): `report_ready` means the agent finished
+            # and the REPORT is waiting on a human review — it is not a
+            # dispatch failure. Canonical review-pending states (recon
+            # 2026-09-25): engine/lifecycle_rules.py:88-99 defines the task
+            # state `report_ready` (timestamp_field `report_ready_at`,
+            # timeout reason "no review activity"); engine/next_action.py:90-93
+            # allows only review verdicts (`review_passed`/`review_failed`/
+            # `review_requested`) as successors; engine/dashboard_presenter.py:137,167
+            # counts it in the review queue. Deliberately NOT mapped here:
+            # `review_requested` (next_action.py:95-98) means a review is
+            # already claimed/requested downstream — it owns its own lifecycle
+            # rule (lifecycle_rules.py:57-65, 120-min timeout reverting to
+            # `report_ready`, where this branch then catches it), and changing
+            # its dispatch-item treatment is out of this slice's scope.
+            # Inbox status `waiting_review` is a new, non-terminal inbox value
+            # (inbox items carry no status CHECK in the SQLite schema, and no
+            # engine consumer treats unknown inbox statuses as active-but-
+            # failed); the canonical waiting result value is the same word as
+            # the status — mirroring the in-flight convention where `result`
+            # equals the state the transition produced ("in_progress").
+            if _set_inbox_status(
+                ctx.inbox_file,
+                ctx.item_id,
+                "launched",
+                "waiting_review",
+                reconcile_now,
+                "waiting_review_at",
+            ) or _set_inbox_status(
+                ctx.inbox_file,
+                ctx.item_id,
+                "running",
+                "waiting_review",
+                reconcile_now,
+                "waiting_review_at",
+            ):
+                # Iteration-3 contract: the decision always records a
+                # non-empty failed_reason — but a wait-for-review reason,
+                # never the "dispatch failed" classification.
+                _record_reconcile_decision(
+                    ctx,
+                    reconcile_now,
+                    "waiting_review",
+                    "waiting_review: report ready for human review",
+                )
+                reconciled = 4
         else:
+            # F-05/F-06: classify WHY no terminal state was found, so the item
+            # never ends this pass without a recorded decision. A missing task
+            # row (no task file) is a skip — naming a dead launched agent when
+            # the module's own pid liveness probe says the process is gone.
+            # Any other non-terminal task state left behind is a blocked
+            # dispatch failure.
+            if final_state == "":
+                decision_result = "skipped"
+                _launched_pid = (
+                    ctx.item.get("pid") if isinstance(ctx.item, dict) else None
+                )
+                if _launched_pid and not pid_alive(int(_launched_pid)):
+                    decision_reason = f"skipped: agent process dead (pid {_launched_pid})"
+                else:
+                    decision_reason = (
+                        f"skipped: no task file for task {ctx.item_task!r}"
+                    )
+            else:
+                decision_result = "blocked"
+                decision_reason = (
+                    "dispatch failed (reason not reported): "
+                    f"task still in state {final_state!r} at reconcile"
+                )
             if _has_dirty_worktree(ctx.exec_project):
                 if _set_inbox_status(
                     ctx.inbox_file,
@@ -1199,6 +1467,9 @@ def _reconcile_state(ctx: DispatchContext) -> int:
                         "pause_reason",
                         DIRTY_WORKTREE_REASON,
                     )
+                    _record_reconcile_decision(
+                        ctx, reconcile_now, decision_result, decision_reason
+                    )
                     reconciled = 2
             else:
                 if _set_inbox_status(
@@ -1216,15 +1487,22 @@ def _reconcile_state(ctx: DispatchContext) -> int:
                     reconcile_now,
                     "failed_at",
                 ):
+                    _record_reconcile_decision(
+                        ctx, reconcile_now, decision_result, decision_reason
+                    )
                     reconciled = 1
 
         new_lock.release()
 
         if reconciled > 0:
             _r_status = (
-                "paused"
-                if reconciled in (2, 3)
-                else ("done" if final_state == "done" else "failed")
+                "waiting_review"
+                if reconciled == 4
+                else (
+                    "paused"
+                    if reconciled in (2, 3)
+                    else ("done" if final_state == "done" else "failed")
+                )
             )
             _sqlite_mirror_dispatch(
                 ctx.project_dir,
@@ -1233,17 +1511,25 @@ def _reconcile_state(ctx: DispatchContext) -> int:
                 ctx.item_to,
                 _r_status,
                 reconcile_now,
+                reason=_reconcile_mirror_reason(ctx, _r_status, final_state),
             )
         elif ctx.sqlite_primary and final_state in (
             "done",
             "failed",
             "pending_user_approval",
+            "report_ready",
         ):
             # sqlite-only mode: the item was claimed from SQLite, not inbox.yaml, so
             # _set_inbox_status returned False and reconciled stayed 0. Mirror to
             # SQLite directly so the item doesn't stay stuck in 'launched' forever.
             _r_status = (
-                "paused" if final_state == "pending_user_approval" else final_state
+                "waiting_review"
+                if final_state == "report_ready"
+                else (
+                    "paused"
+                    if final_state == "pending_user_approval"
+                    else final_state
+                )
             )
             _sqlite_mirror_dispatch(
                 ctx.project_dir,
@@ -1252,8 +1538,17 @@ def _reconcile_state(ctx: DispatchContext) -> int:
                 ctx.item_to,
                 _r_status,
                 reconcile_now,
+                reason=_reconcile_mirror_reason(ctx, _r_status, final_state),
             )
-            reconciled = 3 if final_state == "pending_user_approval" else 1
+            reconciled = (
+                4
+                if final_state == "report_ready"
+                else (
+                    3
+                    if final_state == "pending_user_approval"
+                    else 1
+                )
+            )
         elif (
             ctx.sqlite_primary
             and final_state not in ("done", "failed", "pending_user_approval")
@@ -1268,9 +1563,16 @@ def _reconcile_state(ctx: DispatchContext) -> int:
                 ctx.item_to,
                 _r_status,
                 reconcile_now,
+                reason=_reconcile_mirror_reason(ctx, _r_status, final_state),
             )
             reconciled = 2 if _r_status == "paused" else 1
 
+        if reconciled == 4:
+            print(
+                f"Inbox item updated: {ctx.item_id} -> waiting_review "
+                "(report ready for human review)"
+            )
+            return 0
         if reconciled == 2:
             print(
                 f"Inbox item updated: {ctx.item_id} -> paused ({DIRTY_WORKTREE_REASON})"
@@ -1950,6 +2252,9 @@ def _execute_agent(ctx: DispatchContext) -> None:
         import time as _time
 
         ctx.launch_start = _time.time()
+        # F-05/F-06 slice 2: stamp the in-flight trace BEFORE the spawn so a
+        # crash mid-launch still leaves task state, start stamp and heartbeat.
+        _mark_item_in_progress_at_launch(ctx, _now_utc())
         if ctx.effective_timeout > 0:
             ctx.launcher_rc = _run_with_timeout(
                 ctx.effective_timeout,
