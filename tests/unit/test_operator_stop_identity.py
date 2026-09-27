@@ -75,7 +75,7 @@ def test_shell_started_operator_is_stopped(tmp_path, monkeypatch):
         },
     )
     ps_line = (
-        f"/home/u/.local/bin/shux operator start -p {project.resolve()} "
+        f"/home/testuser/.local/bin/shux operator start -p {project.resolve()} "
         f"--operator-nonce {nonce}"
     )
 
