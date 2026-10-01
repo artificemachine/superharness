@@ -134,8 +134,15 @@ def _remove_path(path: Path) -> None:
         path.unlink(missing_ok=True)
 
 
-def _prune_generated_artifacts(dst: Path) -> None:
+def _validate_worker_paths(src: Path, dst: Path) -> None:
+    if src == dst or src in dst.parents or dst in src.parents:
+        logger.error("refusing overlapping worker paths: source=%s destination=%s", src, dst)
+        raise ValueError(f"Worker destination overlaps source: {dst} and {src}")
+
+
+def _prune_generated_artifacts(dst: Path, *, src_root: Path) -> None:
     """Remove excluded generated output without touching shared worker state."""
+    _validate_worker_paths(src_root.resolve(), dst.resolve())
     if not dst.is_dir() or dst.is_symlink():
         return
     for item in list(dst.iterdir()):
@@ -144,7 +151,7 @@ def _prune_generated_artifacts(dst: Path) -> None:
         if item.name in _GENERATED_ARTIFACT_NAMES:
             _remove_path(item)
         elif item.is_dir() and not item.is_symlink():
-            _prune_generated_artifacts(item)
+            _prune_generated_artifacts(item, src_root=src_root)
 
 
 def _copy_tree(src: Path, dst: Path) -> None:
@@ -159,6 +166,8 @@ def _copy_tree(src: Path, dst: Path) -> None:
                 _remove_path(target)
             continue
         target = dst / item.name
+        if target.is_symlink():
+            target.unlink()
         if item.is_symlink():
             link_target = os.readlink(item)
             if target.exists() or target.is_symlink():
@@ -204,7 +213,8 @@ def sync_worker_copy(
         ``True`` when the sync completes.
     """
     src_path = Path(src).resolve()
-    dst_path = Path(dst)
+    dst_path = Path(dst).resolve()
+    _validate_worker_paths(src_path, dst_path)
     dst_path.mkdir(parents=True, exist_ok=True)
     excludes = ",".join(sorted(_SYNC_EXCLUDES))
 
@@ -227,7 +237,7 @@ def sync_worker_copy(
     )
 
     if use_rsync:
-        _prune_generated_artifacts(dst_path)
+        _prune_generated_artifacts(dst_path, src_root=src_path)
         exclude_args: list[str] = []
         for name in sorted(_SYNC_EXCLUDES):
             exclude_args += [f"--exclude={name}"]
