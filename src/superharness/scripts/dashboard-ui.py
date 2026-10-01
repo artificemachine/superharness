@@ -220,9 +220,19 @@ def _read_source_version(project_dir: Path) -> str:
         return "unknown"
 
 
+def default_worker_project(project_dir: Path) -> str:
+    """Dedicated watcher worker copy for a project (BUG-2026-09-24).
+
+    Never the project directory itself: watcher-worker refreshes
+    <worker>/.superharness by deleting it, which destroyed real project state
+    when the project dir was passed as the worker.
+    """
+    return str(Path.home() / ".superharness-workers" / project_dir.name)
+
+
 def version_sanity(project_dir: Path) -> dict:
     wcfg = watcher_config(project_dir)
-    watcher_project = Path(str(wcfg.get("watcher_project", str(project_dir))))
+    watcher_project = Path(wcfg.get("watcher_project") or default_worker_project(project_dir))
     project_version = _read_source_version(project_dir)
     worker_copy_version = _read_source_version(watcher_project)
     dashboard_version = __version__
@@ -1242,7 +1252,7 @@ def _agent_status_health(project_dir: Path, stale_seconds: int = 120) -> dict:
 
 def heartbeat_health(project_dir: Path, stale_seconds: int = 120) -> dict:
     watcher_project = Path(
-        str(watcher_config(project_dir).get("watcher_project", str(project_dir)))
+        str(watcher_config(project_dir).get("watcher_project") or default_worker_project(project_dir))
     )
     hb_root = (
         watcher_project if (watcher_project / ".superharness").exists() else project_dir
@@ -1720,7 +1730,7 @@ def _confirm_plan(harness_dir: Path, task_id: str) -> dict:
 
 def watcher_config(project_dir: Path) -> dict:
     cfg_map = {
-        "watcher_project": str(project_dir),
+        "watcher_project": default_worker_project(project_dir),
         "interval_seconds": 15,
         "recover_timeout_minutes": 3,
         "recover_action": "retry",
@@ -1738,8 +1748,7 @@ def watcher_config(project_dir: Path) -> dict:
             val = line.split(":", 1)[1].strip().strip("'\"")
             if val:
                 candidate = Path(val).expanduser().resolve()
-                if (candidate / ".superharness").exists():
-                    cfg_map["watcher_project"] = str(candidate)
+                cfg_map["watcher_project"] = str(candidate)
         elif line.startswith("interval_seconds:"):
             raw_val = line.split(":", 1)[1].strip()
             if raw_val.isdigit() and int(raw_val) > 0:
@@ -2219,7 +2228,9 @@ class Handler(BaseHTTPRequestHandler):
 
     def _action(self, action: str, payload: dict | None = None) -> tuple[dict, int]:
         wcfg = watcher_config(self.project_dir)
-        watcher_project = Path(str(wcfg.get("watcher_project", str(self.project_dir))))
+        watcher_project = Path(
+            str(wcfg.get("watcher_project") or default_worker_project(self.project_dir))
+        )
         dispatch = str(self.scripts_dir / "inbox-dispatch.sh")
         recover = str(self.scripts_dir / "inbox-recover-stale.sh")
         normalize = str(self.scripts_dir / "inbox-normalize.sh")

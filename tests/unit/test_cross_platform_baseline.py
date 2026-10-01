@@ -450,3 +450,88 @@ class TestRuntimeProbe:
 # ---------------------------------------------------------------------------
 
 
+
+
+@pytest.mark.parametrize("rsync_disabled", [False, True])
+@pytest.mark.parametrize("placement", ["equal", "nested", "ancestor", "alias"])
+def test_worker_sync_refuses_source_overlap(tmp_path, monkeypatch, rsync_disabled, placement):
+    from superharness.engine import platform_runtime as runtime
+    source = tmp_path / "project"
+    marker = source / "node_modules" / "marker"
+    marker.parent.mkdir(parents=True)
+    marker.write_text("keep")
+    state = source / ".superharness" / "state.sqlite3"
+    state.parent.mkdir()
+    state.write_text("state")
+    destination = {
+        "equal": source,
+        "nested": source / "worker",
+        "ancestor": tmp_path,
+        "alias": tmp_path / "alias",
+    }[placement]
+    if placement == "alias":
+        destination.symlink_to(source, target_is_directory=True)
+    monkeypatch.setattr(runtime.shutil, "which", lambda _: "rsync")
+    monkeypatch.setattr(
+        runtime.subprocess, "run", lambda *a, **k: pytest.fail("rsync must not run")
+    )
+    with pytest.raises(ValueError, match="overlap"):
+        runtime.sync_worker_copy(str(source), str(destination), rsync_disabled=rsync_disabled)
+    assert marker.read_text() == "keep"
+    assert state.read_text() == "state"
+    if placement == "nested":
+        assert not destination.exists()
+
+
+@pytest.mark.parametrize("placement", ["equal", "nested", "ancestor", "alias"])
+def test_generated_prune_refuses_source_overlap(tmp_path, placement):
+    from superharness.engine.platform_runtime import _prune_generated_artifacts
+    source = tmp_path / "project"
+    marker = source / "node_modules" / "marker"
+    marker.parent.mkdir(parents=True)
+    marker.write_text("keep")
+    destination = {
+        "equal": source,
+        "nested": source / "worker",
+        "ancestor": tmp_path,
+        "alias": tmp_path / "alias",
+    }[placement]
+    if placement == "alias":
+        destination.symlink_to(source, target_is_directory=True)
+    with pytest.raises(ValueError, match="overlap"):
+        _prune_generated_artifacts(destination, src_root=source)
+    assert marker.read_text() == "keep"
+
+
+def test_python_sync_replaces_destination_directory_symlink(tmp_path):
+    from superharness.engine.platform_runtime import sync_worker_copy
+    source = tmp_path / "source"
+    package = source / "pkg"
+    package.mkdir(parents=True)
+    (package / "module.py").write_text("keep")
+    marker = package / "node_modules" / "marker"
+    marker.parent.mkdir()
+    marker.write_text("generated")
+    worker = tmp_path / "worker"
+    worker.mkdir()
+    (worker / "pkg").symlink_to(package, target_is_directory=True)
+    sync_worker_copy(str(source), str(worker), rsync_disabled=True)
+    assert marker.read_text() == "generated"
+    assert not (worker / "pkg").is_symlink()
+    assert (worker / "pkg" / "module.py").read_text() == "keep"
+
+
+def test_python_sync_replaces_destination_file_symlink(tmp_path):
+    from superharness.engine.platform_runtime import sync_worker_copy
+    source = tmp_path / "source"
+    source.mkdir()
+    (source / "module.py").write_text("fresh")
+    protected = source / "protected.txt"
+    protected.write_text("keep")
+    worker = tmp_path / "worker"
+    worker.mkdir()
+    (worker / "module.py").symlink_to(protected)
+    sync_worker_copy(str(source), str(worker), rsync_disabled=True)
+    assert protected.read_text() == "keep"
+    assert not (worker / "module.py").is_symlink()
+    assert (worker / "module.py").read_text() == "fresh"
