@@ -934,3 +934,8 @@ chore: submitted gemini-cli round 1 position for gap analysis discussion
 - 2026-09-24: test(operator): the fake `md5` in `tests/unit/test_operator_watch_debug.py` now reads stdin, so `printf | md5 -q | head -c 8` under `set -o pipefail` in `install-operator-service.sh` no longer races into SIGPIPE (exit 141). Ubuntu CI failed twice in a row on PR #154 with `assert 141 == 0`; the race was pre-existing and timing-dependent.
 - 2026-09-24 (v1.86.4): chore(release): prepare the patch release for dispatch routing (explicit `--to` target kept, `--no-orchestrate` honored, bare model ids for Codex and Gemini; PR #153) and operator start (`shux status` reports `starting` during the first watcher cycle, the daemon pid is recorded and printed; PR #154).
 - 2026-09-24: docs(bugs): record that `shux operator stop` refuses to stop an operator started from the shell (command-line check at `cli.py:1572` only matches the module form) and still drops `operator_pid`, which disables the singleton guard.
+
+## Issue #159 watcher safety
+- Reject overlapping worker/source paths before sync or generated-artifact pruning; preserve source state and generated directories.
+- Default dashboard watchers to dedicated workers and honor explicit uncreated worker paths. Replace destination symlinks without writing through them.
+- 2026-10-01 (v1.86.5-rc.1): chore(release): prepare the watcher safety release candidate with Python package version 1.86.5rc1; tag-only shipment, operator validation pending.
