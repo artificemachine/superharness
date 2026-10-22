@@ -32,7 +32,7 @@ None found. No data-loss or security-critical gap surfaced in this pass.
 
 ### 3. Spec drift: a concept doc advertises commands that do not exist
 
-- **Evidence:** `docs/CONCEPT-notifications-and-state-isolation.md:451-460` presents `shux state path|open|shell|dump` as available. `cli.py` registers only `backup-state`, `archive-yaml`, `export-yaml`, `import-yaml` (lines 313-328).
+- **Evidence:** `docs/concepts/CONCEPT-notifications-and-state-isolation.md:451-460` presents `shux state path|open|shell|dump` as available. `cli.py` registers only `backup-state`, `archive-yaml`, `export-yaml`, `import-yaml` (lines 313-328).
 - **Risk:** a new user follows a public design doc to nonexistent commands and cannot tell a proposal from a supported surface.
 - **Fix (one line):** banner the doc as a proposal, or rewrite those lines to the implemented CLI.
 - **Phase:** documentation correction.

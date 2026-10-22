@@ -18,7 +18,7 @@ import yaml
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _PI_MANIFEST = _REPO_ROOT / "src" / "superharness" / "adapter_manifests" / "pi.yaml"
-_MODEL_DOC = _REPO_ROOT / "docs" / "adapter-models.md"
+_MODEL_DOC = _REPO_ROOT / "docs" / "reference" / "adapter-models.md"
 _WORKER_EVIDENCE_HEADING = "### Pi worker activation evidence — 2026-08-26"
 _ORCHESTRATOR_EVIDENCE_HEADING = (
     "### Pi orchestrator activation evidence — 2026-08-26"

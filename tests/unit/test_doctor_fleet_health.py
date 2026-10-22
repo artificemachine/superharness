@@ -3,7 +3,7 @@
 shux doctor currently prints PASS for the fleet section purely from
 _load_fleet_config() succeeding — it never contacts the endpoint. This let
 the fleet brain stay silently dead for six months (see
-docs/brain-scan-2026-07-12.md, "Fleet fix applied"). model_router.fleet_health()
+docs/reports/brain-scan-2026-07-12.md, "Fleet fix applied"). model_router.fleet_health()
 actually calls the endpoint's /models list and verifies each configured
 model is present.
 """

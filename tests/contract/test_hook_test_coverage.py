@@ -1,4 +1,4 @@
-"""Iteration 3 of docs/CONCEPT-enforcement-parity.md — every adapter hook
+"""Iteration 3 of docs/concepts/CONCEPT-enforcement-parity.md — every adapter hook
 must map to a test file, or be named in an explicit, shrinking allowlist.
 An untested guard is the most dangerous kind: see
 docs/bugs/BUG-2026-07-31-test-suite-git-dir-escape.md for the incident

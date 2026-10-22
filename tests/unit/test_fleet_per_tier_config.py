@@ -1,6 +1,6 @@
 """RED tests for iteration 7 of PLAN-superharness-L5.md: vLLM per-tier fleet
 endpoints. Pins the multi-tier shape that iterations 1 and 3 only exercised
-against a single-endpoint config — the shape docs/fleet-vllm-enablement.md
+against a single-endpoint config — the shape docs/guides/fleet-vllm-enablement.md
 promises works.
 """
 
