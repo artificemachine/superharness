@@ -1,0 +1,109 @@
+# GitLab CI for a scaffolded project. Mirrors the gates in .github/workflows/
+# (doctrine guard, shipguard, gitleaks) so a project hosted on GitLab is not
+# gated by workflow files it never runs. Shell-only on purpose: the scaffold is
+# stack-agnostic and ships no manifest to build against.
+
+# Duplicate-pipeline guard. A push to a branch with an open merge request
+# otherwise creates TWO pipelines for the same commit -- the branch pipeline
+# (`source: push`) and the merge-request pipeline
+# (`source: merge_request_event`) -- and every gate below is paid twice.
+# Rule 2 suppresses the branch pipeline while an MR is open; a branch with no
+# MR, the default branch, and tags keep their own pipeline (rule 3).
+workflow:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS
+      when: never
+    - if: $CI_COMMIT_BRANCH
+
+stages:
+  - test
+
+# Every job below states its pipeline source explicitly instead of relying on
+# the default for a job without `rules`. Relying on that default is how the
+# same three gates ended up absent from merge-request pipelines in a live
+# repository (see the workflow block above) -- the source is written out.
+doctrine:
+  stage: test
+  image: alpine:3.20
+  variables:
+    # Full history: the guard checks the CHANGELOG against HEAD and the manifest
+    # version against the reachable tags.
+    GIT_DEPTH: "0"
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH
+  before_script:
+    - apk add --no-cache bash git
+  script:
+    - bash scripts/ci/run-gate.sh doctrine
+
+# Register freshness: the blocking tier. A dated register (docs/REGISTER-*.md)
+# goes stale as the tree moves under it, and a stale inventory silently proposes
+# the wrong slice. This runs where the branch pipeline runs, so it cannot be
+# forgotten; the same script also runs in .project-hooks/pre-commit, where it
+# only blocks a commit that touches what the register enumerates. No register in
+# the repo exits 0 with a note -- the scaffold ships none, an inventory is opt-in.
+register-freshness:
+  stage: test
+  image: alpine:3.20
+  variables:
+    # Full history: the check counts commits between the register's recorded
+    # base commit and HEAD.
+    GIT_DEPTH: "0"
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH
+  before_script:
+    - apk add --no-cache bash git
+  script:
+    - bash tests/register/register-freshness.sh
+
+shipguard:
+  stage: test
+  image: python:3.11-slim
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH
+  script:
+    # Pinned to an exact version: bump deliberately, not on every release.
+    # --no-cache-dir is deliberate: no dependency store is declared, so there
+    # is nothing to key a cache on (see RULES.md, Strict Rules).
+    - pip install --no-cache-dir shipguard==0.5.2
+    # medium, not high: PII-004 (email address) is MEDIUM severity and is the
+    # most common real-world leak; --severity high would silently skip it.
+    - bash scripts/ci/run-gate.sh shipguard
+
+gitleaks:
+  stage: test
+  image: debian:12-slim
+  variables:
+    GIT_DEPTH: "0"
+    # Pinned, not "latest": resolving the newest release at run time lets the
+    # scanner's behaviour change between runs with no repo diff, so a scan can
+    # start passing or failing for reasons no commit explains. Bump this
+    # deliberately, and keep it in step with .github/workflows/gitleaks.yml --
+    # `tests/test_hook_and_ci.py` fails if the two pins drift apart.
+    GITLEAKS_VERSION: "8.30.1"
+    # The tarball's SHA256, pinned here rather than fetched from the release's
+    # own checksums.txt: anyone able to replace the asset for a tag could
+    # replace that file too. Bump both together, deliberately.
+    GITLEAKS_SHA256: "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb"
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH
+  before_script:
+    - apt-get update -qq >/dev/null && apt-get install -y -qq --no-install-recommends curl ca-certificates >/dev/null
+  script:
+    - |
+      set -euo pipefail
+      curl -sSL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" -o /tmp/gitleaks.tar.gz
+      echo "${GITLEAKS_SHA256}  /tmp/gitleaks.tar.gz" | sha256sum -c -
+      tar -xzf /tmp/gitleaks.tar.gz -C /usr/local/bin gitleaks
+      installed="$(gitleaks version)"
+      if [ "$installed" != "$GITLEAKS_VERSION" ]; then
+        echo "error: expected gitleaks ${GITLEAKS_VERSION}, got ${installed}" >&2
+        exit 1
+      fi
+      echo "gitleaks ${installed}"
+    - gitleaks detect --source . --config .gitleaks.toml --redact --no-banner
