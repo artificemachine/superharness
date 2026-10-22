@@ -1,4 +1,4 @@
-"""Iteration 2 of docs/CONCEPT-enforcement-parity.md — pin the enforcement
+"""Iteration 2 of docs/concepts/CONCEPT-enforcement-parity.md — pin the enforcement
 commands in CI, the pre-commit hook, and the two duplicated hook
 directories, so a silent de-fanging (the branch-guard disease; see
 docs/bugs/BUG-2026-07-31-test-suite-git-dir-escape.md) cannot recur

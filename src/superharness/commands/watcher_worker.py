@@ -63,14 +63,31 @@ def main(argv: list[str] | None = None) -> None:
         if opts.worker
         else (Path.home() / ".superharness-workers" / project_dir.name)
     )
-    if worker_dir == project_dir:
+
+    worker_dir = worker_dir.resolve()
+    source_state = (project_dir / ".superharness").resolve()
+
+    # Placement guard (BUG-2026-09-24): the worker tree must be disjoint from
+    # the project tree. A worker equal to, nested in, or containing the project
+    # would make the .superharness refresh below delete the project's real state.
+    if (
+        worker_dir == project_dir
+        or project_dir in worker_dir.parents
+        or worker_dir in project_dir.parents
+        or worker_dir == source_state
+        or worker_dir in source_state.parents
+        or source_state in worker_dir.parents
+    ):
         log.error(
-            "worker directory resolves to the project directory: %s — refusing to run",
+            "refusing unsafe worker dir %s: must be disjoint from project %s",
             worker_dir,
+            project_dir,
         )
-        raise SystemExit(
-            f"Worker directory must not be the project directory: {worker_dir}"
+        sys.exit(
+            f"Refusing unsafe worker dir: {worker_dir} — it overlaps the project directory. "
+            "Pass the dedicated worker dir (~/.superharness-workers/<name>) or drop --worker."
         )
+
     worker_dir.mkdir(parents=True, exist_ok=True)
     worker_dir = worker_dir.resolve()
 
@@ -81,12 +98,21 @@ def main(argv: list[str] | None = None) -> None:
 
     # Symlink .superharness -> source project's .superharness
     sh_link = worker_dir / ".superharness"
+    dedicated_worker_root = (Path.home() / ".superharness-workers").resolve()
     if sh_link.exists() and not sh_link.is_symlink():
-        try:
-            shutil.rmtree(str(sh_link))
-        except OSError as e:
-            log.error("could not remove worker .superharness directory: %s", e)
-            raise SystemExit(f"Could not remove worker .superharness directory: {e}") from e
+        # Deletion fence (BUG-2026-09-24): only ever delete a stale real
+        # .superharness that lives inside the dedicated worker root.
+        if dedicated_worker_root not in sh_link.resolve().parents:
+            log.error(
+                "refusing to delete .superharness outside dedicated worker root: %s",
+                sh_link,
+            )
+            sys.exit(
+                f"Refusing to delete {sh_link} — only .superharness dirs under "
+                f"{dedicated_worker_root} may be refreshed."
+            )
+        log.error("deleting stale worker .superharness: %s", sh_link)
+        shutil.rmtree(str(sh_link))
     if sh_link.is_symlink():
         sh_link.unlink()
     try:
@@ -120,7 +146,7 @@ def main(argv: list[str] | None = None) -> None:
     log.info("watcher-worker install OK: worker=%s", worker_dir)
 
     # Write watcher.yaml
-    from superharness.engine.runtime_probe import persist_runtime, probe_runtime
+    from superharness.engine.runtime_probe import probe_runtime, persist_runtime
 
     chosen_interpreter = probe_runtime()
 

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "superharness"
-version = "1.85.1rc1"
+version = "1.86.5rc1"
 description = "Multi-agent session handoff framework for AI coding agents"
 readme = "README.md"
 license = "Apache-2.0"
@@ -80,9 +80,6 @@ dev = [
     # could not run the CI command.
     "pytest-timeout>=2.4",
 ]
-
-[tool.pyright]
-extraPaths = ["src"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

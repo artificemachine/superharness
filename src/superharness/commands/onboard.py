@@ -736,7 +736,7 @@ def _section_fleet(project: Path, config: dict, non_interactive: bool) -> None:
     # the same port (e.g. a container platform), the ambiguous form can
     # resolve IPv6-first straight to the wrong server's model store — this
     # silently broke the fleet brain for months (see
-    # docs/brain-multi-agent-tiers-fleet.md).
+    # docs/reports/brain-multi-agent-tiers-fleet.md).
     _OLLAMA_BASE = "http://127.0.0.1:11434"
 
     print_header("AI model providers")

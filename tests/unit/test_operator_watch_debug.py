@@ -79,7 +79,7 @@ def test_install_script_normalizes_watch_debug_environment(tmp_path):
     fake_bin = tmp_path / "bin"
     fake_bin.mkdir()
     for name, content in {
-        "md5": f"#!/bin/sh\n[ \"$1\" = \"-q\" ] || exit 9\nprintf '{expected_hash}'\n",
+        "md5": f"#!/bin/sh\n[ \"$1\" = \"-q\" ] || exit 9\ncat >/dev/null\nprintf '{expected_hash}'\n",
         "launchctl": "#!/bin/sh\n[ \"$1\" = \"print\" ] && exit 1\nprintf '%s\\n' \"$*\" >> \"$TRACE_FILE\"\nexit 0\n",
         "python3": "#!/bin/sh\nexit 0\n",
     }.items():
@@ -119,7 +119,7 @@ def test_install_script_uses_requested_runtime_without_checkout_pythonpath(tmp_p
     fake_bin = tmp_path / "bin"
     fake_bin.mkdir()
     for name, content in {
-        "md5": f"#!/bin/sh\n[ \"$1\" = \"-q\" ] || exit 9\nprintf '{expected_hash}'\n",
+        "md5": f"#!/bin/sh\n[ \"$1\" = \"-q\" ] || exit 9\ncat >/dev/null\nprintf '{expected_hash}'\n",
         "launchctl": "#!/bin/sh\n[ \"$1\" = \"print\" ] && exit 1\nexit 0\n",
         "python3": "#!/bin/sh\nexit 0\n",
     }.items():

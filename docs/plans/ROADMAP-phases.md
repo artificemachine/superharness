@@ -165,7 +165,7 @@ Windows CI (6) runs in parallel — not blocked by any phase
 ## Phase 6 — Windows CI Full Fix
 
 **Status:** PARTIAL — path normalization, runtime pinning, sync excludes shipped (v1.51.0, 2026-05-07); full E2E matrix on Windows still failing (pre-existing)
-**Source:** `docs/windows-native-full-fix-tdd-plan.md`
+**Source:** `docs/plans/windows-native-full-fix-tdd-plan.md`
 **Iterations:** 8 | **Tests shipped:** 18 | **Est:** ~12 hours
 
 **Goal:** Make the full test matrix pass on Windows: unit, integration, and E2E. Currently all Windows CI jobs fail (pre-existing, confirmed on PR #192).

@@ -10,7 +10,7 @@
 | SQLite is the sole runtime source of truth | `README.md:341` | VERIFIED | `engine/db.py` initializes the SQLite schema/migrations; `utils/paths.py:136-178` chooses the active DB; `cli.py:158` exports YAML separately. |
 | Normal pytest runs are offline | `README.md:236`, `CONTRIBUTING.md:9-17` | VERIFIED | `tests/conftest.py:31-52` sets deterministic router/summarizer guards and inert CLI stubs unless the explicit live-test env var is set. Security rerun observed only the inert stub, never a provider client. |
 | 5,000+ tests protect the project | `README.md:51,425` | VERIFIED | Fresh clone collected 5,837 tests; the security rerun executed 5,252 passing tests, 584 skipped, and 2 expected failures. |
-| `shux state` exposes dump/schema/shell/info operations | `docs/CONCEPT-notifications-and-state-isolation.md:455-489` | VIOLATED | `src/superharness/cli.py:140-165` registers no `state` command. Implemented alternatives include `backup-state`, `archive-yaml`, and `export-yaml`. |
+| `shux state` exposes dump/schema/shell/info operations | `docs/concepts/CONCEPT-notifications-and-state-isolation.md:455-489` | VIOLATED | `src/superharness/cli.py:140-165` registers no `state` command. Implemented alternatives include `backup-state`, `archive-yaml`, and `export-yaml`. |
 | The architecture is consistently SQLite/XDG-based | `docs/ARCHITECTURE.md:29` | VIOLATED | The same document describes YAML engine operations at lines 42-48 and a YAML-era diagram/state model from line 72, contradicting the current resolver and SQLite runtime. |
 | The tool is cross-platform | `README.md:325-335` | UNCHECKABLE | Workflows define Ubuntu, macOS, and Windows matrices, but this audit did not independently run each hosted runner. |
 
