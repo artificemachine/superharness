@@ -1,0 +1,61 @@
+name: gitleaks
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# No job here needs to write. Without this key the workflow inherits the org or
+# repository default, which can be read-write.
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0  # full history for accurate scan
+      # gitleaks/gitleaks-action@v2 requires a paid license for organization
+      # repos as of the gitleaks-action licensing change; run the free,
+      # open-source gitleaks CLI binary directly instead.
+      - name: Install gitleaks
+        # Pinned, not "latest": resolving the newest release at run time
+        # lets the scanner's behavior change between runs with no repo
+        # diff, so a scan can start passing or failing for no reason a
+        # commit explains. Bump this deliberately.
+        env:
+          GITLEAKS_VERSION: "8.30.1"
+          # The tarball's SHA256, pinned here rather than fetched from the
+          # release's own checksums.txt: anyone able to replace the asset for a
+          # tag could replace that file too. Bump both together, deliberately.
+          GITLEAKS_SHA256: >-
+            551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+
+        run: |
+          set -euo pipefail
+          base="https://github.com/gitleaks/gitleaks/releases/download"
+          asset="gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          curl -sSL "${base}/v${GITLEAKS_VERSION}/${asset}" -o gitleaks.tar.gz
+          echo "${GITLEAKS_SHA256}  gitleaks.tar.gz" | sha256sum -c -
+          tar -xzf gitleaks.tar.gz gitleaks
+          sudo mv gitleaks /usr/local/bin/
+          rm -f gitleaks.tar.gz
+          installed="$(gitleaks version)"
+          if [ "$installed" != "$GITLEAKS_VERSION" ]; then
+            echo "error: expected gitleaks ${GITLEAKS_VERSION}," \
+              "got ${installed}" >&2
+            exit 1
+          fi
+          echo "gitleaks ${installed}"
+      - name: Run gitleaks
+        run: |
+          gitleaks detect --source . \
+            --config .gitleaks.toml --redact --no-banner

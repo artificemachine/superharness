@@ -1,3 +1,225 @@
+# Session Handoff — 2026-10-22 (watcher overlap PR #162 merged as tests only; rc validated)
+Agent: Claude Code (Sonnet 5.5) as `forge-pm-assist-b` | Branch: `fix/watcher-worker-project-overlap-t-842298` (merged and pushed) | Tests: PR CI 30/30 pass; local `test_watcher_worker_project_overlap.py` + `test_model_router.py` 77 passed | primary checkout still UNCOMMITTED (ai-forge batch)
+
+## What happened this session
+- Pyright on `tests/unit/test_model_router.py` was clean (0 errors), so the 64 LSP `reportMissingImports` are an editor interpreter issue, not code.
+- Committed `0ebe3acb` and pushed the branch, then opened PR #162. GitHub reported it conflicting: `origin/main` already carries a stricter placement guard and deletion fence (BUG-2026-09-24), so the original `watcher_worker.py` fix was redundant.
+- Merged `origin/main` into the branch taking main's side on `pyproject.toml`, `watcher_worker.py`, `test_model_router.py` and `uv.lock`, and dropped the stale CHANGELOG line (`ALLOW_NO_CHANGELOG=1`, test-only). PR #162 was retitled to "test(watcher): overlap regression coverage" and squash-merged to `main` as `df298862` after the release-policy review: release `wait`, tag none, publish `wait`, no automatic release workflow on merge.
+- No new tag. Validated the existing `v1.86.5-rc.1` in a disposable venv: `superharness --version` is `1.86.5rc1`, `--help` exits 0, `uv pip check` reports 75 packages compatible.
+
+## Next session — first moves
+1. Remaining blockers from the earlier block are moot for this PR: gate 8 and the RC `1.85.1rc1` wheel are superseded. No release, tag or publish is requested.
+2. The primary checkout is still on `chore/ai-forge-init-level4` with the staged ai-forge batch and owner decisions pending (see the 2026-10-01 blocks). Clean up the merged worktree and branch only on the owner's word.
+3. Resume the existing `forge-pm-assist-b` identity; do not launch a duplicate session.
+
+### Operational notes
+- Commits on this branch: `0ebe3acb`, merge `87bf3ac7`; squash on `main`: `df298862`.
+- Disposable rc venv: scratchpad `rcvenv` (safe to delete).
+- A `/statusline` request was dropped by the owner; no settings were changed.
+
+---
+
+# Session Handoff — 2026-10-22 (Shuxx handoff acknowledged; voice disabled)
+Agent: Pi (model not verified) | Branch: `fix/watcher-worker-project-overlap-t-842298` | Tests: not run in this checkpoint; last known full suite `5826 passed, 21 skipped, 5 deselected, 2 xfailed in 904.55s` | UNCOMMITTED
+
+## What happened this checkpoint
+- No source changes. Processed own Shuxx handoff `d8eab73c-c864-483b-b2e7-c1b5433fe07b` with claim/show/ack; no reply was needed because it contained no question.
+- Voice mode was switched off. The latest LSP report remains 64 `reportMissingImports`; targeted Pyright CLI was clean. Full RC and ship state is in the next 2026-10-22 handoff block.
+- `ctx_batch_execute` returned a disk I/O error while gathering git state; read-only Git commands provided the branch and status, and the failure was journaled.
+
+## Next session — first moves
+1. Resume the existing `forge-pm-assist-b` session; do not launch another under the same identity until duplicate-session behavior is verified.
+2. Preserve the gate and Git restrictions in the next handoff block; do not resume the ship sequence from this checkpoint.
+
+### Operational notes
+- No tests or source changes were made in this checkpoint. `git diff --check -- HANDOFF.md` passed after the prior handoff update.
+
+---
+
+# Session Handoff — 2026-10-22 (watcher overlap fix; RC ship blocked)
+Agent: Pi (model not verified) | Branch: `fix/watcher-worker-project-overlap-t-842298` | Tests: last known full suite `5826 passed, 21 skipped, 5 deselected, 2 xfailed in 904.55s` (not rerun during final gate pass); delegated gate 6b was interrupted | UNCOMMITTED
+
+## What happened this session
+- Worktree `.worktrees/watcher-worker-project-overlap-t-842298`: added the resolved-path overlap guard and regression tests; adjusted `tests/unit/test_model_router.py`; appended the RC changelog entry and set package version to `1.85.1rc1`. Targeted Pyright CLI was clean; this Pi session's LSP most recently reported 64 missing-import diagnostics.
+- Built and validated the RC wheel in a disposable environment: `--version`, `--help`, and `uv pip check` passed (75 packages compatible). The earlier full-suite pass is recorded above; a later delegated gate-6b rerun was interrupted by SIGINT and has no result.
+- Ship-check: gate 8 remains blocked because it requires reviewer judgment and reviewer/RMDI routes are forbidden. Gate 9 scans reported no staged files, binary/size findings, or added-line matches. Gate 10 evidence reports the changelog append and `1.85.1rc1`; no commit subject exists. No commit, push, PR, merge, or tag was performed.
+- `research-pm-assist-b` was told to stop after read-only gates. No second `forge-pm-assist-b` session was launched; whether concurrent sessions under one identity are safe remains unverified.
+
+## Next session — first moves
+1. Resume the existing `forge-pm-assist-b` identity session; do not launch another under the same identity until duplicate-session behavior is verified.
+2. Recheck LSP diagnostics in the worktree. Targeted Pyright CLI was clean, but the current LSP most recently reported 64 `reportMissingImports` findings; do not suppress them or modify generated `build/lib` files.
+3. Keep gate 6b STOPPED unless a full-suite rerun is explicitly authorized. Gate 8 remains blocked; do not route through reviewer/RMDI.
+4. Resolve push destination and explicit authorization before any Git write. The only remote is GitHub `origin`; a GitHub PR/merge was not authorized. Release advice was release `wait`, tag `consider`, publish `wait`, with CI `unknown`.
+
+### Operational notes
+- Worktree: `.worktrees/watcher-worker-project-overlap-t-842298` (removed after the merge); branch `fix/watcher-worker-project-overlap-t-842298`; source changes remain uncommitted there.
+- RC wheel: `/tmp/superharness-rc.JdAp3v/superharness-1.85.1rc1-py3-none-any.whl`; disposable environment: `/tmp/superharness-rc-install.vqmCFw/venv`.
+- This handoff was prepended to the already modified primary-checkout `HANDOFF.md`; older entries remain unchanged.
+
+---
+
+# Session Handoff — 2026-10-01 (ai-forge 0.29.1 batch, SPEC decomposition, enforcement proposals)
+Agent: Claude Code (Opus 5.5, workers Sonnet 5.5) | Branch: `chore/ai-forge-init-level4` | Tests: not rerun (last known: full suite `5868 passed, 22 skipped`, Codex block below); doctrine guard on this branch `4 passed, 3 failed, 2 unverified` | UNCOMMITTED
+
+## What happened this session
+- Checked CI on merge commit `ff017d9b`: all green. Tag `v1.86.5-rc.1` peels to it. No release or publish.
+- Updated the staged ai-forge batch to 0.29.1: `ai-forge init --level 4` added the `tag-conventions` block to `RULES.md`, and `ai-forge sync . --apply --yes` added the managed Documentation Layout block. The remaining 0.29.x `RULES.md` diffs are create-only and were not merged; they need owner approval.
+- Filled `docs/SPEC.md` Problem, Scope, Constraints and Acceptance (backup in session scratchpad). The owner noted `docs/SPEC.md` is an index; shortening those sections to pointers is still open.
+- Classified all 244 source modules into the 16 contracts of `docs/ANALYSIS-spec-decomposition.md` with 3 read-only Sonnet workers. Every slice matched `find` (111 + 75 + 58). Result: 9 unclaimed modules (6 point to a new 017 CLI surface contract); 010 (34 modules) and 004 (29) are oversized; estimated about 21 SPEC (assumption). The 244-line map exists only in agent reports and is not persisted.
+- Wrote `docs/audits/AUDIT-spec-decomposition-tooling-gaps-2026-10-01.md`: what ai-forge, ground-truth-protocol and skills-canonical lack to do this classification on any project.
+- In sibling repos, all untracked and uncommitted:
+  - `../ai-forge/docs/audits/AUDIT-sync-rejects-unmodified-legacy-layout-2026-10-01.md`: sync bug, already fixed in 0.29.1.
+  - `../ai-forge/docs/proposals/PROPOSAL-spec-coverage-gate-2026-10-01.md`.
+  - `../ai-forge/docs/proposals/PROPOSAL-spec-enforcement-and-anti-rot-2026-10-01.md`: block on missing or broken SPEC/REQ/INV, freshness via Git, `sync --check`, scheduled strict run, plus Risks.
+  - `../ground-truth-protocol/docs/proposals/PROPOSAL-unit-coverage-and-freshness-2026-10-01.md`: GTP reads `docs/specs/` and automates I2 and I4, plus Risks.
+- Vault note: `notes/90_ephemeral/sessions/2026-10-01_spec_enforcement_and_anti_rot.md`.
+
+## Next session — first moves
+1. Get the owner's verdict on the two enforcement proposals. Recommended order: ai-forge `spec-coverage` and `spec-freshness` in warn mode first; then a GTP ADR amending ADR-0003 (spec tree as the single registry source) before any GTP code; then pilot one SPEC (006) end to end on superharness.
+2. INV-1 to INV-3 in `INVARIANTS.md` are still bound to placeholders. The plan is proposed and awaiting confirmation:
+   - INV-2: new `tests/doctrine/test_failure_reporting.py` (RED), then a Tracker section in `docs/incidents/TEMPLATE.md`.
+   - INV-1: bind to `tests/unit/test_task_failed_reason.py::test_failed_status_requires_reason` (partial).
+   - INV-3: bind to `tests/unit/test_redact.py::TestRedaction::test_redact_multiple_secrets` (partial).
+3. Persist the 244-module to contract map if the SPEC work proceeds. Re-running the 3 workers costs about 120k tokens.
+4. Owner decisions pending:
+   - repo visibility: the GitHub remote is PUBLIC versus the private-by-default doctrine;
+   - the create-only `RULES.md` 0.29.x diffs;
+   - whether to file tracker issues (`AI-gen`) for the ai-forge bug and the proposals.
+5. The branch is 39 commits behind `origin/main`. A dry-run merge of the staged batch showed zero conflicts.
+
+### Operational notes
+- `ai-forge` is 0.29.1 via pipx at `~/.local/bin/ai-forge`. `.ai-forge.json` still says 0.26.0 by design; `.ai-forge/manifest.json` is authoritative.
+- The obsidian-semantic MCP `write_file` treats `coredev/` as the vault root, not `coredev/notes/`. Include `notes/` in the path, or write by filesystem. A stray `coredev/90_ephemeral/sessions/2026-09-23_pi_agent_pi_aliases_rmdi_board.md` from another session was left untouched.
+- Guard failures on the branch: repo visibility (owner decision), tag `v1.86.4` ahead of manifest 1.85.0 (resolves on update from main), INV-1 to INV-3 placeholders. Unverified: `.doctrine-forbidden` has no active patterns; SPEC-001 declares the untracked `scripts/check-changelog-append-only.sh`.
+
+---
+
+# Session Handoff — 2026-10-01 (watcher safety shipped as v1.86.5-rc.1)
+Agent: Codex | Branch: `chore/ai-forge-init-level4` | Tests: full suite `5868 passed, 22 skipped, 5 deselected, 2 xfailed`; focused candidate `64 passed` twice; PR CI `30 checks passed` | COMMITTED shipment; UNCOMMITTED handoff and pre-existing scaffold work
+
+## What happened this session
+
+- Fixed issue #159 through native subagents in `.worktrees/watcher-worker-source-overlap` on `fix/watcher-worker-source-overlap`. Watcher setup, worker synchronization, and generated-artifact pruning reject resolved source overlap before mutation. Python copying replaces destination file/directory symlinks before writing; resolved project-state aliases are protected in both containment directions. Dashboard defaults use dedicated workers and honor configured paths before worker creation. Regression coverage and the report are in `docs/reports/REPORT-issue-159-watcher-safety.md`; independent safety review found no remaining blockers.
+- Committed the candidate as `201eccc5`, integrated the original PR #158 history as `80c8038d`, and updated its remote branch without force-pushing. PR #158 merged into `main` as `ff017d9b913a88af31b66750724bbaf967c8c79b`; issue #159 is closed. Annotated tag `v1.86.5-rc.1` is pushed and resolves to that exact main commit; Python metadata and `uv.lock` use `1.86.5rc1`. The merged tree exactly matches the CI-tested candidate. No GitHub release or package-index publication was created.
+- Verified the full suite before shipping, then repeated candidate-focused tests after version preparation and conflict resolution. Both commit hooks passed `914 passed, 9 skipped`; ShipGuard found zero issues. Sdist and wheel built offline; an installed-wheel demo passed in an isolated environment with its own PATH. These tests were not rerun for this handoff. Existing coverage-floor and orphan-audit warnings remain documented; they were not silently fixed.
+
+## Next session — first moves
+
+1. Check CI on merge commit `ff017d9b`, then validate `v1.86.5-rc.1` in an isolated environment. The live global `shux --version` still reports `superharness, version 1.86.4`; shipping did not upgrade it.
+2. Review the separate staged ai-forge/doctrine batch on `chore/ai-forge-init-level4`. Preserve the dirty checkout before any branch update; protected instruction files already staged belong to prior work and need explicit approval before their commit.
+3. Obtain separate owner authorization before final release or package-index publication. Publishing even a GitHub prerelease triggers `publish.yml`; this shipment deliberately used a tag only.
+
+### Operational notes
+
+- The root checkout remains at `7e84b592`; `origin/main` is now `ff017d9b`. Its original staged scaffold changes, modified `uv.lock`, and untracked watcher bug reports were preserved. The isolated fix worktree is clean. Earlier handoff claims that PR #158 lacked independent review or remained unmerged are superseded; older RMDI defects were outside this session and remain unverified.
+- Initial RED tests accidentally registered `com.superharness.inbox.container`, `com.superharness.inbox.random-worker`, and `com.superharness.inbox.nested-worker`. The incident was disclosed; owner-approved cleanup unloaded all three jobs and removed their plists. Absence was verified after the full suite. Regression fixtures now mock service installation and runtime probing.
+- Use the project environment for Python validation: system Python returned `ModuleNotFoundError: No module named 'packaging'`. The release-advice helper did not recognize RC metadata; package/tag equivalence was independently checked with `packaging.version.Version`. `SHUXX_SESSION_ID` is unset, so no shuxx mirror applies.
+
+---
+
+# Session Handoff — 2026-09-27 (RMDI recipe dispatch blocked by two defects; failure report written in the sibling shuxx checkout)
+Agent: Pi | Branch: `chore/ai-forge-init-level4` | Tests: last known `9 passed, 0 skipped` focused watcher suite (NOT rerun this session; no test run in this repo) | UNCOMMITTED (pre-existing staged doctrine batch, modified `uv.lock` and `HANDOFF.md`, untracked watcher bug report)
+
+## What happened this session
+
+- Restored context with the `handoff-read` skill: HANDOFF.md, ICM recall, git state. ICM resolves the queued-defects source-of-truth conflict the previous block left open — iterations 1-6 exist as `17b4213` on `fix/queued-defects-2026-09-25` with PR #157 open — while this checkout still records 0/6. Also confirmed this branch carries **zero** commits of its own: `7e84b592` is an ancestor of `origin/main` `9efe2fee`, which is 33 commits ahead.
+- Attempted the owner-requested RMDI delegation (recipe `shux-harness-orchestrated-local`, three seats) and it failed **3/3 — no seat produced a result**. The recipe IS active for this account: the account-scoped recipes endpoint reports `active: true` while the anonymous view reports `active: false`.
+- **Defect 1, blocks two of the three seats.** The reasoning-on local island refuses the effort the router sends. Two dispatches failed with `400: {"message":"Unexpected reasoning effort high. Supported types are xhigh (default), medium, and low.","type":"BadRequestError",...}`. Measured directly against the served model: `--thinking low` and `--thinking medium` answer, `--thinking high` AND `--thinking xhigh` both return that 400 (pi submits `high` for `xhigh` because the model carries no `thinkingLevelMap`). Mechanism, from code: the router returns `effort` (`pi-extension/client.ts:307`, default `"high"`) and the extension forwards it verbatim as `--thinking <effort>` (`pi-extension/delegate.ts:151`, `childThinkingFlags`) with nothing mapping it onto the accepted set. NOT fixed: the remedy is a router-config change or an explicit `thinkingLevelMap`, and choosing between `high -> medium` and `high -> xhigh` is a reasoning-effort policy call, so no value was picked silently.
+- **Defect 2, blocks the reviewer seat.** The reviewer's registry ref was missing from this account's pi model registry, which still carried the retired provider entry, so the child refused with `Error: Model "<ref>:off" not found. Use --list-models to see available models.` Fixed on this account: backup `$HOME/.pi/agent/models.json.bak-<local-provider>-20260927T111056Z`, provider and id replaced with the canonical `-local` ref plus `"apiKey": "local"`. Proof: `pi --list-models` lists the ref, a direct `pi -p --mode text --no-context-files --no-skills --model <ref>:off "Reply with exactly: pong"` answers `pong`, and the seat provenance line then stopped reporting `⚠ UNVERIFIED (child did not self-report a model)`. Parity on the other execution accounts is NOT verified, so by the project's own parity rule the fix is not complete.
+- **Defect 3, diagnosed not fixed.** With the model ref corrected the reviewer child still produced no verdict: `Delegation failed (exit 0): terminated`, then `Delegation failed (exit 130): delegation aborted by parent signal`. `exit 130` is SIGINT and an operator message arrived during that dispatch, so the abort is most likely the parent turn being interrupted; the earlier `terminated` has **no** established cause, and no deadline was in force (`RMDI_CHILD_DEADLINE_MS` unset, which the code reads as disabled).
+- **Failure report written** in the sibling shuxx checkout at `docs/REPORT-rmdi-shux-local-seat-dispatch-2026-09-27.md` (untracked there, not committed). It carries the exact error strings, the `--thinking` matrix, the ruled-out list, and an explicit tracker gap: it lives in `docs/` and not `docs/incidents/` because that repo's doctrine test requires a tracker reference and the `AI-gen` label in every incident record, and no issue is filed. `python3 tests/doctrine/test_failure_reporting.py` passes as written.
+- **Corrected a live hypothesis instead of reporting it.** A guard launcher log line naming a cloud model next to the router URL first read as the seat child running on the driver's model. Ruled out: that launcher starts the **driver** (`os.execvpe(pi, ["pi", "--model", SHUX_DRIVER_MODEL, *argv], env)`), so the line records the driver, not a child — and the seat model does reach the child argv, proven by the first round's error naming the seat ref.
+- Toggled the board off and back on at the operator's request.
+
+## Next session — first moves
+
+1. **Fix defect 1** — it is what makes the recipe unusable. Decide the effort mapping (router config or an explicit `thinkingLevelMap` on the island), apply it as an owner/ocp-pm gesture under source control with a written rollback, then redispatch the same three-seat split.
+2. **Verify defect-2 parity on every other execution account**, one command per account (`pi --list-models | grep <ref>`), per the project parity rule: an unverified account means the fix is not done.
+3. **File the tracker issue** for the failure report on the shuxx project (label `AI-gen`) and move the report into `docs/incidents/` — or state explicitly that it stays in `docs/` on purpose.
+4. **Independent review of PR #158 is still not obtained.** The local reviewer seat was the vehicle for it and cannot run until defect 1 is fixed.
+
+### Operational notes
+
+- The unauthenticated recipes endpoint reports `active: false` for an account-scoped recipe that is in fact active. Never conclude a recipe is off from the anonymous view; verify with the account-scoped control token.
+- A delegation that exits `0` is still a failure when the message was parsed out of a child event. `exit 130` means a parent signal killed the child; `exit 0` with a message means the child reported something other than a verdict.
+- `RMDI_CHILD_DEADLINE_MS` unset reads as `0`, i.e. no deadline. A child that dies mid-run therefore has no timer to blame — check the parent turn's own interruption before blaming the router.
+- The reviewer seat deliberately runs a model below the role floor (judge must not be the model the workers run on). Its provenance line carries `⚠ DEGRADED (below role floor — frontier-dark)` and that is expected, not a defect.
+- Local-model registry entries are keyless: `"apiKey": "local"`, no provider API key, no token minting. Registry edits are per-account and must never be copied between accounts.
+- **Redaction performed in this file.** This block first wrote the backup filename verbatim (it embedded a host-family identifier) and inherited three absolute home paths from the previous block; `tests/contract/test_no_infra_topology_leaks.py` and `tests/unit/test_no_tracked_personal_data.py` both failed on `HANDOFF.md` as a result. Those identifiers were abstracted here. The verbatim strings live in the shuxx failure report, which is in a private checkout and is not constrained by this repo's guard.
+
+---
+
+# Session Handoff — 2026-09-27 (watcher cleanup and PR #158 opened)
+Agent: Pi | Branch: `chore/ai-forge-init-level4` | Tests: `9 passed, 0 skipped` focused watcher suite (reproduced twice in `$HOME/DevOpsSec/superharness-fix-watcher-rmtree`; not rerun after PR) | UNCOMMITTED (pre-existing staged doctrine batch, modified `uv.lock`, untracked watcher bug report; `HANDOFF.md` updated)
+
+## What happened this session
+
+- Audited and cleaned worktrees conservatively: removed only the explicitly authorized clean, merged `superharness-fix-routing` worktree; retained worktrees with local artifacts or unpublished work.
+- Pushed `fix/dashboard-watcher-rmtree` after owner authorization and opened PR #158: https://github.com/artificemachine/superharness/pull/158. Remote and PR head both resolve to `249b95fdc1074beef52bc32e921aca1cac582a69`; no merge, tag, release, or publish action occurred.
+- Ran the focused watcher tests twice: `uv run pytest tests/unit/test_watcher_worker_guard.py tests/unit/test_dashboard_watcher_default.py -q` passed 9 tests in 0.22s and 0.18s. The PR prevents watcher-worker cleanup from deleting real project `.superharness` state when worker and project directories overlap.
+- Audited the exact PR README: READY; all 5 canonical sections exist, 16/16 relative links resolve, and no hardcoded paths or known-dead placeholder references were found. No README change is needed.
+- Recorded the push docs-gate warning and pre-existing `uv lock --check` drift (pyproject version 1.85.0 versus committed `uv.lock` 1.84.1) in PR #158; neither was changed.
+- Did not ask `ocp-pm` to activate `shux-harness-orchestrated-local`: `max-prod-insider` was held by another live writer lease, and the lease was not bypassed.
+
+## Next session — first moves
+
+1. Obtain an independent review of PR #158; the local RMDI reviewer remains unavailable while `shux-harness-orchestrated-local` is inactive.
+2. Have the active `max-prod-insider` writer-lease holder ask `ocp-pm` about activating `shux-harness-orchestrated-local`, or obtain an owner-directed external reviewer.
+3. Preserve or explicitly dispose of `HANDOFF.md` in `superharness-bug-operator-start` and `.venv` in `superharness-bugreport` before removing those already-merged worktrees.
+
+### Operational notes
+
+- Push required the owner-approved entry `$HOME/DevOpsSec/superharness-fix-watcher-rmtree` in `~/.git-push-allowlist` and `ALLOW_PUSH=1`; never use `--no-verify` as a workaround.
+- Release advice reconciled unchanged at `origin/main` and its queue was empty before PR creation. Any later merge requires a fresh release-policy review bound to the PR head and target.
+- PR #158 has a non-blocking docs-gate warning; assess documentation again if review changes public behavior.
+
+---
+
+# Session Handoff — 2026-09-27 (queued-defects plan verified at 0/6; owner decision pending)
+Agent: Pi | Branch: `chore/ai-forge-init-level4` | Tests: `914 pass, 9 skip` (last known; not rerun) | UNCOMMITTED (pre-existing staged doctrine batch, modified `uv.lock` and `HANDOFF.md`, untracked watcher bug report)
+
+## What happened this session
+
+- Verified `docs/PLAN-queued-defects-2026-09-25.md`: it has exactly six iteration sections, zero checked boxes, and fourteen unchecked boxes. Iteration 1's target `_parse_iso` still returns naive datetimes, and its planned test file does not exist.
+- Preserved the source-of-truth conflict: ICM reports all six queued-defects iterations in `17b4213` on `fix/queued-defects-2026-09-25` with PR #157 open, while this checkout records 0/6. No checkout, fetch, Git mutation, or plan implementation was performed to resolve it.
+- Classified the pre-existing staged ai-forge/doctrine scaffold separately from `uv.lock`, this handoff, and `docs/bugs/BUG-2026-09-24-dashboard-watcher-start-destroys-project-state.md`; none of those artifacts changed in this session before this handoff update.
+
+## Next session — first moves
+
+1. Obtain the owner's authoritative decision on the queued-defects source of truth and explicit GO; until then, do not checkout, mutate Git, spawn workers, or start iteration 1.
+2. After approval, confirm the task lifecycle state and execute iteration 1 with RED/GREEN tests in an isolated worktree.
+3. Decompose the staged ai-forge/doctrine scaffold into task and commit boundaries before any commit decision.
+
+### Operational notes
+
+- The six-iteration plan estimates 7 hours active work; two authorized workers reduce the planned wall-clock estimate to about 5.5 hours. Iteration 6 remains owner-confirmation dependent.
+- Last known tests are inherited from the prior handoff and were not rerun this session.
+
+---
+
+# Session Handoff — 2026-09-27 (context restored; Shuxx send could not acquire writer lease)
+
+Agent: Codex | Branch: `chore/ai-forge-init-level4` | Tests: `914 pass, 9 skip` (last known; not rerun) | UNCOMMITTED (pre-existing staged changes; `HANDOFF.md` updated)
+
+## What happened this session
+
+- Restored the repository handoff, current Git context, and relevant memory. The checkout contains pre-existing staged scaffold and doctrine changes, a modified `uv.lock`, and an untracked dashboard-watcher bug report; none were changed in this session.
+- A requested Shuxx `hello` send was not delivered: Shuxx refused the write because this session did not hold the identity writer lease. No message was sent or acknowledged.
+- The operator invalidated the Shuxx identity previously asserted in this session. Do not reuse or record an identity from this exchange without re-verifying it with the operator.
+
+## Next session — first moves
+
+1. Confirm the intended Shuxx identity with the operator before any further Shuxx action.
+2. Inspect the pre-existing staged changes and decide their task scope before modifying or committing anything.
+3. Do not retry the Shuxx send unless the active writer session or an operator-directed session supplies the required writer lease.
+
+### Operational notes
+
+- Shuxx refused the attempted write with `SHUXX_WRITER_REFUSED` because `writer_epoch_required`; no delivery state changed.
+- Tests were not run in this session.
+
+---
+
 ## Autopilot decisions — 2026-09-25
 Goal: fix BUG-2026-09-24 (dashboard `watcher_start` destroys the project's real `.superharness`) | Branch: `fix/dashboard-watcher-rmtree` (worktree `../superharness-fix-watcher-rmtree`) | Tests: unit 4242 passed + 1 env-artifact fail → **4253 passed, 0 failed** | Passes used: 0/8 | Cost: not reported (max_iter is the only bound)
 - Worktree isolation (`../superharness-fix-watcher-rmtree`) / why: the main checkout holds the unrelated staged ai-forge batch; a pathspec commit on `chore/ai-forge-init-level4` would have mixed concerns / rejected: committing on the ai-forge branch.

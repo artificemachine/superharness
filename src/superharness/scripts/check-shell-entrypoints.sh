@@ -3,6 +3,8 @@ set -euo pipefail
 
 # Keep this list explicit to avoid forcing execute bits on non-entrypoint helpers.
 ENTRYPOINT_FILES=(
+  "scripts/ci/run-gate.sh"
+  "tests/doctrine/doctrine-guard.sh"
   "adapters/claude-code/install.sh"
   "adapters/claude-code/hooks/branch-guard.sh"
   "adapters/claude-code/hooks/ledger-append.sh"

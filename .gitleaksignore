@@ -1,0 +1,4 @@
+# Fake credentials in a redaction test fixture (tests/unit/test_module_obsidian.py).
+# The values are placeholders, not secrets, and the lines were remediated in f5450ac8.
+7c51b541f73f28ec9faad863afc81e2aa7805341:tests/unit/test_module_obsidian.py:generic-api-key:211
+dd0f365e42f1a9354991a1efc540fc0a8e186a66:tests/unit/test_module_obsidian.py:generic-api-key:211
