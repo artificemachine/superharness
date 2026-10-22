@@ -1,6 +1,6 @@
 # superharness — Documentation Index
 
-> Updated 2026-09-18. Run the `docs-organize` skill to audit. On 2026-09-10, 43 superseded or completed docs (~8,150 lines) were pruned: 16 unlinked files under `archive/` plus 27 completed plans/audits/reviews that had been listed in this index. The 4 prior-art analyses cited from the root README's "Prior art" section remain tracked.
+> Updated 2026-10-23. Run the `docs-organize` skill to audit. On 2026-09-10, 43 superseded or completed docs (~8,150 lines) were pruned: 16 unlinked files under `archive/` plus 27 completed plans/audits/reviews that had been listed in this index. The 4 prior-art analyses cited from the root README's "Prior art" section remain tracked.
 
 ---
 
@@ -115,6 +115,15 @@ Point-in-time claim-vs-reality audits. `docs/bulletproof-report-*.md` is gitigno
 | Doc | What |
 |-----|------|
 | [`specs/state-backend-interfaces.md`](specs/state-backend-interfaces.md) | State backend interfaces (authoritative) |
+| [`specs/SPEC-001-project-foundation.md`](specs/SPEC-001-project-foundation.md) | Project foundation contract: SQLite as state source, append-only changelog |
+| [`specs/SPEC-004-task-lifecycle.md`](specs/SPEC-004-task-lifecycle.md) | Task lifecycle specification |
+| [`specs/SPEC-006-model-resolution.md`](specs/SPEC-006-model-resolution.md) | Model resolution through runtime bindings |
+| [`SPEC.md`](SPEC.md) | Specification index and status |
+| [`ANALYSIS-spec-decomposition.md`](ANALYSIS-spec-decomposition.md) | Decomposition of the source modules into specification contracts |
+| [`adr/0001-record-architecture-decisions.md`](adr/0001-record-architecture-decisions.md) | ADR 0001: record architecture decisions |
+| [`adr/0002-no-rmdi-router-dependency.md`](adr/0002-no-rmdi-router-dependency.md) | ADR 0002: no RMDI router dependency; model authority stays with runtime bindings |
+| [`incidents/TEMPLATE.md`](incidents/TEMPLATE.md) | Incident record template, including the tracker issue section |
+| [`../INVARIANTS.md`](../INVARIANTS.md) | Project invariants, each bound to the test that guards it |
 | [`adapter-payload-spec.md`](reference/adapter-payload-spec.md) | Adapter payload JSON schema |
 | [`adapter-models.md`](reference/adapter-models.md) | Adapter model-to-tier mapping |
 | [`pack-format.md`](reference/pack-format.md) | shux pack archive format |

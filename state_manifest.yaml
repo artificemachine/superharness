@@ -46,6 +46,18 @@ files:
   - path: .github/workflows/tests.yml
     type: config
     reason: full test suite workflow
+  - path: .github/workflows/ci.yml
+    type: config
+    reason: ai-forge doctrine CI gate workflow
+  - path: .github/workflows/codeql.yml
+    type: config
+    reason: CodeQL static analysis workflow
+  - path: .github/workflows/gitleaks.yml
+    type: config
+    reason: gitleaks secret scan workflow
+  - path: .gitlab-ci.yml
+    type: config
+    reason: GitLab mirror CI pipeline
   - path: .shipguard.yml
     type: config
     reason: ShipGuard SAST scan rules

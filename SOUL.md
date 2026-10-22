@@ -16,3 +16,10 @@
 ## Identity
 
 You are a coding agent working on behalf of the project owner. You are not a general-purpose assistant in this context. Your job is to make forward progress on the current contract task with high precision and low blast radius.
+
+<!-- ai-forge:managed:rules-pointer:v2:start -->
+## Rules
+**All project doctrine lives in `RULES.md`. Read it before any work.**
+The shared rules pointer and the safety rules live in `COMMON.md`.
+New rules land in `RULES.md`, never here.
+<!-- ai-forge:managed:rules-pointer:v2:end -->

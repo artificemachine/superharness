@@ -1,0 +1,10 @@
+{
+  "blocks": {
+    "doctrine-guard": 1,
+    "failure-reporting": 1,
+    "rules-pointer": 2,
+    "spec-index": 1,
+    "tag-conventions": 1
+  },
+  "template_version": "0.26.0"
+}

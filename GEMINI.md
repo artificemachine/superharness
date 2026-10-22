@@ -158,3 +158,10 @@ If any system is empty or down, report it to the operator with: what's missing, 
 ## Strict Installation Decoupling
 
 Once installed (e.g., to ~/.local/bin), the project binary must NEVER depend on the local repository path (~/DevOpsSec) for execution, configuration, or data. All paths must be relative to the installation root or use standard system config paths (~/.config).
+
+<!-- ai-forge:managed:rules-pointer:v2:start -->
+## Rules
+**All project doctrine lives in `RULES.md`. Read it before any work.**
+The shared rules pointer and the safety rules live in `COMMON.md`.
+New rules land in `RULES.md`, never here.
+<!-- ai-forge:managed:rules-pointer:v2:end -->

@@ -34,3 +34,11 @@ else
         tests/state_machine \
         tests/unit/test_git_env_isolation.py
 fi
+
+# ai-forge:managed:doctrine-guard:v1:start
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+GUARD="$REPO_ROOT/tests/doctrine/doctrine-guard.sh"
+if [ -f "$GUARD" ]; then
+  bash "$GUARD"
+fi
+# ai-forge:managed:doctrine-guard:v1:end

@@ -1,0 +1,55 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Pull requests to main and pushes to main are the only authoritative runs: a
+# feature branch with an open PR would otherwise run every gate twice per
+# commit, once on the push pipeline and once on the pull-request pipeline.
+
+# No job here needs to write. Without this key the workflow inherits the org or
+# repository default, which can be read-write.
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  doctrine:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      # Runs: bash tests/doctrine/doctrine-guard.sh (see scripts/ci/run-gate.sh)
+      - name: Run doctrine guard
+        run: bash scripts/ci/run-gate.sh doctrine
+
+  shipguard:
+    runs-on: ubuntu-latest
+    # Selected managers get their download stores redirected into the
+    # workspace, so the cache paths below are self-contained and never
+    # depend on a runner's home directory layout.
+    env:
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # actions/setup-python v7.0.0, pinned by commit SHA for reproducibility
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.11"
+      # Pinned to an exact version: bump deliberately, not on every release.
+      - name: Install shipguard
+        run: pip install shipguard==0.5.2
+      # medium, not high: PII-004 (email address) is MEDIUM severity and is
+      # the most common real-world leak; --severity high would silently skip it.
+      # Runs: shipguard scan . --severity medium (see scripts/ci/run-gate.sh)
+      - name: Run shipguard scan
+        run: bash scripts/ci/run-gate.sh shipguard
