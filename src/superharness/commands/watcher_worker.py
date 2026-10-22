@@ -63,6 +63,14 @@ def main(argv: list[str] | None = None) -> None:
         if opts.worker
         else (Path.home() / ".superharness-workers" / project_dir.name)
     )
+    if worker_dir == project_dir:
+        log.error(
+            "worker directory resolves to the project directory: %s — refusing to run",
+            worker_dir,
+        )
+        raise SystemExit(
+            f"Worker directory must not be the project directory: {worker_dir}"
+        )
     worker_dir.mkdir(parents=True, exist_ok=True)
     worker_dir = worker_dir.resolve()
 
@@ -74,7 +82,11 @@ def main(argv: list[str] | None = None) -> None:
     # Symlink .superharness -> source project's .superharness
     sh_link = worker_dir / ".superharness"
     if sh_link.exists() and not sh_link.is_symlink():
-        shutil.rmtree(str(sh_link))
+        try:
+            shutil.rmtree(str(sh_link))
+        except OSError as e:
+            log.error("could not remove worker .superharness directory: %s", e)
+            raise SystemExit(f"Could not remove worker .superharness directory: {e}") from e
     if sh_link.is_symlink():
         sh_link.unlink()
     try:
@@ -108,7 +120,7 @@ def main(argv: list[str] | None = None) -> None:
     log.info("watcher-worker install OK: worker=%s", worker_dir)
 
     # Write watcher.yaml
-    from superharness.engine.runtime_probe import probe_runtime, persist_runtime
+    from superharness.engine.runtime_probe import persist_runtime, probe_runtime
 
     chosen_interpreter = probe_runtime()
 
