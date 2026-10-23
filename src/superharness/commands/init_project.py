@@ -326,9 +326,9 @@ def main(argv: list[str] | None = None) -> None:
         try:
             import sqlite3 as _sq
             from superharness.engine.db import init_db, _resolve_journal_mode
-            from superharness.utils.paths import resolve_xdg_state_db_path
+            from superharness.utils.paths import resolve_new_project_state_db_path
 
-            _xdg_db = resolve_xdg_state_db_path(str(project_dir))
+            _xdg_db = resolve_new_project_state_db_path(str(project_dir))
             os.makedirs(os.path.dirname(_xdg_db), exist_ok=True)
             _conn = _sq.connect(_xdg_db, timeout=5000)
             _conn.row_factory = _sq.Row
