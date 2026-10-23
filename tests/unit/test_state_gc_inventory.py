@@ -33,6 +33,7 @@ from superharness.commands.state_gc import (
     main,
     render_report,
 )
+from superharness.engine import operator_memory
 from superharness.engine.db import init_db
 
 DAY = 86400
@@ -68,6 +69,7 @@ _ROW_STATEMENTS = {
     "model_discovery": "INSERT INTO model_discovery (project_id, agent, model_id, probed_at, created_at) VALUES ('x', 'x', 'x', 'x', 'x')",
     "onboarding_state": "INSERT INTO onboarding_state (steps_json, updated_at) VALUES ('x', 'x')",
     "operator_commands": "INSERT INTO operator_commands (idempotency_key, command, sender_id, created_at) VALUES ('x', 'x', 'x', 'x')",
+    "operator_memory": "INSERT INTO operator_memory (pattern_signature, resolution, created_at, last_used_at) VALUES ('x', 'x', 'x', 'x')",
     "profile_trials": "INSERT INTO profile_trials (profile_key, baseline_success_rate, trial_started_at) VALUES ('x', 1, 'x')",
     "project_meta": "INSERT INTO project_meta DEFAULT VALUES",
     "review_store": "INSERT INTO review_store (owner) VALUES ('x')",
@@ -95,6 +97,9 @@ def _make_dir(root: Path, name: str = HASH_A, age_s: float = OLD) -> Path:
     conn = sqlite3.connect(directory / "state.db")
     try:
         init_db(conn)
+        # Created on first use by engine.operator_memory, so every real database
+        # carries it (BUG-2026-10-23).
+        conn.execute(operator_memory._CREATE_TABLE_SQL)
         conn.commit()
     finally:
         conn.close()
@@ -203,6 +208,7 @@ def test_business_table_set_matches_live_schema(tmp_path):
     conn = sqlite3.connect(probe)
     try:
         init_db(conn)
+        conn.execute(operator_memory._CREATE_TABLE_SQL)
         conn.commit()
         live = {
             row[0]
