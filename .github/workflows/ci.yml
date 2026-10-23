@@ -33,10 +33,6 @@ jobs:
 
   shipguard:
     runs-on: ubuntu-latest
-    # Selected managers get their download stores redirected into the
-    # workspace, so the cache paths below are self-contained and never
-    # depend on a runner's home directory layout.
-    env:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
