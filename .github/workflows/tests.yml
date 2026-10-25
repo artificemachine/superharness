@@ -1,6 +1,7 @@
 name: Tests
 
 on:
+  merge_group:
   pull_request:
   push:
     branches:
@@ -23,6 +24,8 @@ jobs:
         run: |
           if [ "${{ github.event_name }}" = "pull_request" ]; then
             BASE_REF="${{ github.event.pull_request.base.sha }}"
+          elif [ "${{ github.event_name }}" = "merge_group" ]; then
+            BASE_REF="${{ github.event.merge_group.base_sha }}"
           else
             BASE_REF="${{ github.event.before }}"
           fi
