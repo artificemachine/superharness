@@ -2,7 +2,7 @@
 
 Status: draft
 Last reviewed: 2026-10-25
-Affected paths: CHANGELOG.md, src/superharness/scripts/check-changelog-append-only.sh
+Affected paths: src/superharness/scripts/check-changelog-append-only.sh
 
 The starter spec holds the project-wide contract every later specification
 builds on. Promotion to `approved` is the owner's act, never the guard's or an
