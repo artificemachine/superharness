@@ -100,9 +100,6 @@ LEAK_ALLOWLIST: dict[str, tuple[str, ...]] = {
     # Prompt default in the onboarding wizard — 10.0.0.1 is an example
     # placeholder the user replaces; not a real endpoint.
     "src/superharness/commands/onboard.py": ("private-ip",),
-    # Sanitization guidance doc — names 10.0.0.1 as the *example* to use
-    # instead of a real IP. Documenting the rule, not leaking an address.
-    "docs/archive/plan-module-system.md": ("private-ip",),
     # Gateway-wizard test fixture — user@10.0.0.10 is a placeholder relay
     # host (RFC-1918 example range, no real endpoint).
     "tests/unit/test_gateway_wizard.py": ("private-ip",),
