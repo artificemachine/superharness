@@ -8,6 +8,7 @@ name: Windows-Native CI Matrix
 #   All OS matrix jobs pass for: init → watch → enqueue → dispatch → status
 
 on:
+  merge_group:
   pull_request:
   push:
     branches:
