@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import tempfile
 
 
 _DATA_DIR_ENV = "SUPERHARNESS_DATA_DIR"
@@ -132,6 +133,12 @@ def _resolve_ambient_xdg_state_db_path(project_path: str) -> str:
     return os.path.join(base, "superharness", project_hash(project_path), "state.db")
 
 
+def _is_under_temp_dir(path: str) -> bool:
+    """Return True when path lies strictly inside the OS temporary directory."""
+    temp_root = os.path.realpath(tempfile.gettempdir())
+    return os.path.realpath(path).startswith(temp_root + os.sep)
+
+
 def resolve_active_state_db_path(project_path: str) -> str:
     """Return the path to the active state db for a project.
 
@@ -142,6 +149,11 @@ def resolve_active_state_db_path(project_path: str) -> str:
 
     Without an explicit override, the existing compatibility order remains:
     XDG database, legacy database, legacy directory, then XDG for a new project.
+    The one exception is a new project under the OS temporary directory when no
+    state root is configured at all (neither SUPERHARNESS_STATE_DIR nor
+    XDG_STATE_HOME): its state stays inside the project's own .superharness/, so
+    it is removed with the project instead of leaving a permanent per-path
+    directory behind (BUG-2026-10-23).
     """
     project_path = resolve_state_project_path(project_path)
     xdg = resolve_xdg_state_db_path(project_path)
@@ -170,7 +182,24 @@ def resolve_active_state_db_path(project_path: str) -> str:
         return legacy
     if os.path.isdir(os.path.join(project_path, ".superharness")):
         return legacy
-    return xdg
+    return resolve_new_project_state_db_path(project_path)
+
+
+def resolve_new_project_state_db_path(project_path: str) -> str:
+    """Return where a project with no state yet should create its database.
+
+    The permanent XDG path, except for a project under the OS temporary directory
+    when no state root is configured (neither SUPERHARNESS_STATE_DIR nor
+    XDG_STATE_HOME): that state stays inside the project's own .superharness/
+    and goes away with the project. No filesystem writes.
+    """
+    if (
+        not _read_env(_STATE_DIR_ENV)
+        and not _read_env("XDG_STATE_HOME")
+        and _is_under_temp_dir(project_path)
+    ):
+        return os.path.join(project_path, ".superharness", "state.sqlite3")
+    return resolve_xdg_state_db_path(project_path)
 
 
 def resolve_dashboard_port(default: int) -> int:

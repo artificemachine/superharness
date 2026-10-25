@@ -1,7 +1,7 @@
 # SPEC-001: Project foundation contract
 
 Status: draft
-Last reviewed: 2026-10-23
+Last reviewed: 2026-10-25
 Affected paths: CHANGELOG.md, src/superharness/scripts/check-changelog-append-only.sh
 
 The starter spec holds the project-wide contract every later specification

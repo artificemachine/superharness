@@ -57,7 +57,8 @@ _SIDECAR_SUFFIXES = ("-wal", "-shm", "-journal")
 TECHNICAL_TABLES = frozenset({"schema_migrations", "sqlite_sequence"})
 
 # The business tables of the live schema (schema version 39), read from a
-# database built by `init_db()`. A database holding a table outside
+# database built by `init_db()` plus the tables modules create on first use
+# (`operator_memory`, BUG-2026-10-23). A database holding a table outside
 # BUSINESS_TABLES | TECHNICAL_TABLES has a schema this classifier does not know,
 # so it is classified `ignored` — never a candidate. Widening the schema means
 # widening this set; `test_business_table_set_matches_live_schema` fails if it
@@ -82,6 +83,7 @@ BUSINESS_TABLES = frozenset(
         "model_discovery",
         "onboarding_state",
         "operator_commands",
+        "operator_memory",
         "profile_trials",
         "project_meta",
         "review_store",
@@ -177,13 +179,19 @@ def _has_business_rows(conn: sqlite3.Connection) -> bool:
 def _inspect_database(path: Path) -> tuple[str, str]:
     """Classify one database file as KEPT or IGNORED, with a reason.
 
-    Opened `mode=ro` and deliberately **not** `immutable`: an immutable open
-    asserts the file cannot change, which is a lie about a database another
-    process may be writing. A file the classifier cannot read is never a
-    candidate — unknown content is the one thing that must not be reclaimed.
+    Opened `immutable=1`, which touches nothing but the main file. A `mode=ro`
+    open of a WAL database creates `-wal`/`-shm` sidecars on newer SQLite (and
+    fails to open at all on older SQLite), so the inventory would change the tree
+    it inventories and then classify every directory as `sidecar present`
+    (BUG-2026-10-23). The cost is that an immutable open assumes no writer
+    changes the file mid-read. That is acceptable here because a directory that
+    already has a sidecar or journal never reaches this open (it is `ignored`
+    first), and a torn read can only turn into an `ignored` verdict, never a
+    candidate. A file the classifier cannot read is never a candidate: unknown
+    content is the one thing that must not be reclaimed.
     """
     try:
-        conn = sqlite3.connect(path.resolve().as_uri() + "?mode=ro", uri=True)
+        conn = sqlite3.connect(path.resolve().as_uri() + "?immutable=1", uri=True)
     except sqlite3.Error as exc:
         return IGNORED, _open_failure_reason(exc)
 
