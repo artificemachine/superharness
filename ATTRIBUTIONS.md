@@ -34,7 +34,7 @@ Repo: <https://github.com/earendil-works/pi>
 - pi's runtime orchestration model. superharness keeps the orchestrator out-of-process (the watcher), so adapters stay swappable.
 
 **Comparison docs**
-- [docs/COMPARISON-superharness-vs-pi-hermes.md](docs/COMPARISON-superharness-vs-pi-hermes.md)
+- [docs/COMPARISON-superharness-vs-pi-hermes.md](docs/archive/COMPARISON-superharness-vs-pi-hermes.md)
 
 ---
 
@@ -80,7 +80,7 @@ Repo: <https://github.com/Charlie85270/Dorothy>
 - Electron desktop packaging. We stay browser-dashboard + CLI.
 
 **Comparison docs**
-- [docs/comparison-dorothy.md](docs/comparison-dorothy.md)
+- [docs/comparison-dorothy.md](docs/archive/comparison-dorothy.md)
 
 ---
 

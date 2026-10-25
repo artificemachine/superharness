@@ -22,10 +22,7 @@
 |-----|------|
 | [`ARCHITECTURE.md`](ARCHITECTURE.md) | Architecture overview and design decisions |
 | [`ARCH-superharness-design-patterns.md`](arch/ARCH-superharness-design-patterns.md) | Current architecture and the proposed hexagonal target (Mermaid); `reconcile` extraction first |
-| [`DESIGN-risky-choices.md`](archive/DESIGN-risky-choices.md) | Documented sharp edges and risky choices |
 | [`ROADMAP-phases.md`](plans/ROADMAP-phases.md) | **Master phase roadmap** (single source of truth) |
-| [`IMPLEMENTATION-status.md`](archive/IMPLEMENTATION-status.md) | Implementation status across all audits |
-| [`ANALYSIS-sqlite-doctrine-drift.md`](archive/ANALYSIS-sqlite-doctrine-drift.md) | How the SQLite doctrine drifted, and how to make it un-driftable |
 | [`brain-multi-agent-tiers-fleet.md`](reports/brain-multi-agent-tiers-fleet.md) | Why 4 agent CLIs, what tiers mean, Ollama + vLLM fleet |
 | [`brain-scan-2026-07-12.md`](reports/brain-scan-2026-07-12.md) | Brain-level scan of superharness (2026-07-12) |
 | [`fleet-vllm-enablement.md`](guides/fleet-vllm-enablement.md) | vLLM per-tier fleet endpoints — enablement guide |
@@ -57,14 +54,9 @@
 
 | Doc | What |
 |-----|------|
-| [`CLASSIFY-discussion-tier-effort.md`](archive/CLASSIFY-discussion-tier-effort.md) | Task & discussion tier/effort classification |
-| [`COMPARE-ltx2-train-model-skill-vs-lifecycle.md`](archive/COMPARE-ltx2-train-model-skill-vs-lifecycle.md) | LTX-2 `train-model` skill vs the superharness lifecycle |
 | [`ADOPTION-LIST-omnigent-2026-07-19.md`](archive/ADOPTION-LIST-omnigent-2026-07-19.md) | Adoption list — omnigent → superharness (2026-07-19) |
 | [`audits/2026-09-18-docs-triage.md`](audits/2026-09-18-docs-triage.md) | docs/ merge and archive triage — what was merged, archived, and deliberately left |
 | [`audits/2026-09-10-arch-audit.md`](audits/2026-09-10-arch-audit.md) | Architecture audit — current run (0 critical, 3 high, 4 medium, 4 low) |
-| [`archive/2026-08-05-arch-audit.md`](archive/2026-08-05-arch-audit.md) | Architecture audit — superseded run (2026-08-05) |
-| [`archive/2026-07-21-arch-audit.md`](archive/2026-07-21-arch-audit.md) | Architecture audit — superseded run (2026-07-21) |
-| [`archive/2026-08-05-bulletproof.md`](archive/2026-08-05-bulletproof.md) | Claims-vs-reality run — superseded (2026-08-05) |
 
 ## 📋 Plans (Active)
 
@@ -139,16 +131,10 @@ Point-in-time claim-vs-reality audits. `docs/bulletproof-report-*.md` is gitigno
 
 ---
 
-## 📦 Archived (32 files in `docs/archive/`)
+## 📦 Archived (4 files in `docs/archive/`)
 
-Obsolete, completed, superseded, or dated docs moved to archive. See `docs/archive/` for:
-- Session handoff notes (`HANDOFF-2026-06-*.md`, `NEXT_SESSION_HANDOFF.md`, `handoff-yaml-cleanup-session-2026-05-13.md`)
-- Superseded bulletproof-report runs (the 2026-05-24 series, superseded by the active reports above)
-- A dated release checklist (`RELEASE-TODO-v1.62.15.md`)
-- Completed migration/cleanup plans (SQLite migration, contract-YAML removal, module system, onboarding pipeline)
-- Stale comparisons/audits/reviews (pi-hermes comparison, Dorothy comparison, drift audit)
-- Superseded dated audits (the 2026-07-21 and 2026-08-05 architecture audits and the 2026-08-05 bulletproof run, archived 2026-09-18 behind the 2026-09-10 audit) and the retired morpheme branch policy
+Only the prior-art analyses cited from the root `README.md` and `ATTRIBUTIONS.md`, plus the retired morpheme branch policy cited from `CLAUDE.md`. Everything else pruned 2026-10-25; recover from git history.
 
 ---
 
-**Last updated:** 2026-09-10 | **Active docs:** 63 | **Archived:** 28
+**Last updated:** 2026-09-10 | **Active docs:** 63 | **Archived:** 4
