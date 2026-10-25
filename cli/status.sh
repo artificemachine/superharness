@@ -5,8 +5,9 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-VERSION="$(cat "$SCRIPT_DIR/../VERSION" 2>/dev/null | tr -d '[:space:]')"
-VERSION="${VERSION:-0.7.0}"
+# pyproject.toml is the only version source; releases read it too.
+VERSION="$(sed -n 's/^version = "\(.*\)"$/\1/p' "$SCRIPT_DIR/../pyproject.toml" 2>/dev/null | head -1)"
+VERSION="${VERSION:-unknown}"
 
 PROJECT_DIR=""
 while [ $# -gt 0 ]; do
