@@ -1,6 +1,7 @@
 name: Security
 
 on:
+  merge_group:
   pull_request:
   push:
     branches:
@@ -44,7 +45,7 @@ jobs:
         # whole branch is scanned.
         run: |
           set -o pipefail
-          BASE="${{ github.event.pull_request.base.sha || github.sha }}"
+          BASE="${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.sha }}"
           gitleaks detect --source . --log-opts="${BASE}..HEAD" --redact --exit-code 1 --verbose | tee gitleaks-report.txt
 
       - name: Upload gitleaks report
