@@ -701,3 +701,15 @@ def test_update_catalog_apply_keeps_backup_and_sets_verified(
     text = target.read_text()
     assert "id: claude-haiku-5-5" in text
     assert f"verified: {date.today().isoformat()}" in text
+
+
+def test_check_stale_names_catalog_refresh(config_dir: Path) -> None:
+    """A stale provider points at the catalog refresh, in text and JSON; exit code unchanged."""
+    (config_dir / "model-bindings.yaml").write_text(_bindings(date.today() - timedelta(days=30)))
+
+    text = CliRunner().invoke(models_main, ["check"])
+    as_json = CliRunner().invoke(models_main, ["check", "--json"])
+
+    assert text.exit_code == 1
+    assert "shux models update --catalog" in text.output
+    assert json.loads(as_json.output)["next_command"] == "shux models update --catalog"

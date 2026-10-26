@@ -24,6 +24,7 @@ import click
 import yaml
 
 from superharness.engine.model_bindings import (
+    CATALOG_REFRESH_COMMAND,
     DEFAULT_REVIEW_AFTER_DAYS,
     DISPATCH_TO_BINDING_TIER,
     SCHEMA_VERSION,
@@ -208,6 +209,8 @@ def _check_report(bindings: BindingsFile, today: date) -> tuple[dict[str, Any], 
         "stale_providers": stale,
         "bindings": _binding_rows(bindings),
     }
+    if stale:
+        report["next_command"] = CATALOG_REFRESH_COMMAND
     return report, EXIT_ATTENTION if stale else EXIT_OK
 
 
@@ -224,6 +227,7 @@ def _print_report(report: dict[str, Any]) -> None:
     click.echo(f"Status: {status}")
     if report["stale_providers"]:
         click.echo(f"Stale providers: {', '.join(report['stale_providers'])}")
+        click.echo(f"Refresh them from the catalog: {CATALOG_REFRESH_COMMAND}")
     for row in report["bindings"]:
         availability = f"  [{row['availability']}]" if "availability" in row else ""
         error = f"  {row['error']}" if row.get("error") else ""
