@@ -166,6 +166,78 @@ def test_check_probe_survives_one_harness_failure(
     assert rows["pi"]["availability"] == "available"
 
 
+def _manifest_first_choice(harness: str, tier: str) -> str:
+    from superharness.engine.adapter_registry import load_manifest
+
+    manifest = load_manifest(harness)
+    chain = manifest.resolve_accept_chain(tier, "unknown")
+    return chain[0] if chain else manifest.model_tiers[tier]["id"]
+
+
+def test_init_writes_valid_schema2_from_manifests(config_dir: Path) -> None:
+    """init writes a schema-2 file from the adapter manifests that dispatch then reads."""
+    from superharness.engine import model_router
+    from superharness.engine.model_bindings import load_bindings
+
+    result = CliRunner().invoke(models_main, ["init"])
+
+    assert result.exit_code == 0, result.output
+    bindings = load_bindings(config_dir / "model-bindings.yaml")
+    assert bindings.status == "ok"
+    codex = bindings.data["harnesses"]["codex-cli"]
+    assert codex["default_provider"] == "adapter-manifest"
+    ladder = codex["bindings"]["adapter-manifest"]
+    assert ladder["bulk"]["id"] == _manifest_first_choice("codex-cli", "mini")
+    assert ladder["default"]["id"] == _manifest_first_choice("codex-cli", "standard")
+    assert ladder["escalate-1"]["id"] == _manifest_first_choice("codex-cli", "max")
+    assert model_router._resolve_runtime_binding_model("codex-cli", "standard") == ladder["default"]["id"]
+    assert CliRunner().invoke(models_main, ["check"]).exit_code == 0
+
+
+def test_init_refuses_existing_without_force(config_dir: Path) -> None:
+    """An existing file is never overwritten without --force."""
+    target = config_dir / "model-bindings.yaml"
+    target.write_text("# operator file\n")
+
+    result = CliRunner().invoke(models_main, ["init"])
+
+    assert result.exit_code == 1
+    assert target.read_text() == "# operator file\n"
+    assert "--force" in result.output
+
+
+def test_init_force_keeps_backup(config_dir: Path) -> None:
+    """--force replaces the file and keeps a byte-identical timestamped backup."""
+    target = config_dir / "model-bindings.yaml"
+    target.write_bytes(b"# previous operator file\n")
+
+    result = CliRunner().invoke(models_main, ["init", "--force"])
+
+    assert result.exit_code == 0, result.output
+    backups = list(config_dir.glob("model-bindings.yaml.bak-*"))
+    assert len(backups) == 1
+    assert backups[0].read_bytes() == b"# previous operator file\n"
+    assert "schema: 2" in target.read_text()
+
+
+def test_init_failed_write_leaves_no_partial_file(
+    config_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A failing final rename exits 1 and leaves neither a target nor a temporary file."""
+    from superharness.commands import models
+
+    def _fail(src, dst):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(models.os, "replace", _fail)
+
+    result = CliRunner().invoke(models_main, ["init"])
+
+    assert result.exit_code == 1
+    assert "disk full" in result.output
+    assert list(config_dir.iterdir()) == []
+
+
 def test_check_json_lists_bindings(config_dir: Path) -> None:
     """--json returns path, status, stale providers and every binding; exit 0 when fresh."""
     (config_dir / "model-bindings.yaml").write_text(_bindings(date.today()))
