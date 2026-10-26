@@ -33,6 +33,23 @@ Run `shux help --all` for the complete expert catalog. The four domains below ke
 
 `shux agent --help` covers adapters, dispatch, discussion via `shux agent discuss`, handoffs, scheduling, test requirements, and worktrees.
 
+#### Model bindings (`shux models`)
+
+superharness picks each harness's model per tier from its own bindings file, `model-bindings.yaml` in its config directory (`SUPERHARNESS_CONFIG_DIR`, else `$XDG_CONFIG_HOME/superharness/`). It reads no other tool's configuration. Without the file, the adapter defaults are used. `shux agent models ...` is the same command.
+
+```bash
+shux models check              # path, status, bound models, stale providers; exit 0 fresh, 1 stale/invalid, 2 missing
+shux models check --probe      # also ask discovery whether each bound model is available
+shux models check --json       # the same report for scripts
+shux models init               # create the file from the adapter manifests (refuses to overwrite)
+shux models init --from PATH   # import an existing schema-2 file instead
+shux models init --force       # replace the file; a .bak-<UTC timestamp> copy is kept
+shux models update             # propose replacements for unavailable bindings (writes nothing)
+shux models update --apply     # write them and refresh verified dates; comments kept, backup first
+```
+
+A provider is stale when its `verified` date is older than `review_after_days` (default 5). `shux doctor` prints one `model-bindings:` line about the file and never changes its exit code. `update` only proposes models from the adapter's accept chain that discovery confirms; it never invents a model, so a binding with no confirmed candidate must be edited by hand.
+
 ### `ops`
 
 `shux ops --help` covers daemons, dashboard operations, hooks, diagnostics, logs, notifications, MCP, and maintenance.
