@@ -1180,9 +1180,12 @@ def test_pi_orchestrator_evidence_record_is_complete() -> None:
 
 def test_chain_pi_model_matches_runtime_binding() -> None:
     from superharness.engine.model_router import _resolve_configured_model
-    from superharness.engine.orchestrator import _ORCHESTRATOR_CHAIN
+    from superharness.engine.orchestrator import _build_orchestrator_chain
 
-    pi_entries = [entry for entry in _ORCHESTRATOR_CHAIN if entry[0] == "pi"]
+    # Build the chain under this test's isolated bindings: the module-level
+    # _ORCHESTRATOR_CHAIN is resolved at import time, possibly from the
+    # operator's live bindings before the isolation fixture applies.
+    pi_entries = [entry for entry in _build_orchestrator_chain() if entry[0] == "pi"]
 
     assert len(pi_entries) == 1
     assert pi_entries[0][1] == _resolve_configured_model("pi", "max")
