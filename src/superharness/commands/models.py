@@ -11,6 +11,7 @@ Exit codes for `check`: 0 fresh, 1 stale or invalid, 2 missing.
 from __future__ import annotations
 
 import json
+import subprocess
 import sys
 from datetime import date
 from typing import Any
@@ -56,6 +57,51 @@ def _binding_rows(bindings: BindingsFile) -> list[dict[str, str]]:
     return rows
 
 
+def classify_bindings(
+    rows: list[dict[str, str]], discovered_by_harness: dict[str, list[str] | Exception]
+) -> list[dict[str, str]]:
+    """Mark each binding row available, unavailable or unknown from discovery results.
+
+    An empty discovery answer means discovery could not tell, so the binding
+    is ``unknown``; an exception is ``unknown`` with its message in ``error``.
+    """
+    classified = []
+    for row in rows:
+        answer = discovered_by_harness.get(row["harness"], [])
+        out = dict(row)
+        if isinstance(answer, Exception):
+            out["availability"] = "unknown"
+            out["error"] = f"{type(answer).__name__}: {answer}"
+        elif not answer:
+            out["availability"] = "unknown"
+        else:
+            out["availability"] = "available" if row["model"] in answer else "unavailable"
+        classified.append(out)
+    return classified
+
+
+def _discover_bound_models(rows: list[dict[str, str]]) -> dict[str, list[str] | Exception]:
+    """Run discovery once per harness, asking about that harness's bound models."""
+    from superharness.engine import model_router
+
+    by_harness: dict[str, list[str]] = {}
+    for row in rows:
+        by_harness.setdefault(row["harness"], [])
+        if row["model"] not in by_harness[row["harness"]]:
+            by_harness[row["harness"]].append(row["model"])
+
+    results: dict[str, list[str] | Exception] = {}
+    for harness, models in by_harness.items():
+        try:
+            auth_mode = model_router.detect_auth_mode_for_agent(harness)
+            found = model_router._discover_for_agent(harness, auth_mode, models)
+            results[harness] = [d.id for d in found]
+        except (OSError, RuntimeError, ValueError, subprocess.SubprocessError) as exc:
+            # One harness's failing probe must not hide the others' results.
+            results[harness] = exc
+    return results
+
+
 def _check_report(bindings: BindingsFile, today: date) -> tuple[dict[str, Any], int]:
     if bindings.status == "missing":
         report = {"path": str(bindings.path), "status": "missing", "reason": bindings.reason,
@@ -90,7 +136,12 @@ def _print_report(report: dict[str, Any]) -> None:
     if report["stale_providers"]:
         click.echo(f"Stale providers: {', '.join(report['stale_providers'])}")
     for row in report["bindings"]:
-        click.echo(f"  {row['harness']:<14} {row['tier']:<13} {row['model']}  ({row['provider']})")
+        availability = f"  [{row['availability']}]" if "availability" in row else ""
+        error = f"  {row['error']}" if row.get("error") else ""
+        click.echo(
+            f"  {row['harness']:<14} {row['tier']:<13} {row['model']}  ({row['provider']})"
+            f"{availability}{error}"
+        )
 
 
 @click.group()
@@ -99,10 +150,18 @@ def main() -> None:
 
 
 @main.command("check")
+@click.option("--probe", is_flag=True, default=False,
+              help="Ask harness discovery whether each bound model is available")
 @click.option("--json", "as_json", is_flag=True, default=False, help="Output as JSON")
-def check_cmd(as_json: bool) -> None:
+def check_cmd(probe: bool, as_json: bool) -> None:
     """Report the bindings file: path, status, bindings and stale providers."""
     report, code = _check_report(_bindings_file(), date.today())
+    if probe and report["bindings"]:
+        report["bindings"] = classify_bindings(
+            report["bindings"], _discover_bound_models(report["bindings"])
+        )
+        if any(row["availability"] == "unavailable" for row in report["bindings"]):
+            code = max(code, EXIT_ATTENTION)
     if as_json:
         click.echo(json.dumps(report, indent=2))
     else:
