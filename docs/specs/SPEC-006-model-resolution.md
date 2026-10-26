@@ -2,7 +2,7 @@
 
 Status: draft
 Last reviewed: 2026-10-26
-Affected paths: src/superharness/engine/model_router.py, src/superharness/engine/model_fallback.py, src/superharness/engine/model_bindings.py, src/superharness/commands/models.py, docs/reference/adapter-models.md
+Affected paths: src/superharness/engine/model_router.py, src/superharness/engine/model_fallback.py, src/superharness/engine/model_bindings.py, src/superharness/commands/models.py, src/superharness/engine/model_catalog.py, src/superharness/engine/model_catalog_journal.py, docs/reference/adapter-models.md
 
 Model resolution turns a harness and a tier into a concrete model id.
 `resolve_model_for_tier` in `engine/model_router.py` is the production path;
@@ -28,6 +28,9 @@ chooses a model the bindings did not name.
 - [REQ-610] `shux models init` and `shux models update --apply` never overwrite without a byte-identical backup, refuse invalid input without writing, and leave the original intact when a write fails.
 - [REQ-611] `shux models update` proposes only accept-chain models that discovery confirms, never an invented model, and `--apply` keeps every comment of the file.
 - [REQ-612] `shux doctor` reports a missing, invalid or stale bindings file without changing its warning count or exit code.
+- [REQ-613] `shux models update --catalog` proposes, for a binding, only the newest catalog model of the same provider and family released after it, never a model of another provider or family, and writes nothing.
+- [REQ-614] `shux models update --catalog --apply` writes a candidate only when the provider's docs page names it (or the provider has none to check) and harness discovery lists it, keeping a byte-identical backup.
+- [REQ-615] A catalog failure makes `update --catalog` exit 1, and every catalog or docs failure is appended to the state directory's `model-catalog-failures.jsonl`.
 - [REQ-607] Bindings are read only from superharness's own config directory, never from another tool's configuration such as `$XDG_CONFIG_HOME/modrouter/`.
 - [REQ-606] A discovery cache entry is used only when it names the currently bound model, so an edited binding takes effect on the next resolution.
 
@@ -37,7 +40,8 @@ chooses a model the bindings did not name.
 
 ## Known gaps
 
-- `shux models update` only replaces a dead binding with a model the adapter's accept chain already lists; it does not read provider catalogs, so new models still need a manual edit.
+- No scheduler runs `shux models update --catalog`; `check` and `doctor` name it when a provider is stale, and the operator runs it.
+- The catalog is models.dev, a third-party aggregator; the docs cross-check covers anthropic and openai only, so deepseek and zai-coding-plan candidates rest on the catalog and harness discovery.
 - `resolve_model` still ends on a literal `claude-sonnet-4-6` when every other source is empty. Removing the compatibility resolver is a separate migration.
 
 ## Verification & Validation
@@ -62,4 +66,11 @@ chooses a model the bindings did not name.
 - REQ-611 -> tests/unit/test_models_cmd.py::test_update_proposes_nothing_without_confirmed_replacement
 - REQ-611 -> tests/unit/test_models_cmd.py::test_update_apply_preserves_comments
 - REQ-612 -> tests/unit/test_doctor_model_bindings.py::test_doctor_reports_stale_bindings
+- REQ-613 -> tests/unit/test_models_cmd.py::test_update_catalog_proposes_newer_same_family_model
+- REQ-613 -> tests/unit/test_models_cmd.py::test_update_catalog_never_crosses_providers
+- REQ-613 -> tests/unit/test_model_catalog.py::test_newer_in_family_ignores_other_families
+- REQ-614 -> tests/unit/test_models_cmd.py::test_update_catalog_apply_writes_only_fully_confirmed_candidates
+- REQ-614 -> tests/unit/test_models_cmd.py::test_update_catalog_apply_keeps_backup_and_sets_verified
+- REQ-615 -> tests/unit/test_models_cmd.py::test_update_catalog_failure_is_reported_and_journaled
+- REQ-615 -> tests/unit/test_model_catalog_journal.py::test_record_appends_one_json_line
 - INV-601 -> tests/unit/test_dynamic_resolution.py::test_chatgpt_fallback_uses_manifest_compatible_model
