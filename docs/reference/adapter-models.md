@@ -31,7 +31,9 @@ is stale after `review_after_days` (default 5). `update --catalog` proposes
 newer models of the same provider and family from the keyless models.dev
 catalog, cross-checked against the Anthropic and OpenAI models pages, and
 `update --catalog --apply` writes only the candidates that harness discovery
-also confirms.
+also confirms. `refresh` runs that refresh unattended with one receipt per run,
+and `schedule install --apply` runs `refresh` daily from launchd or a systemd
+user timer.
 
 ## Tier semantics
 

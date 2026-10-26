@@ -31,6 +31,9 @@ chooses a model the bindings did not name.
 - [REQ-613] `shux models update --catalog` proposes, for a binding, only the newest catalog model of the same provider and family released after it, never a model of another provider or family, and writes nothing.
 - [REQ-614] `shux models update --catalog --apply` writes a candidate only when the provider's docs page names it (or the provider has none to check) and harness discovery lists it, keeping a byte-identical backup.
 - [REQ-615] A catalog failure makes `update --catalog` exit 1, and every catalog or docs failure is appended to the state directory's `model-catalog-failures.jsonl`.
+- [REQ-616] `shux models refresh` uses no network when no provider is stale, appends exactly one receipt line per run to the state directory's `model-refresh-receipts.jsonl` (outcome `skipped`, `ok`, `partial` or `failed`), and exits 1 when the refresh failed.
+- [REQ-617] `shux models schedule install` and `uninstall` change nothing without `--apply`; with it, uninstall removes every file install wrote; a `shux` inside a git checkout is refused, and Windows exits 2.
+- [REQ-618] `shux doctor` reports the last refresh receipt and warns when it failed or is older than twice `review_after_days`, without changing its warning count or exit code.
 - [REQ-607] Bindings are read only from superharness's own config directory, never from another tool's configuration such as `$XDG_CONFIG_HOME/modrouter/`.
 - [REQ-606] A discovery cache entry is used only when it names the currently bound model, so an edited binding takes effect on the next resolution.
 
@@ -40,7 +43,7 @@ chooses a model the bindings did not name.
 
 ## Known gaps
 
-- No scheduler runs `shux models update --catalog`; `check` and `doctor` name it when a provider is stale, and the operator runs it.
+- `shux models schedule` covers macOS (launchd) and Linux (systemd user timer) only; Windows is refused, so a Windows host refreshes by hand.
 - The catalog is models.dev, a third-party aggregator; the docs cross-check covers anthropic and openai only, so deepseek and zai-coding-plan candidates rest on the catalog and harness discovery.
 - `resolve_model` still ends on a literal `claude-sonnet-4-6` when every other source is empty. Removing the compatibility resolver is a separate migration.
 
@@ -73,4 +76,13 @@ chooses a model the bindings did not name.
 - REQ-614 -> tests/unit/test_models_cmd.py::test_update_catalog_apply_keeps_backup_and_sets_verified
 - REQ-615 -> tests/unit/test_models_cmd.py::test_update_catalog_failure_is_reported_and_journaled
 - REQ-615 -> tests/unit/test_model_catalog_journal.py::test_record_appends_one_json_line
+- REQ-616 -> tests/unit/test_model_refresh.py::test_refresh_skips_without_network_when_fresh
+- REQ-616 -> tests/unit/test_model_refresh.py::test_refresh_records_partial_when_candidates_skipped
+- REQ-616 -> tests/unit/test_model_refresh.py::test_refresh_failure_exits_1_and_records_failed
+- REQ-617 -> tests/unit/test_model_refresh_schedule.py::test_install_without_apply_writes_nothing
+- REQ-617 -> tests/unit/test_model_refresh_schedule.py::test_install_apply_then_uninstall_apply_leaves_nothing
+- REQ-617 -> tests/unit/test_model_refresh_schedule.py::test_systemd_install_and_uninstall_are_inverse
+- REQ-617 -> tests/unit/test_model_refresh_schedule.py::test_install_refuses_a_checkout_shux
+- REQ-617 -> tests/unit/test_model_refresh_schedule.py::test_windows_is_refused
+- REQ-618 -> tests/unit/test_doctor_model_bindings.py::test_doctor_warns_on_failed_or_old_refresh
 - INV-601 -> tests/unit/test_dynamic_resolution.py::test_chatgpt_fallback_uses_manifest_compatible_model
