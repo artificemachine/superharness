@@ -84,7 +84,11 @@ def _model_bindings_line() -> str:
     """One doctor line about superharness's model bindings file (no probing)."""
     import datetime as _dt
 
-    from superharness.engine.model_bindings import load_bindings, stale_providers
+    from superharness.engine.model_bindings import (
+        CATALOG_REFRESH_COMMAND,
+        load_bindings,
+        stale_providers,
+    )
     from superharness.engine.model_router import _runtime_model_bindings_path
 
     bindings = load_bindings(_runtime_model_bindings_path())
@@ -103,7 +107,7 @@ def _model_bindings_line() -> str:
     if stale:
         return (
             f"WARN model-bindings:stale {', '.join(stale)} — "
-            "run 'shux models check --probe'"
+            f"run '{CATALOG_REFRESH_COMMAND}' or 'shux models check --probe'"
         )
     return f"PASS model-bindings:{bindings.path}"
 

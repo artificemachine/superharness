@@ -495,3 +495,221 @@ def test_check_json_lists_bindings(config_dir: Path) -> None:
         {"harness": "codex-cli", "provider": "test-provider", "tier": "default", "model": "model-default"},
         {"harness": "codex-cli", "provider": "test-provider", "tier": "escalate-1", "model": "model-max"},
     ]
+
+
+# --- shux models update --catalog ---------------------------------------------
+
+_CATALOG_BINDINGS = f"""schema: 2
+providers:
+  anthropic:
+    verified: {(date.today() - timedelta(days=30)).isoformat()}
+harnesses:
+  claude-code:
+    default_provider: anthropic
+    bindings:
+      anthropic:
+        bulk:
+          id: claude-haiku-4-5
+        default:
+          id: claude-sonnet-5-5
+"""
+
+_CATALOG_SAMPLE = {
+    "anthropic": {"models": {
+        "claude-haiku-4-5": {"id": "claude-haiku-4-5", "family": "claude-haiku",
+                             "release_date": "2025-10-15"},
+        "claude-haiku-5-5": {"id": "claude-haiku-5-5", "family": "claude-haiku",
+                             "release_date": "2026-10-07"},
+        "claude-sonnet-5-5": {"id": "claude-sonnet-5-5", "family": "claude-sonnet",
+                              "release_date": "2026-09-28"},
+    }},
+    "openai": {"models": {
+        "claude-sonnet-9": {"id": "claude-sonnet-9", "family": "claude-sonnet",
+                            "release_date": "2027-01-01"},
+    }},
+}
+
+
+def _stub_catalog(monkeypatch: pytest.MonkeyPatch, catalog, docs_status: str = "confirmed") -> list[str]:
+    """Replace the network: the catalog answer and a docs checker that returns docs_status."""
+    from superharness.engine import model_catalog
+
+    fetched: list[str] = []
+
+    def _fetch(*args, **kwargs):
+        fetched.append("models.dev")
+        return catalog
+
+    class _Docs:
+        def check(self, provider, model_id):
+            if provider not in model_catalog.DOCS_PAGES:
+                return model_catalog.DocsCheck("not-applicable")
+            return model_catalog.DocsCheck(docs_status)
+
+    monkeypatch.setattr(model_catalog, "fetch_catalog", _fetch)
+    monkeypatch.setattr(model_catalog, "DocsChecker", lambda **kwargs: _Docs())
+    return fetched
+
+
+def test_update_catalog_proposes_newer_same_family_model(
+    config_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Haiku 4.5 is proposed as Haiku 5.5, docs and harness confirmed, and nothing is written."""
+    from superharness.engine.model_catalog import parse_catalog
+
+    target = config_dir / "model-bindings.yaml"
+    target.write_text(_CATALOG_BINDINGS)
+    before = target.read_bytes()
+    _stub_catalog(monkeypatch, parse_catalog(_CATALOG_SAMPLE))
+    _probe(monkeypatch, lambda agent: _discovered("claude-haiku-5-5"))
+
+    result = CliRunner().invoke(models_main, ["update", "--catalog", "--json"])
+
+    assert result.exit_code == 0, result.output
+    report = json.loads(result.output)
+    assert report["proposals"] == [{
+        "harness": "claude-code", "tier": "bulk", "provider": "anthropic",
+        "current": "claude-haiku-4-5", "proposed": "claude-haiku-5-5",
+        "released": "2026-10-07", "docs": "confirmed", "harness_check": "confirmed",
+        "apply": True,
+    }]
+    assert target.read_bytes() == before
+    assert not list(config_dir.glob("*.bak-*"))
+
+
+def test_update_catalog_failure_is_reported_and_journaled(
+    config_dir: Path, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """An unreadable catalog exits 1 with its cause and leaves one journal line."""
+    from superharness.engine.model_catalog import CatalogFailure
+    from superharness.engine.model_catalog_journal import JOURNAL_FILENAME
+
+    state_dir = tmp_path / "state"
+    monkeypatch.setenv("SUPERHARNESS_STATE_DIR", str(state_dir))
+    (config_dir / "model-bindings.yaml").write_text(_CATALOG_BINDINGS)
+    _stub_catalog(monkeypatch, CatalogFailure("models.dev", "cannot reach models.dev: offline"))
+    _probe(monkeypatch, lambda agent: _discovered())
+
+    result = CliRunner().invoke(models_main, ["update", "--catalog"])
+
+    assert result.exit_code == 1
+    assert "cannot reach models.dev: offline" in result.output
+    lines = (state_dir / JOURNAL_FILENAME).read_text().splitlines()
+    assert len(lines) == 1
+    assert json.loads(lines[0])["source"] == "models.dev"
+
+
+def test_update_catalog_never_crosses_providers(
+    config_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A newer same-family model listed under another provider is never proposed."""
+    from superharness.engine.model_catalog import parse_catalog
+
+    (config_dir / "model-bindings.yaml").write_text(_CATALOG_BINDINGS)
+    _stub_catalog(monkeypatch, parse_catalog(_CATALOG_SAMPLE))
+    _probe(monkeypatch, lambda agent: _discovered("claude-haiku-5-5", "claude-sonnet-9"))
+
+    result = CliRunner().invoke(models_main, ["update", "--catalog", "--json"])
+
+    assert result.exit_code == 0, result.output
+    proposed = {p["proposed"] for p in json.loads(result.output)["proposals"]}
+    assert "claude-sonnet-9" not in proposed
+
+
+def test_update_without_catalog_is_unchanged(
+    config_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Plain update keeps the accept-chain path and never reads the catalog."""
+    (config_dir / "model-bindings.yaml").write_text(_dead_default_bindings())
+    fetched = _stub_catalog(monkeypatch, {})
+    _probe(monkeypatch, lambda agent: _discovered(*_codex_standard_chain()))
+
+    result = CliRunner().invoke(models_main, ["update", "--json"])
+
+    assert result.exit_code == 0, result.output
+    assert fetched == []
+    default = next(p for p in json.loads(result.output)["proposals"] if p["tier"] == "default")
+    assert default["current"] == "dead-model"
+    assert default["proposed"] == _codex_standard_chain()[0]
+
+
+_CATALOG_APPLY_BINDINGS = f"""schema: 2
+providers:
+  anthropic:
+    verified: {(date.today() - timedelta(days=30)).isoformat()}
+harnesses:
+  claude-code:
+    default_provider: anthropic
+    bindings:
+      anthropic:
+        # bulk stays cheap
+        bulk:
+          id: claude-haiku-4-5
+        default:
+          id: claude-sonnet-5
+"""
+
+_CATALOG_APPLY_SAMPLE = {"anthropic": {"models": {
+    **_CATALOG_SAMPLE["anthropic"]["models"],
+    "claude-sonnet-5": {"id": "claude-sonnet-5", "family": "claude-sonnet",
+                        "release_date": "2026-06-29"},
+}}}
+
+
+def test_update_catalog_apply_writes_only_fully_confirmed_candidates(
+    config_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Only the candidate confirmed by docs and harness is written; the other is named and kept."""
+    from superharness.engine.model_catalog import parse_catalog
+
+    target = config_dir / "model-bindings.yaml"
+    target.write_text(_CATALOG_APPLY_BINDINGS)
+    _stub_catalog(monkeypatch, parse_catalog(_CATALOG_APPLY_SAMPLE))
+    # The harness lists haiku 5.5 but not sonnet 5.5.
+    _probe(monkeypatch, lambda agent: _discovered("claude-haiku-5-5", "claude-haiku-4-5"))
+
+    result = CliRunner().invoke(models_main, ["update", "--catalog", "--apply"])
+
+    assert result.exit_code == 0, result.output
+    text = target.read_text()
+    assert "id: claude-haiku-5-5" in text
+    assert "id: claude-sonnet-5\n" in text
+    assert "# bulk stays cheap" in text
+    assert "Skipped: claude-code default claude-sonnet-5 -> claude-sonnet-5-5" in result.output
+    # anthropic still has a pending binding, so it is not marked verified today.
+    assert date.today().isoformat() not in text
+
+
+def test_update_catalog_apply_keeps_backup_and_sets_verified(
+    config_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The original is backed up byte for byte and the provider is verified today."""
+    from superharness.engine.model_catalog import parse_catalog
+
+    target = config_dir / "model-bindings.yaml"
+    original = _CATALOG_BINDINGS
+    target.write_text(original)
+    _stub_catalog(monkeypatch, parse_catalog(_CATALOG_SAMPLE))
+    _probe(monkeypatch, lambda agent: _discovered("claude-haiku-5-5"))
+
+    result = CliRunner().invoke(models_main, ["update", "--catalog", "--apply"])
+
+    assert result.exit_code == 0, result.output
+    backups = list(config_dir.glob("model-bindings.yaml.bak-*"))
+    assert len(backups) == 1
+    assert backups[0].read_text() == original
+    text = target.read_text()
+    assert "id: claude-haiku-5-5" in text
+    assert f"verified: {date.today().isoformat()}" in text
+
+
+def test_check_stale_names_catalog_refresh(config_dir: Path) -> None:
+    """A stale provider points at the catalog refresh, in text and JSON; exit code unchanged."""
+    (config_dir / "model-bindings.yaml").write_text(_bindings(date.today() - timedelta(days=30)))
+
+    text = CliRunner().invoke(models_main, ["check"])
+    as_json = CliRunner().invoke(models_main, ["check", "--json"])
+
+    assert text.exit_code == 1
+    assert "shux models update --catalog" in text.output
+    assert json.loads(as_json.output)["next_command"] == "shux models update --catalog"
