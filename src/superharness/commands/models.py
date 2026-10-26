@@ -647,5 +647,105 @@ def check_cmd(probe: bool, as_json: bool) -> None:
     sys.exit(code)
 
 
+# --- shux models schedule -----------------------------------------------------
+
+_HOME_OPTION = click.option(
+    "--home", "home", default=None, type=click.Path(file_okay=False, path_type=Path),
+    help="Home directory to install under (default: the current user's home)",
+)
+
+
+@main.group("schedule")
+def schedule_group() -> None:
+    """Run `shux models refresh` daily from launchd (dry run unless --apply).
+
+    Register the scheduler in AACP before installing it on a managed host.
+    """
+
+
+def _schedule_paths(home: Path | None):
+    from superharness.engine import model_refresh_schedule as schedule
+
+    if schedule._platform() != "darwin":
+        raise schedule.ScheduleError(f"scheduling is not supported on {schedule._platform()} yet")
+    return schedule.LaunchdPaths(home or Path.home())
+
+
+@schedule_group.command("status")
+@_HOME_OPTION
+def schedule_status_cmd(home: Path | None) -> None:
+    """Show whether the scheduler is installed and loaded, and the last refresh receipt."""
+    from superharness.engine import model_refresh_schedule as schedule
+    from superharness.engine.model_refresh import last_receipt
+
+    try:
+        click.echo(schedule.status(_schedule_paths(home)))
+    except schedule.ScheduleError as exc:
+        click.echo(str(exc))
+        sys.exit(EXIT_ATTENTION)
+    receipt = last_receipt()
+    click.echo(f"last refresh: {receipt['outcome']} at {receipt['at']}" if receipt
+               else "last refresh: none recorded")
+
+
+@schedule_group.command("install")
+@_HOME_OPTION
+@click.option("--hour", default=None, type=click.IntRange(0, 23), help="Hour of the daily run")
+@click.option("--minute", default=None, type=click.IntRange(0, 59), help="Minute of the daily run")
+@click.option("--apply", "do_apply", is_flag=True, default=False,
+              help="Write and load the scheduler (without it, only print what would be done)")
+def schedule_install_cmd(home: Path | None, hour: int | None, minute: int | None, do_apply: bool) -> None:
+    """Install the daily refresh for the installed `shux`; a checkout `shux` is refused."""
+    from superharness.engine import model_refresh_schedule as schedule
+
+    try:
+        paths = _schedule_paths(home)
+        shux = schedule.resolve_installed_shux()
+        text = schedule.launchd_plist(
+            shux,
+            hour=schedule.DEFAULT_HOUR if hour is None else hour,
+            minute=schedule.DEFAULT_MINUTE if minute is None else minute,
+            log_dir=paths.log_dir,
+        )
+        if not do_apply:
+            click.echo(f"Would write {paths.plist} (dry run, nothing written):")
+            click.echo(text)
+            for cmd in schedule.install_commands(paths):
+                click.echo(f"Would run: {' '.join(cmd)}")
+            click.echo("Pass --apply to install. Register it in AACP first on a managed host.")
+            return
+        schedule.install(paths, text)
+    except (schedule.ScheduleError, OSError) as exc:
+        click.echo(f"Install failed: {exc}")
+        sys.exit(EXIT_ATTENTION)
+    click.echo(f"Installed and loaded {paths.plist}: `{shux} models refresh` runs daily.")
+
+
+@schedule_group.command("uninstall")
+@_HOME_OPTION
+@click.option("--apply", "do_apply", is_flag=True, default=False,
+              help="Unload and delete the scheduler (without it, only print what would be done)")
+def schedule_uninstall_cmd(home: Path | None, do_apply: bool) -> None:
+    """Unload the scheduler and delete everything install created."""
+    from superharness.engine import model_refresh_schedule as schedule
+
+    try:
+        paths = _schedule_paths(home)
+        if not do_apply:
+            for cmd in schedule.uninstall_commands():
+                click.echo(f"Would run (if loaded): {' '.join(cmd)}")
+            for path in (paths.plist, *paths.logs):
+                click.echo(f"Would delete (if present): {path}")
+            click.echo("Dry run, nothing changed. Pass --apply to uninstall.")
+            return
+        removed = schedule.uninstall(paths)
+    except (schedule.ScheduleError, OSError) as exc:
+        click.echo(f"Uninstall failed: {exc}")
+        sys.exit(EXIT_ATTENTION)
+    for path in removed:
+        click.echo(f"Deleted {path}")
+    click.echo("Scheduler uninstalled.")
+
+
 if __name__ == "__main__":
     main()
