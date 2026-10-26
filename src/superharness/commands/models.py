@@ -94,15 +94,31 @@ def classify_bindings(
     return classified
 
 
-def _discover_bound_models(rows: list[dict[str, str]]) -> dict[str, list[str] | Exception]:
-    """Run discovery once per harness, asking about that harness's bound models."""
-    from superharness.engine import model_router
+_BINDING_TO_DISPATCH_TIER = {binding: dispatch for dispatch, binding in DISPATCH_TO_BINDING_TIER.items()}
 
+
+def _models_by_harness(
+    rows: list[dict[str, str]], extra: dict[tuple[str, str], list[str]] | None = None
+) -> dict[str, list[str]]:
+    """Bound models per harness, followed by any extra candidates, without duplicates."""
     by_harness: dict[str, list[str]] = {}
     for row in rows:
-        by_harness.setdefault(row["harness"], [])
-        if row["model"] not in by_harness[row["harness"]]:
-            by_harness[row["harness"]].append(row["model"])
+        models = by_harness.setdefault(row["harness"], [])
+        candidates = [row["model"], *(extra or {}).get((row["harness"], row["tier"]), [])]
+        for model in candidates:
+            if model not in models:
+                models.append(model)
+    return by_harness
+
+
+def _discover_bound_models(rows: list[dict[str, str]]) -> dict[str, list[str] | Exception]:
+    """Run discovery once per harness, asking about that harness's bound models."""
+    return _discover(_models_by_harness(rows))
+
+
+def _discover(by_harness: dict[str, list[str]]) -> dict[str, list[str] | Exception]:
+    """Run discovery once per harness for the given candidate models."""
+    from superharness.engine import model_router
 
     results: dict[str, list[str] | Exception] = {}
     for harness, models in by_harness.items():
@@ -114,6 +130,65 @@ def _discover_bound_models(rows: list[dict[str, str]]) -> dict[str, list[str] | 
             # One harness's failing probe must not hide the others' results.
             results[harness] = exc
     return results
+
+
+def _accept_chains(rows: list[dict[str, str]]) -> dict[tuple[str, str], list[str]]:
+    """The adapter manifest's auth-compatible accept chain for each bound tier."""
+    from superharness.engine import model_router
+
+    chains: dict[tuple[str, str], list[str]] = {}
+    for row in rows:
+        dispatch_tier = _BINDING_TO_DISPATCH_TIER.get(row["tier"])
+        if dispatch_tier is None:
+            continue
+        auth_mode = model_router.detect_auth_mode_for_agent(row["harness"])
+        chains[(row["harness"], row["tier"])] = model_router._tier_accept_chain(
+            row["harness"], dispatch_tier, auth_mode
+        )
+    return chains
+
+
+def propose_updates(
+    classified: list[dict[str, str]],
+    accept_chains: dict[tuple[str, str], list[str]],
+    discovered: dict[str, list[str] | Exception],
+) -> tuple[list[dict[str, Any]], list[str]]:
+    """Propose a replacement for each unavailable binding, and the providers to re-verify.
+
+    A replacement is the first model of the adapter's accept chain that
+    discovery confirmed; without one, the proposal is ``None`` and the binding
+    needs a manual edit. A provider is re-verified only when every one of its
+    bindings is confirmed available.
+    """
+    proposals: list[dict[str, Any]] = []
+    for row in classified:
+        if row.get("availability") != "unavailable":
+            continue
+        found = discovered.get(row["harness"])
+        confirmed = set(found) if isinstance(found, list) else set()
+        candidate = next(
+            (m for m in accept_chains.get((row["harness"], row["tier"]), [])
+             if m in confirmed and m != row["model"]),
+            None,
+        )
+        reason = (
+            "bound model unavailable; first confirmed model of the adapter accept chain"
+            if candidate
+            else "bound model unavailable and no accept-chain model confirmed; edit it by hand"
+        )
+        proposals.append({
+            "harness": row["harness"],
+            "tier": row["tier"],
+            "current": row["model"],
+            "proposed": candidate,
+            "reason": reason,
+        })
+
+    by_provider: dict[str, list[str]] = {}
+    for row in classified:
+        by_provider.setdefault(row["provider"], []).append(row.get("availability", "unknown"))
+    refresh = sorted(p for p, states in by_provider.items() if states and set(states) == {"available"})
+    return proposals, refresh
 
 
 def _check_report(bindings: BindingsFile, today: date) -> tuple[dict[str, Any], int]:
@@ -220,6 +295,55 @@ def _manifest_bindings_text(today: date) -> str:
 @click.group()
 def main() -> None:
     """Check and maintain superharness's own model bindings file."""
+
+
+def _update_report(bindings: BindingsFile) -> dict[str, Any]:
+    """Probe the bindings and their accept-chain candidates; return proposals."""
+    rows = _binding_rows(bindings)
+    chains = _accept_chains(rows)
+    discovered = _discover(_models_by_harness(rows, chains))
+    classified = classify_bindings(rows, discovered)
+    proposals, refresh = propose_updates(classified, chains, discovered)
+    errors = {
+        harness: f"{type(answer).__name__}: {answer}"
+        for harness, answer in discovered.items()
+        if isinstance(answer, Exception)
+    }
+    return {
+        "path": str(bindings.path),
+        "proposals": proposals,
+        "verified_refresh": refresh,
+        "errors": errors,
+    }
+
+
+@main.command("update")
+@click.option("--json", "as_json", is_flag=True, default=False, help="Output as JSON")
+def update_cmd(as_json: bool) -> None:
+    """Propose replacements for unavailable bindings (dry run; nothing is written)."""
+    bindings = _bindings_file()
+    if bindings.status != "ok":
+        report, code = _check_report(bindings, date.today())
+        if as_json:
+            click.echo(json.dumps(report, indent=2))
+        else:
+            _print_report(report)
+        sys.exit(code)
+    report = _update_report(bindings)
+    if as_json:
+        click.echo(json.dumps(report, indent=2))
+        sys.exit(EXIT_OK)
+    click.echo(f"Model bindings: {report['path']} (dry run, nothing written)")
+    if not report["proposals"]:
+        click.echo("No unavailable binding found.")
+    for p in report["proposals"]:
+        target = p["proposed"] or "no confirmed replacement; edit by hand"
+        click.echo(f"  {p['harness']:<14} {p['tier']:<13} {p['current']} -> {target}")
+    if report["verified_refresh"]:
+        click.echo(f"Providers confirmed today: {', '.join(report['verified_refresh'])}")
+    for harness, error in report["errors"].items():
+        click.echo(f"  {harness}: discovery failed: {error}")
+    sys.exit(EXIT_OK)
 
 
 def _import_text(source: Path) -> str:

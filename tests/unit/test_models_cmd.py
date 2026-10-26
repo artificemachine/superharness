@@ -270,6 +270,90 @@ def test_init_from_rejects_invalid_schema_and_writes_nothing(
     assert not (config_dir / "model-bindings.yaml").exists()
 
 
+def _dead_default_bindings() -> str:
+    return _bindings(date.today()).replace("id: model-default", "id: dead-model")
+
+
+def _codex_standard_chain() -> list[str]:
+    from superharness.engine.adapter_registry import load_manifest
+
+    return load_manifest("codex-cli").resolve_accept_chain("standard", "unknown")
+
+
+def test_update_dry_run_writes_nothing(config_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """update without --apply never touches the file."""
+    target = config_dir / "model-bindings.yaml"
+    target.write_text(_dead_default_bindings())
+    before = (target.read_bytes(), target.stat().st_mtime_ns)
+    _probe(monkeypatch, lambda agent: _discovered(*_codex_standard_chain()))
+
+    result = CliRunner().invoke(models_main, ["update"])
+
+    assert result.exit_code == 0, result.output
+    assert (target.read_bytes(), target.stat().st_mtime_ns) == before
+    assert not list(config_dir.glob("*.bak-*"))
+
+
+def test_update_proposes_manifest_replacement_for_dead_binding(
+    config_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A dead binding gets the first accept-chain model that discovery confirms."""
+    (config_dir / "model-bindings.yaml").write_text(_dead_default_bindings())
+    chain = _codex_standard_chain()
+    confirmed = chain[-1]
+    calls = _probe(monkeypatch, lambda agent: _discovered("model-bulk", "model-max", confirmed))
+
+    result = CliRunner().invoke(models_main, ["update", "--json"])
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert payload["proposals"] == [
+        {
+            "harness": "codex-cli",
+            "tier": "default",
+            "current": "dead-model",
+            "proposed": confirmed,
+            "reason": "bound model unavailable; first confirmed model of the adapter accept chain",
+        }
+    ]
+    assert payload["verified_refresh"] == []
+    asked = set(calls[0][1] or [])
+    assert {"dead-model", *chain} <= asked
+
+
+@pytest.mark.parametrize("failure", ["none-confirmed", "probe-raises"])
+def test_update_proposes_nothing_without_confirmed_replacement(
+    config_dir: Path, monkeypatch: pytest.MonkeyPatch, failure: str
+) -> None:
+    """No confirmed candidate, or a failing probe: no model is invented."""
+    (config_dir / "model-bindings.yaml").write_text(_dead_default_bindings())
+
+    def _answer(agent):
+        if failure == "probe-raises":
+            raise RuntimeError("probe crashed")
+        return _discovered("model-bulk", "model-max", "unrelated")
+
+    _probe(monkeypatch, _answer)
+
+    result = CliRunner().invoke(models_main, ["update", "--json"])
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    if failure == "probe-raises":
+        assert payload["proposals"] == []
+        assert "probe crashed" in payload["errors"]["codex-cli"]
+    else:
+        assert payload["proposals"] == [
+            {
+                "harness": "codex-cli",
+                "tier": "default",
+                "current": "dead-model",
+                "proposed": None,
+                "reason": "bound model unavailable and no accept-chain model confirmed; edit it by hand",
+            }
+        ]
+
+
 def test_check_json_lists_bindings(config_dir: Path) -> None:
     """--json returns path, status, stale providers and every binding; exit 0 when fresh."""
     (config_dir / "model-bindings.yaml").write_text(_bindings(date.today()))
