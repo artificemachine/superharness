@@ -2052,32 +2052,28 @@ def _auto_recover_exhausted_failures_sqlite(project_dir: str) -> None:
                     )
 
                     if is_architecture_bug:
-                        (
-                            f"\n[auto-recovery] INFRA ESCALATION: task failed on "
-                            f"{', '.join(agents_tried)} with: "
-                            f"{row.failed_reason or 'unknown error'}. "
-                            f"Check launcher logs, CLI availability, and superharness hooks."
-                        )
                         # Record to failures ledger for diagnostics
                         try:
                             from superharness.engine import failures_dao
+                            from superharness.engine.state_errors import StateError
 
                             failures_dao.record(
                                 conn,
+                                task_id=row.task_id,
                                 agent=row.target_agent,
-                                error=f"[auto-recovery] infra escalation: "
-                                f"task {row.task_id} failed on {agents_tried}",
-                                details={
-                                    "task_id": row.task_id,
-                                    "agents": agents_tried,
-                                    "reason": row.failed_reason,
-                                },
+                                pattern="auto-recovery-infra-escalation",
+                                error_snippet=(
+                                    f"task failed on {', '.join(agents_tried)} with: "
+                                    f"{row.failed_reason or 'unknown error'}; check launcher "
+                                    f"logs, CLI availability and superharness hooks"
+                                ),
+                                now=now,
                             )
-                        except Exception as e:
+                        except StateError as e:
                             logger.warning(
-                                "inbox_watch unexpected error: %s", e, exc_info=True
+                                "inbox_watch could not record infra escalation for %s: %s",
+                                row.task_id, e,
                             )
-                            pass
                 # Hard cap absolute retry budget so a runaway loop can't
                 # bump max_retries indefinitely (was the cause of max_retries=65).
                 if row.max_retries >= _ABSOLUTE_MAX_RETRIES:
