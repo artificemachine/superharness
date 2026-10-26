@@ -104,6 +104,47 @@ def _superharness_logger_propagates(monkeypatch):
     monkeypatch.setattr(logging.getLogger("superharness"), "propagate", True)
 
 
+_REAL_BINDINGS_RESOLVER: dict[str, object] = {}
+
+
+@pytest.fixture(autouse=True)
+def _isolated_model_bindings(tmp_path):
+    """Never let a test resolve models from the operator's live bindings.
+
+    Model bindings decide dispatch models, so the operator's installed
+    `$HOME/.config/superharness/model-bindings.yaml` would otherwise leak live
+    model ids into every resolution test. A test that points
+    SUPERHARNESS_CONFIG_DIR or XDG_CONFIG_HOME elsewhere, or patches
+    `_runtime_model_bindings_path`, still wins.
+
+    Patched by hand rather than through `monkeypatch`: requesting
+    `monkeypatch` here changes the teardown order so `_real_repo_untouched`
+    reads a `REPO_ROOT` a test patched, and reports a false mutation.
+    """
+    from superharness.engine import model_router
+    from superharness.utils.paths import resolve_config_dir
+
+    live_config_dir = Path.home() / ".config" / "superharness"
+    fallback_dir = tmp_path / "no-superharness-config"
+
+    def _isolated_path() -> Path:
+        config_dir = Path(resolve_config_dir())
+        if config_dir == live_config_dir:
+            config_dir = fallback_dir
+        return config_dir / "model-bindings.yaml"
+
+    # Captured once: a test's own monkeypatch may restore a previous test's
+    # isolated resolver after this teardown, so never trust the current value.
+    original = _REAL_BINDINGS_RESOLVER.setdefault(
+        "resolver", model_router._runtime_model_bindings_path
+    )
+    model_router._runtime_model_bindings_path = _isolated_path
+    try:
+        yield
+    finally:
+        model_router._runtime_model_bindings_path = original
+
+
 @pytest.fixture(autouse=True)
 def isolated_state_dir(tmp_path, monkeypatch):
     """Point XDG_STATE_HOME at a per-test directory.

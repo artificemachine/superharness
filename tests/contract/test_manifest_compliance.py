@@ -264,8 +264,12 @@ class TestOrchestratorChain:
 
     def test_chain_models_match_configured_runtime_bindings(self):
         """Orchestrator chain models come from configured runtime bindings."""
-        from superharness.engine.orchestrator import _ORCHESTRATOR_CHAIN
+        from superharness.engine.orchestrator import _build_orchestrator_chain
         from superharness.engine.model_router import _resolve_configured_model
+
+        # The module-level chain is resolved at import time, possibly before
+        # the bindings isolation fixture ran; rebuild it under that isolation.
+        _ORCHESTRATOR_CHAIN = _build_orchestrator_chain()
 
         harnesses = {
             "claude": "claude-code",
