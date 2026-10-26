@@ -662,7 +662,6 @@ def schedule_group() -> None:
     """Run `shux models refresh` daily (launchd on macOS, a systemd user timer on Linux).
 
     install and uninstall are dry runs unless --apply. Windows is not supported.
-    Register the scheduler in AACP before installing it on a managed host.
     """
 
 
@@ -713,7 +712,7 @@ def schedule_install_cmd(home: Path | None, hour: int | None, minute: int | None
                 click.echo(text)
             for cmd in backend.install_commands():
                 click.echo(f"Would run: {' '.join(cmd)}")
-            click.echo("Pass --apply to install. Register it in AACP first on a managed host.")
+            click.echo("Pass --apply to install.")
             return
         schedule.install(backend, files)
     except (schedule.ScheduleError, OSError) as exc:
@@ -746,6 +745,7 @@ def schedule_uninstall_cmd(home: Path | None, do_apply: bool) -> None:
     for path in removed:
         click.echo(f"Deleted {path}")
     click.echo("Scheduler uninstalled.")
+
 
 
 if __name__ == "__main__":
