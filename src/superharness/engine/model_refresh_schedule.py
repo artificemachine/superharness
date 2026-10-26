@@ -9,9 +9,6 @@ inverse: uninstall removes every file install wrote (and the launchd logs).
 The scheduler must run the installed `shux`, never a checkout: a `shux`
 inside a git work tree is refused, because switching or deleting that
 checkout would change or break what the scheduler runs.
-
-AACP registration precedes any real install on a managed host; this module
-never registers anything.
 """
 
 from __future__ import annotations
