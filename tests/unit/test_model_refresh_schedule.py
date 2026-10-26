@@ -26,11 +26,11 @@ class _FakeRunner:
 
     def __call__(self, cmd: list[str]) -> subprocess.CompletedProcess:
         self.calls.append(cmd)
-        if cmd[:2] == ["launchctl", "print"]:
-            return subprocess.CompletedProcess(cmd, 0 if self.loaded else 113, "", "")
-        if self.rc == 0 and cmd[:2] == ["launchctl", "bootstrap"]:
+        if cmd[:2] == ["launchctl", "print"] or "is-enabled" in cmd:
+            return subprocess.CompletedProcess(cmd, 0 if self.loaded else 1, "", "")
+        if self.rc == 0 and (cmd[:2] == ["launchctl", "bootstrap"] or "enable" in cmd):
             self.loaded = True
-        if self.rc == 0 and cmd[:2] == ["launchctl", "bootout"]:
+        if self.rc == 0 and (cmd[:2] == ["launchctl", "bootout"] or "disable" in cmd):
             self.loaded = False
         return subprocess.CompletedProcess(cmd, self.rc, "", self.stderr)
 
@@ -139,3 +139,75 @@ def test_install_apply_then_uninstall_apply_leaves_nothing(
     assert failed.exit_code == 1
     assert "Bootstrap failed: 5: Input/output error" in failed.output
     assert sorted(p.name for p in agents.iterdir()) == before
+
+
+# --- Linux systemd user timer and Windows -----------------------------------------
+
+UNIT = "superharness-models-refresh"
+
+
+def test_systemd_units_run_installed_shux_daily() -> None:
+    """The service runs the absolute shux once; the timer fires daily and catches up missed runs."""
+    shux = Path("/opt/pipx/bin/shux")
+
+    service, timer = schedule.systemd_units(shux, hour=9, minute=17)
+
+    assert "Type=oneshot" in service
+    assert f"ExecStart={shux} models refresh" in service
+    assert "OnCalendar=*-*-* 09:17:00" in timer
+    assert "Persistent=true" in timer
+    assert f"Unit={UNIT}.service" in timer
+    assert "WantedBy=timers.target" in timer
+
+
+def test_systemd_install_and_uninstall_are_inverse(
+    tmp_path: Path, installed_shux: Path, runner: _FakeRunner, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Install writes both units and enables the timer; uninstall disables it and deletes both."""
+    monkeypatch.setattr(schedule, "_platform", lambda: "linux")
+    home = tmp_path / "home"
+    home.mkdir()
+    unit_dir = home / ".config" / "systemd" / "user"
+
+    dry = CliRunner().invoke(models_main, ["schedule", "install", "--home", str(home)])
+    assert dry.exit_code == 0, dry.output
+    assert f"ExecStart={installed_shux} models refresh" in dry.output
+    assert list(home.rglob("*")) == [] and runner.calls == []
+
+    installed = CliRunner().invoke(models_main, ["schedule", "install", "--home", str(home), "--apply"])
+
+    assert installed.exit_code == 0, installed.output
+    assert sorted(p.name for p in unit_dir.iterdir()) == [f"{UNIT}.service", f"{UNIT}.timer"]
+    assert ["systemctl", "--user", "daemon-reload"] in runner.calls
+    assert ["systemctl", "--user", "enable", "--now", f"{UNIT}.timer"] in runner.calls
+
+    removed = CliRunner().invoke(models_main, ["schedule", "uninstall", "--home", str(home), "--apply"])
+
+    assert removed.exit_code == 0, removed.output
+    assert ["systemctl", "--user", "disable", "--now", f"{UNIT}.timer"] in runner.calls
+    assert list(unit_dir.iterdir()) == []
+
+    # A systemctl failure exits 1 with its stderr and leaves no unit behind.
+    runner.rc, runner.stderr = 1, "Failed to connect to bus: No medium found"
+    failed = CliRunner().invoke(models_main, ["schedule", "install", "--home", str(home), "--apply"])
+    assert failed.exit_code == 1
+    assert "Failed to connect to bus: No medium found" in failed.output
+    assert list(unit_dir.iterdir()) == []
+
+
+@pytest.mark.parametrize("subcommand", ["status", "install", "uninstall"])
+def test_windows_is_refused(
+    tmp_path: Path, installed_shux: Path, runner: _FakeRunner,
+    monkeypatch: pytest.MonkeyPatch, subcommand: str,
+) -> None:
+    """On Windows every schedule command exits 2 with a clear message and touches nothing."""
+    monkeypatch.setattr(schedule, "_platform", lambda: "win32")
+    home = tmp_path / "home"
+    home.mkdir()
+
+    result = CliRunner().invoke(models_main, ["schedule", subcommand, "--home", str(home), "--apply"]
+                                if subcommand != "status" else ["schedule", "status", "--home", str(home)])
+
+    assert result.exit_code == 2
+    assert "not supported on Windows" in result.output
+    assert list(home.rglob("*")) == [] and runner.calls == []
