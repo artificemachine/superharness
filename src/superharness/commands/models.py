@@ -411,10 +411,13 @@ def _catalog_report(bindings: BindingsFile) -> tuple[dict[str, Any], int]:
         return report, EXIT_ATTENTION
 
     candidates = []
-    for row in _binding_rows(bindings):
+    rows = _binding_rows(bindings)
+    pending = set()
+    for row in rows:
         bare = _without_provider(row["model"], row["provider"])
         if not any(m.id == bare for m in catalog.get(row["provider"], [])):
             report["not_in_catalog"].append(f"{row['harness']} {row['tier']} {row['model']}")
+            pending.add(row["provider"])
             continue
         newer = model_catalog.newer_in_family(row["provider"], bare, catalog)
         if newer is not None:
@@ -441,6 +444,9 @@ def _catalog_report(bindings: BindingsFile) -> tuple[dict[str, Any], int]:
     for harness, answer in discovered.items():
         if isinstance(answer, Exception):
             report["errors"][harness] = f"{type(answer).__name__}: {answer}"
+    pending.update(p["provider"] for p in report["proposals"] if not p["apply"])
+    # A provider is re-verified only when every binding is the newest of its family once applied.
+    report["verified_after_apply"] = sorted({row["provider"] for row in rows} - pending)
     return report, EXIT_OK
 
 
@@ -477,10 +483,21 @@ def update_cmd(do_apply: bool, use_catalog: bool, as_json: bool) -> None:
             _print_report(report)
         sys.exit(code)
     if use_catalog:
-        if do_apply:
-            click.echo("--catalog --apply is not available yet; run the dry run and edit by hand.")
-            sys.exit(EXIT_ATTENTION)
         catalog_report, code = _catalog_report(bindings)
+        if do_apply and code == EXIT_OK:
+            for source, reason in catalog_report["errors"].items():
+                click.echo(f"  {source}: {reason}")
+            for p in catalog_report["proposals"]:
+                if not p["apply"]:
+                    click.echo(
+                        f"Skipped: {p['harness']} {p['tier']} {p['current']} -> {p['proposed']} "
+                        f"(docs {p['docs']}; harness {p['harness_check']})"
+                    )
+            _apply(bindings, {
+                "proposals": [p for p in catalog_report["proposals"] if p["apply"]],
+                "verified_after_apply": catalog_report["verified_after_apply"],
+            })
+            sys.exit(EXIT_OK)
         if as_json:
             click.echo(json.dumps(catalog_report, indent=2))
         else:

@@ -631,3 +631,73 @@ def test_update_without_catalog_is_unchanged(
     default = next(p for p in json.loads(result.output)["proposals"] if p["tier"] == "default")
     assert default["current"] == "dead-model"
     assert default["proposed"] == _codex_standard_chain()[0]
+
+
+_CATALOG_APPLY_BINDINGS = f"""schema: 2
+providers:
+  anthropic:
+    verified: {(date.today() - timedelta(days=30)).isoformat()}
+harnesses:
+  claude-code:
+    default_provider: anthropic
+    bindings:
+      anthropic:
+        # bulk stays cheap
+        bulk:
+          id: claude-haiku-4-5
+        default:
+          id: claude-sonnet-5
+"""
+
+_CATALOG_APPLY_SAMPLE = {"anthropic": {"models": {
+    **_CATALOG_SAMPLE["anthropic"]["models"],
+    "claude-sonnet-5": {"id": "claude-sonnet-5", "family": "claude-sonnet",
+                        "release_date": "2026-06-29"},
+}}}
+
+
+def test_update_catalog_apply_writes_only_fully_confirmed_candidates(
+    config_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Only the candidate confirmed by docs and harness is written; the other is named and kept."""
+    from superharness.engine.model_catalog import parse_catalog
+
+    target = config_dir / "model-bindings.yaml"
+    target.write_text(_CATALOG_APPLY_BINDINGS)
+    _stub_catalog(monkeypatch, parse_catalog(_CATALOG_APPLY_SAMPLE))
+    # The harness lists haiku 5.5 but not sonnet 5.5.
+    _probe(monkeypatch, lambda agent: _discovered("claude-haiku-5-5", "claude-haiku-4-5"))
+
+    result = CliRunner().invoke(models_main, ["update", "--catalog", "--apply"])
+
+    assert result.exit_code == 0, result.output
+    text = target.read_text()
+    assert "id: claude-haiku-5-5" in text
+    assert "id: claude-sonnet-5\n" in text
+    assert "# bulk stays cheap" in text
+    assert "Skipped: claude-code default claude-sonnet-5 -> claude-sonnet-5-5" in result.output
+    # anthropic still has a pending binding, so it is not marked verified today.
+    assert date.today().isoformat() not in text
+
+
+def test_update_catalog_apply_keeps_backup_and_sets_verified(
+    config_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The original is backed up byte for byte and the provider is verified today."""
+    from superharness.engine.model_catalog import parse_catalog
+
+    target = config_dir / "model-bindings.yaml"
+    original = _CATALOG_BINDINGS
+    target.write_text(original)
+    _stub_catalog(monkeypatch, parse_catalog(_CATALOG_SAMPLE))
+    _probe(monkeypatch, lambda agent: _discovered("claude-haiku-5-5"))
+
+    result = CliRunner().invoke(models_main, ["update", "--catalog", "--apply"])
+
+    assert result.exit_code == 0, result.output
+    backups = list(config_dir.glob("model-bindings.yaml.bak-*"))
+    assert len(backups) == 1
+    assert backups[0].read_text() == original
+    text = target.read_text()
+    assert "id: claude-haiku-5-5" in text
+    assert f"verified: {date.today().isoformat()}" in text
