@@ -362,7 +362,7 @@ def _update_report(bindings: BindingsFile) -> dict[str, Any]:
 
 
 def _apply(bindings: BindingsFile, report: dict[str, Any]) -> None:
-    """Write the confirmed proposals and verified dates; exit 1 on a write failure."""
+    """Write the confirmed proposals and verified dates; re-raise OSError after naming the file."""
     replacements = [p for p in report["proposals"] if p["proposed"]]
     providers = report["verified_after_apply"]
     if not replacements and not providers:
@@ -375,7 +375,7 @@ def _apply(bindings: BindingsFile, report: dict[str, Any]) -> None:
         backup = write_bindings_atomically(bindings.path, text)
     except OSError as exc:
         click.echo(f"Could not write {bindings.path}: {exc}")
-        sys.exit(EXIT_ATTENTION)
+        raise
     if backup is not None:
         click.echo(f"Backup: {backup}")
     for p in replacements:
@@ -470,6 +470,72 @@ def _print_catalog_report(report: dict[str, Any]) -> None:
         click.echo(f"  not in the catalog, left as is: {entry}")
 
 
+def _describe(proposal: dict[str, Any]) -> str:
+    return f"{proposal['harness']} {proposal['tier']} {proposal['current']} -> {proposal['proposed']}"
+
+
+def _apply_catalog(bindings: BindingsFile, report: dict[str, Any]) -> tuple[list[str], list[str]]:
+    """Write the applicable catalog proposals; name the others.
+
+    Returns the applied and skipped proposals as "harness tier current -> proposed".
+    Raises OSError when the bindings file cannot be written.
+    """
+    for source, reason in report["errors"].items():
+        click.echo(f"  {source}: {reason}")
+    skipped = [p for p in report["proposals"] if not p["apply"]]
+    for p in skipped:
+        click.echo(f"Skipped: {_describe(p)} (docs {p['docs']}; harness {p['harness_check']})")
+    applicable = [p for p in report["proposals"] if p["apply"]]
+    _apply(bindings, {"proposals": applicable,
+                      "verified_after_apply": report["verified_after_apply"]})
+    return [_describe(p) for p in applicable], [_describe(p) for p in skipped]
+
+
+def _refresh(bindings: BindingsFile, today: date) -> tuple[str, list[str], list[str], dict[str, str]]:
+    """Run one unattended refresh; return (outcome, applied, skipped, errors)."""
+    if bindings.status != "ok":
+        return "failed", [], [], {
+            "bindings": bindings.reason or f"{bindings.status} bindings file {bindings.path}"
+        }
+    if not stale_providers(bindings, today):
+        return "skipped", [], [], {}
+    report, code = _catalog_report(bindings)
+    errors = dict(report["errors"])
+    if code != EXIT_OK:
+        return "failed", [], [], errors
+    try:
+        applied, skipped = _apply_catalog(bindings, report)
+    except OSError as exc:
+        errors["write"] = f"{bindings.path}: {exc}"
+        return "failed", [], [], errors
+    skipped += [f"{entry} (not in the catalog)" for entry in report["not_in_catalog"]]
+    return ("partial" if skipped or errors else "ok"), applied, skipped, errors
+
+
+@main.command("refresh")
+def refresh_cmd() -> None:
+    """Refresh stale bindings from the catalog, unattended; one receipt per run.
+
+    Does nothing, without network, when no provider is past review_after_days.
+    Otherwise applies the confirmed catalog proposals like `update --catalog --apply`.
+    Exit 0 for skipped, ok and partial; exit 1 when the refresh failed or its
+    receipt could not be written.
+    """
+    from superharness.engine.model_refresh import append_receipt, receipts_path
+
+    outcome, applied, skipped, errors = _refresh(_bindings_file(), date.today())
+    try:
+        append_receipt(outcome, applied=applied, skipped=skipped, errors=errors)
+    except OSError as exc:
+        click.echo(f"Could not write the refresh receipt {receipts_path()}: {exc}", err=True)
+        sys.exit(EXIT_ATTENTION)
+    for source, reason in errors.items():
+        click.echo(f"  {source}: {reason}")
+    click.echo(f"Refresh {outcome}: {len(applied)} applied, {len(skipped)} skipped. "
+               f"Receipt: {receipts_path()}")
+    sys.exit(EXIT_ATTENTION if outcome == "failed" else EXIT_OK)
+
+
 @main.command("update")
 @click.option("--apply", "do_apply", is_flag=True, default=False,
               help="Write the confirmed replacements and verified dates (a backup is kept)")
@@ -489,18 +555,10 @@ def update_cmd(do_apply: bool, use_catalog: bool, as_json: bool) -> None:
     if use_catalog:
         catalog_report, code = _catalog_report(bindings)
         if do_apply and code == EXIT_OK:
-            for source, reason in catalog_report["errors"].items():
-                click.echo(f"  {source}: {reason}")
-            for p in catalog_report["proposals"]:
-                if not p["apply"]:
-                    click.echo(
-                        f"Skipped: {p['harness']} {p['tier']} {p['current']} -> {p['proposed']} "
-                        f"(docs {p['docs']}; harness {p['harness_check']})"
-                    )
-            _apply(bindings, {
-                "proposals": [p for p in catalog_report["proposals"] if p["apply"]],
-                "verified_after_apply": catalog_report["verified_after_apply"],
-            })
+            try:
+                _apply_catalog(bindings, catalog_report)
+            except OSError:
+                sys.exit(EXIT_ATTENTION)
             sys.exit(EXIT_OK)
         if as_json:
             click.echo(json.dumps(catalog_report, indent=2))
@@ -509,7 +567,10 @@ def update_cmd(do_apply: bool, use_catalog: bool, as_json: bool) -> None:
         sys.exit(code)
     report = _update_report(bindings)
     if do_apply:
-        _apply(bindings, report)
+        try:
+            _apply(bindings, report)
+        except OSError:
+            sys.exit(EXIT_ATTENTION)
         sys.exit(EXIT_OK)
     if as_json:
         click.echo(json.dumps(report, indent=2))
