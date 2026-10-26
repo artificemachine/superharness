@@ -125,6 +125,14 @@ def _as_date(value: Any) -> date | None:
     return None
 
 
+def review_after_days(bindings: BindingsFile) -> int:
+    """The file's ``review_after_days``, or the default when absent or not a usable int."""
+    value = bindings.data.get("review_after_days", DEFAULT_REVIEW_AFTER_DAYS)
+    if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+        return DEFAULT_REVIEW_AFTER_DAYS
+    return value
+
+
 def stale_providers(bindings: BindingsFile, today: date) -> list[str]:
     """Return the bound providers whose ``verified`` date is missing or too old.
 
@@ -141,10 +149,7 @@ def stale_providers(bindings: BindingsFile, today: date) -> list[str]:
         if isinstance(entry, dict) and isinstance(entry.get("default_provider"), str)
     }
 
-    review_after = bindings.data.get("review_after_days", DEFAULT_REVIEW_AFTER_DAYS)
-    if not isinstance(review_after, int) or isinstance(review_after, bool) or review_after < 0:
-        review_after = DEFAULT_REVIEW_AFTER_DAYS
-    oldest_fresh = today - timedelta(days=review_after)
+    oldest_fresh = today - timedelta(days=review_after_days(bindings))
 
     providers = bindings.data.get("providers")
     providers = providers if isinstance(providers, dict) else {}
