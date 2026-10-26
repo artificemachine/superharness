@@ -238,6 +238,38 @@ def test_init_failed_write_leaves_no_partial_file(
     assert list(config_dir.iterdir()) == []
 
 
+def test_init_from_copies_valid_file(config_dir: Path, tmp_path: Path) -> None:
+    """--from imports a valid schema-2 file byte for byte."""
+    source = tmp_path / "elsewhere.yaml"
+    source.write_text("# operator comment\n" + _bindings(date.today()))
+
+    result = CliRunner().invoke(models_main, ["init", "--from", str(source)])
+
+    assert result.exit_code == 0, result.output
+    assert (config_dir / "model-bindings.yaml").read_bytes() == source.read_bytes()
+    assert CliRunner().invoke(models_main, ["check"]).exit_code == 0
+
+
+@pytest.mark.parametrize(
+    "source_text",
+    ["schema: 1\nharnesses: {}\n", None],
+    ids=["wrong-schema", "absent-source"],
+)
+def test_init_from_rejects_invalid_schema_and_writes_nothing(
+    config_dir: Path, tmp_path: Path, source_text: str | None
+) -> None:
+    """An invalid or absent source is refused with its path named, and nothing is written."""
+    source = tmp_path / "source.yaml"
+    if source_text is not None:
+        source.write_text(source_text)
+
+    result = CliRunner().invoke(models_main, ["init", "--from", str(source)])
+
+    assert result.exit_code == 1
+    assert str(source) in result.output
+    assert not (config_dir / "model-bindings.yaml").exists()
+
+
 def test_check_json_lists_bindings(config_dir: Path) -> None:
     """--json returns path, status, stale providers and every binding; exit 0 when fresh."""
     (config_dir / "model-bindings.yaml").write_text(_bindings(date.today()))

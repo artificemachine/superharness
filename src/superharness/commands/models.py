@@ -222,19 +222,37 @@ def main() -> None:
     """Check and maintain superharness's own model bindings file."""
 
 
+def _import_text(source: Path) -> str:
+    """Return a schema-2 source file's text unchanged, or exit 1 naming the problem."""
+    imported = load_bindings(source)
+    if imported.status != "ok":
+        click.echo(f"Cannot import {source}: {imported.reason}")
+        sys.exit(EXIT_ATTENTION)
+    try:
+        return source.read_text(encoding="utf-8")
+    except OSError as exc:
+        click.echo(f"Cannot import {source}: {exc}")
+        sys.exit(EXIT_ATTENTION)
+
+
 @main.command("init")
 @click.option("--force", is_flag=True, default=False,
               help="Replace an existing file (a timestamped backup is kept)")
-def init_cmd(force: bool) -> None:
-    """Create the bindings file from the adapter manifests."""
+@click.option("--from", "source", default=None, metavar="PATH",
+              help="Import an existing schema-2 bindings file instead of the adapter manifests")
+def init_cmd(force: bool, source: str | None) -> None:
+    """Create the bindings file from the adapter manifests, or import one with --from."""
     from superharness.engine.model_router import _runtime_model_bindings_path
 
     path = _runtime_model_bindings_path()
+    text = _import_text(Path(source)) if source else None
     if path.exists() and not force:
         click.echo(f"{path} already exists; pass --force to replace it (a backup is kept).")
         sys.exit(EXIT_ATTENTION)
+    if text is None:
+        text = _manifest_bindings_text(date.today())
     try:
-        backup = write_bindings_atomically(path, _manifest_bindings_text(date.today()))
+        backup = write_bindings_atomically(path, text)
     except OSError as exc:
         click.echo(f"Could not write {path}: {exc}")
         sys.exit(EXIT_ATTENTION)
