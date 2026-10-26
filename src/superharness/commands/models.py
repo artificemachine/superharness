@@ -297,6 +297,45 @@ def main() -> None:
     """Check and maintain superharness's own model bindings file."""
 
 
+def providers_confirmed_after_apply(
+    classified: list[dict[str, str]], proposals: list[dict[str, Any]]
+) -> list[str]:
+    """Providers whose every binding is available once the confirmed replacements land."""
+    replaced = {(p["harness"], p["tier"]) for p in proposals if p["proposed"]}
+    states: dict[str, set[bool]] = {}
+    for row in classified:
+        ok = row.get("availability") == "available" or (row["harness"], row["tier"]) in replaced
+        states.setdefault(row["provider"], set()).add(ok)
+    return sorted(provider for provider, oks in states.items() if oks == {True})
+
+
+def apply_updates(text: str, proposals: list[dict[str, Any]], providers: list[str], today: date) -> str:
+    """Return ``text`` with the confirmed replacements and verified dates, comments kept."""
+    import io
+
+    from ruamel.yaml import YAML
+
+    round_trip = YAML()
+    round_trip.preserve_quotes = True
+    document = round_trip.load(text)
+    for proposal in proposals:
+        if not proposal["proposed"]:
+            continue
+        harness = document["harnesses"][proposal["harness"]]
+        provider = harness["default_provider"]
+        harness["bindings"][provider][proposal["tier"]]["id"] = proposal["proposed"]
+    if providers:
+        if document.get("providers") is None:
+            document["providers"] = {}
+        for name in providers:
+            if document["providers"].get(name) is None:
+                document["providers"][name] = {}
+            document["providers"][name]["verified"] = today
+    out = io.StringIO()
+    round_trip.dump(document, out)
+    return out.getvalue()
+
+
 def _update_report(bindings: BindingsFile) -> dict[str, Any]:
     """Probe the bindings and their accept-chain candidates; return proposals."""
     rows = _binding_rows(bindings)
@@ -313,14 +352,40 @@ def _update_report(bindings: BindingsFile) -> dict[str, Any]:
         "path": str(bindings.path),
         "proposals": proposals,
         "verified_refresh": refresh,
+        "verified_after_apply": providers_confirmed_after_apply(classified, proposals),
         "errors": errors,
     }
 
 
+def _apply(bindings: BindingsFile, report: dict[str, Any]) -> None:
+    """Write the confirmed proposals and verified dates; exit 1 on a write failure."""
+    replacements = [p for p in report["proposals"] if p["proposed"]]
+    providers = report["verified_after_apply"]
+    if not replacements and not providers:
+        click.echo("Nothing to apply: no confirmed replacement and no provider to re-verify.")
+        return
+    try:
+        text = apply_updates(
+            bindings.path.read_text(encoding="utf-8"), replacements, providers, date.today()
+        )
+        backup = write_bindings_atomically(bindings.path, text)
+    except OSError as exc:
+        click.echo(f"Could not write {bindings.path}: {exc}")
+        sys.exit(EXIT_ATTENTION)
+    if backup is not None:
+        click.echo(f"Backup: {backup}")
+    for p in replacements:
+        click.echo(f"Applied: {p['harness']} {p['tier']} {p['current']} -> {p['proposed']}")
+    if providers:
+        click.echo(f"Verified today: {', '.join(providers)}")
+
+
 @main.command("update")
+@click.option("--apply", "do_apply", is_flag=True, default=False,
+              help="Write the confirmed replacements and verified dates (a backup is kept)")
 @click.option("--json", "as_json", is_flag=True, default=False, help="Output as JSON")
-def update_cmd(as_json: bool) -> None:
-    """Propose replacements for unavailable bindings (dry run; nothing is written)."""
+def update_cmd(do_apply: bool, as_json: bool) -> None:
+    """Propose replacements for unavailable bindings; write them with --apply."""
     bindings = _bindings_file()
     if bindings.status != "ok":
         report, code = _check_report(bindings, date.today())
@@ -330,6 +395,9 @@ def update_cmd(as_json: bool) -> None:
             _print_report(report)
         sys.exit(code)
     report = _update_report(bindings)
+    if do_apply:
+        _apply(bindings, report)
+        sys.exit(EXIT_OK)
     if as_json:
         click.echo(json.dumps(report, indent=2))
         sys.exit(EXIT_OK)

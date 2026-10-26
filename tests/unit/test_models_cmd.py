@@ -354,6 +354,131 @@ def test_update_proposes_nothing_without_confirmed_replacement(
         ]
 
 
+def _apply_with_confirmed(monkeypatch: pytest.MonkeyPatch, *extra: str) -> str:
+    confirmed = _codex_standard_chain()[-1]
+    _probe(monkeypatch, lambda agent: _discovered("model-bulk", "model-max", confirmed, *extra))
+    return confirmed
+
+
+def test_update_apply_replaces_dead_binding_and_backs_up(
+    config_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """--apply writes the confirmed replacement, keeps a backup, and dispatch reads it."""
+    from superharness.engine import model_router
+
+    target = config_dir / "model-bindings.yaml"
+    original = _dead_default_bindings().encode()
+    target.write_bytes(original)
+    confirmed = _apply_with_confirmed(monkeypatch)
+
+    result = CliRunner().invoke(models_main, ["update", "--apply"])
+
+    assert result.exit_code == 0, result.output
+    assert model_router._resolve_runtime_binding_model("codex-cli", "standard") == confirmed
+    backups = list(config_dir.glob("model-bindings.yaml.bak-*"))
+    assert [b.read_bytes() for b in backups] == [original]
+
+
+def test_update_apply_preserves_comments(config_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Every comment of the operator's file survives --apply."""
+    target = config_dir / "model-bindings.yaml"
+    text = "# operator header\n" + _dead_default_bindings().replace(
+        "          id: dead-model", "          id: dead-model  # inline note"
+    ).replace("harnesses:", "# harness section\nharnesses:")
+    target.write_text(text)
+    _apply_with_confirmed(monkeypatch)
+
+    result = CliRunner().invoke(models_main, ["update", "--apply"])
+
+    assert result.exit_code == 0, result.output
+    written = target.read_text()
+    for comment in ("# operator header", "# harness section", "# inline note"):
+        assert comment in written
+
+
+def test_update_apply_bumps_verified_for_confirmed_providers(
+    config_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Only a provider whose bindings are all confirmed gets today's verified date."""
+    from superharness.engine.model_bindings import load_bindings
+
+    old = (date.today() - timedelta(days=30)).isoformat()
+    target = config_dir / "model-bindings.yaml"
+    target.write_text(f"""schema: 2
+providers:
+  confirmed-provider:
+    verified: {old}
+  unknown-provider:
+    verified: {old}
+harnesses:
+  codex-cli:
+    default_provider: confirmed-provider
+    bindings:
+      confirmed-provider:
+        default:
+          id: codex-default
+  pi:
+    default_provider: unknown-provider
+    bindings:
+      unknown-provider:
+        default:
+          id: pi-default
+""")
+    _probe(monkeypatch, lambda agent: _discovered("codex-default") if agent == "codex-cli" else [])
+
+    result = CliRunner().invoke(models_main, ["update", "--apply"])
+
+    assert result.exit_code == 0, result.output
+    providers = load_bindings(target).data["providers"]
+    assert str(providers["confirmed-provider"]["verified"]) == date.today().isoformat()
+    assert str(providers["unknown-provider"]["verified"]) == old
+
+
+def test_update_apply_failed_replace_leaves_original(
+    config_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A failing final rename exits 1 with the error and leaves the original bytes."""
+    from superharness.commands import models
+
+    target = config_dir / "model-bindings.yaml"
+    original = _dead_default_bindings().encode()
+    target.write_bytes(original)
+    _apply_with_confirmed(monkeypatch)
+
+    def _fail(src, dst):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(models.os, "replace", _fail)
+
+    result = CliRunner().invoke(models_main, ["update", "--apply"])
+
+    assert result.exit_code == 1
+    assert "disk full" in result.output
+    assert target.read_bytes() == original
+    assert not list(config_dir.glob(".model-bindings.yaml.*.tmp"))
+
+
+def test_update_apply_end_to_end(config_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """init, a dead binding, check --probe fails, update --apply, check --probe passes."""
+    from superharness.engine.model_bindings import load_bindings
+
+    runner = CliRunner()
+    assert runner.invoke(models_main, ["init"]).exit_code == 0
+    target = config_dir / "model-bindings.yaml"
+    standard = load_bindings(target).data["harnesses"]["codex-cli"]["bindings"]["adapter-manifest"]["default"]["id"]
+    target.write_text(target.read_text().replace(f"id: {standard}", "id: dead-model", 1))
+    alive = set(_codex_standard_chain())
+    others = set()
+    for harness in load_bindings(target).data["harnesses"].values():
+        for tier in harness["bindings"]["adapter-manifest"].values():
+            others.add(tier["id"])
+    _probe(monkeypatch, lambda agent: _discovered(*((others | alive) - {"dead-model"})))
+
+    assert runner.invoke(models_main, ["check", "--probe"]).exit_code == 1
+    assert runner.invoke(models_main, ["update", "--apply"]).exit_code == 0
+    assert runner.invoke(models_main, ["check", "--probe"]).exit_code == 0
+
+
 def test_check_json_lists_bindings(config_dir: Path) -> None:
     """--json returns path, status, stale providers and every binding; exit 0 when fresh."""
     (config_dir / "model-bindings.yaml").write_text(_bindings(date.today()))
