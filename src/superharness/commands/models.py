@@ -380,11 +380,93 @@ def _apply(bindings: BindingsFile, report: dict[str, Any]) -> None:
         click.echo(f"Verified today: {', '.join(providers)}")
 
 
+def _without_provider(model_id: str, provider: str) -> str:
+    """A binding id without its ``provider/`` prefix, as the catalog names it."""
+    return model_id.removeprefix(f"{provider}/")
+
+
+def _harness_check(found: list[str] | Exception | None, provider: str, model_id: str) -> str:
+    """confirmed, unconfirmed or unknown: did the harness's discovery list this model?"""
+    if isinstance(found, Exception) or not found:
+        return "unknown"
+    return "confirmed" if {model_id, f"{provider}/{model_id}"} & set(found) else "unconfirmed"
+
+
+def _catalog_report(bindings: BindingsFile) -> tuple[dict[str, Any], int]:
+    """Propose the newest same-family catalog model for each binding; write nothing.
+
+    A proposal is applicable only when the provider's docs page confirms it (or
+    the provider has none to check) and the harness's discovery lists it.
+    Every catalog or docs failure is journaled.
+    """
+    from superharness.engine import model_catalog
+    from superharness.engine.model_catalog_journal import record_catalog_failure
+
+    report: dict[str, Any] = {"path": str(bindings.path), "proposals": [],
+                              "not_in_catalog": [], "errors": {}}
+    catalog = model_catalog.fetch_catalog()
+    if isinstance(catalog, model_catalog.CatalogFailure):
+        record_catalog_failure(catalog.source, catalog.reason)
+        report["errors"][catalog.source] = catalog.reason
+        return report, EXIT_ATTENTION
+
+    candidates = []
+    for row in _binding_rows(bindings):
+        bare = _without_provider(row["model"], row["provider"])
+        if not any(m.id == bare for m in catalog.get(row["provider"], [])):
+            report["not_in_catalog"].append(f"{row['harness']} {row['tier']} {row['model']}")
+            continue
+        newer = model_catalog.newer_in_family(row["provider"], bare, catalog)
+        if newer is not None:
+            proposed = newer.id if bare == row["model"] else f"{row['provider']}/{newer.id}"
+            candidates.append((row, newer, proposed))
+
+    discovered = _discover(_models_by_harness(
+        [{**row, "model": proposed} for row, _, proposed in candidates]
+    ))
+    docs = model_catalog.DocsChecker()
+    for row, newer, proposed in candidates:
+        check = docs.check(row["provider"], newer.id)
+        if check.status == "unreachable" and f"{row['provider']} docs" not in report["errors"]:
+            record_catalog_failure(f"{row['provider']} docs", check.reason)
+            report["errors"][f"{row['provider']} docs"] = check.reason
+        harness_check = _harness_check(discovered.get(row["harness"]), row["provider"], newer.id)
+        report["proposals"].append({
+            "harness": row["harness"], "tier": row["tier"], "provider": row["provider"],
+            "current": row["model"], "proposed": proposed,
+            "released": newer.release_date.isoformat(), "docs": check.status,
+            "harness_check": harness_check,
+            "apply": check.status in ("confirmed", "not-applicable") and harness_check == "confirmed",
+        })
+    for harness, answer in discovered.items():
+        if isinstance(answer, Exception):
+            report["errors"][harness] = f"{type(answer).__name__}: {answer}"
+    return report, EXIT_OK
+
+
+def _print_catalog_report(report: dict[str, Any]) -> None:
+    click.echo(f"Model bindings: {report['path']} (catalog dry run, nothing written)")
+    for source, reason in report["errors"].items():
+        click.echo(f"  {source}: {reason}")
+    if not report["proposals"] and not report["errors"]:
+        click.echo("Every binding found in the catalog is the newest of its family.")
+    for p in report["proposals"]:
+        verdict = "applicable" if p["apply"] else "not applicable"
+        click.echo(
+            f"  {p['harness']:<14} {p['tier']:<13} {p['current']} -> {p['proposed']} "
+            f"(released {p['released']}; docs {p['docs']}; harness {p['harness_check']}; {verdict})"
+        )
+    for entry in report["not_in_catalog"]:
+        click.echo(f"  not in the catalog, left as is: {entry}")
+
+
 @main.command("update")
 @click.option("--apply", "do_apply", is_flag=True, default=False,
               help="Write the confirmed replacements and verified dates (a backup is kept)")
+@click.option("--catalog", "use_catalog", is_flag=True, default=False,
+              help="Propose newer same-family models from the models.dev catalog (no key needed)")
 @click.option("--json", "as_json", is_flag=True, default=False, help="Output as JSON")
-def update_cmd(do_apply: bool, as_json: bool) -> None:
+def update_cmd(do_apply: bool, use_catalog: bool, as_json: bool) -> None:
     """Propose replacements for unavailable bindings; write them with --apply."""
     bindings = _bindings_file()
     if bindings.status != "ok":
@@ -393,6 +475,16 @@ def update_cmd(do_apply: bool, as_json: bool) -> None:
             click.echo(json.dumps(report, indent=2))
         else:
             _print_report(report)
+        sys.exit(code)
+    if use_catalog:
+        if do_apply:
+            click.echo("--catalog --apply is not available yet; run the dry run and edit by hand.")
+            sys.exit(EXIT_ATTENTION)
+        catalog_report, code = _catalog_report(bindings)
+        if as_json:
+            click.echo(json.dumps(catalog_report, indent=2))
+        else:
+            _print_catalog_report(catalog_report)
         sys.exit(code)
     report = _update_report(bindings)
     if do_apply:
