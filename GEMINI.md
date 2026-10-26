@@ -19,16 +19,18 @@ Read this file fully before doing anything else.
 ## 1. Find Your Task
 
 ```bash
-cat .superharness/contract.yaml
+shux contract
 ```
 
-Find the task with `owner: gemini-cli` and `status: todo` or `status: plan_approved`.
+Find the task with owner `gemini-cli` and status `todo` or `plan_approved`.
 That is your task. Note its `id`.
 
-Also check inbox for any item addressed to you:
+Also check the inbox health and any item addressed to you:
 ```bash
-cat .superharness/inbox.yaml
+shux status
 ```
+
+State lives in SQLite; the `.superharness/*.yaml` files are export-only and never read as state.
 
 ---
 
@@ -36,8 +38,7 @@ cat .superharness/inbox.yaml
 
 ```bash
 superharness recall --project . "<task keywords>"
-cat .superharness/failures.yaml      # prior failures — avoid repeating them
-cat .superharness/decisions.yaml     # prior architectural decisions
+shux context <task-id>               # handoffs, prior failures and decisions for the task
 ```
 
 Read any handoff files addressed to `gemini-cli` in `.superharness/handoffs/`.

@@ -37,9 +37,9 @@ detection)" no longer reproduce — do not carry that note forward.
   (non-editable), then `shux install-hooks` to repoint the hooks.
 
 ## Project Rules
-Run `shux rules` to list all project constraints. Rules in `.superharness/rules/` are
-the authoritative source for policies, conventions, and architecture facts.
-When you need to know how something works or what's allowed, check rules first.
+Project doctrine lives in `RULES.md` (with `COMMON.md` for the shared safety rules); read it
+before any work. `shux rules` lists rules stored in `.superharness/rules/` when a project has
+that directory; this repository does not, so `RULES.md` is the source.
 
 Key rules (full list via `shux rules`):
 - `state-backend` — SQLite is SoT; contract/inbox/failures/decisions YAML are DEAD
@@ -91,7 +91,9 @@ adapter_manifests/    → agent YAML manifests (capabilities, model tiers, launc
 - `CHANGELOG.md` is **append-only** — enforced by `.githooks/pre-commit`.
 - Never edit, reorder, or delete existing lines. Add new entries at EOF only.
 - Corrections append a new correction entry (never rewrite history).
-- Pre-commit runs `check-changelog-append-only.sh --staged` and `check-shell-entrypoints.sh`.
+- CI (`tests.yml`, `shell-guard.yml`) runs `src/superharness/scripts/check-changelog-append-only.sh`
+  and `src/superharness/scripts/check-shell-entrypoints.sh`; run the first with `--staged` before
+  committing. The project pre-commit hook (`.project-hooks/pre-commit`) runs a fast pytest subset.
 
 ## Task Scope Rule
 

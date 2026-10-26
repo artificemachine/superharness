@@ -25,7 +25,7 @@ todo → plan_proposed → plan_approved → in_progress → report_ready → [r
 - Do **not** offer to run tests or start work directly after showing contract status.
 - Ask: "Want me to enqueue `<task-id>` for dispatch?"
 - Only proceed after the operator confirms which task to dispatch.
-- Read `.superharness/contract.yaml`, `failures.yaml`, and `decisions.yaml` before starting work.
+- Run `shux contract` and `shux context <task-id>` before starting work; state lives in SQLite, and the YAML files are export-only, never read as state.
 - Read handoffs addressed to your agent name in `.superharness/handoffs/`.
 - Keep task status, ledger, and handoff updated before stopping.
 ## CHANGELOG Policy (Strict)

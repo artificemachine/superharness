@@ -91,7 +91,7 @@ This is enforced by a scope warning on `plan_approved` transitions.
 
 ## Release Policy
 
-Releases are triggered by pushing a `v*` tag (via `/ship-release` or `git push --tags`), not by merging to `main`. A PR merge alone does not tag or publish. `publish.yml` fires on `release: published`; `release.yml` fires on `v*` tag push. Never use `git push --force` to main.
+Releases are cut deliberately, never by merging to `main`: a PR merge alone does not tag or publish, and pushing a `v*` tag triggers no workflow. `candidate.yml` and `release.yml` run only on `workflow_dispatch` (`release.yml` promotes a candidate draft); `publish.yml` fires on `release: published` or its own `workflow_dispatch`. Tag only after `main` CI is green on the commit being tagged. Never use `git push --force` to main.
 
 **Keep the last 10 release tags.** Never delete or prune the most recent 10 `v*` tags; release history must stay recoverable. Pruning older tags needs explicit owner approval.
 
@@ -100,7 +100,7 @@ Releases are triggered by pushing a `v*` tag (via `/ship-release` or `git push -
 - Never edit, reorder, or delete existing lines in `CHANGELOG.md`.
 - Add new entries at EOF only.
 - For corrections, append a new correction entry (do not rewrite history).
-- Before commit, run: `bash /path/to/superharness/scripts/check-changelog-append-only.sh --staged`.
+- Before commit, run: `bash src/superharness/scripts/check-changelog-append-only.sh --staged` (CI runs the same script in `tests.yml` with `--base-ref`).
 
 Reference: `superharness/protocol/spec.md`.
 
