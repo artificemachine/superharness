@@ -23,6 +23,12 @@ The manifest uses schema 2: `harnesses.<harness>.default_provider` and
 `escalate-2` and `final-review` as fallbacks. Without it, resolution uses the
 adapter manifests below.
 
+Maintain the file with `shux models` (see `docs/GUIDE.md`): `check` reports it
+and `check --probe` asks discovery about each bound model; `init` creates it from
+these manifests or imports one with `--from`; `update` proposes replacements for
+unavailable bindings and `update --apply` writes them with a backup. A provider
+is stale after `review_after_days` (default 5).
+
 ## Tier semantics
 
 All adapters expose three tiers. Semantics match the global model-selection

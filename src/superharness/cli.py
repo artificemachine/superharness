@@ -475,6 +475,11 @@ _cmd(
     module="superharness.commands.adapters",
 )
 _cmd(
+    "models",
+    "Check and maintain superharness's own model bindings file.",
+    module="superharness.commands.models",
+)
+_cmd(
     "pack",
     "Export and import portable project state.",
     module="superharness.commands.pack",

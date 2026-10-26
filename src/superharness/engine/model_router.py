@@ -44,13 +44,6 @@ MODEL_MAP: dict[str, dict[str, str]] = {
 
 VALID_TIERS = {"mini", "standard", "max"}
 
-_RUNTIME_BINDING_TIERS = {
-    "mini": "bulk",
-    "standard": "default",
-    "max": "escalate-1",
-}
-# Ladder order used when the bindings manifest omits its own `tiers:` list.
-_RUNTIME_LADDER_ORDER = ("bulk", "default", "escalate-1", "escalate-2", "final-review")
 _BINDING_FAILURE_PATTERN = "model-binding-unavailable"
 
 _FALLBACK_TIER = "standard"
@@ -828,60 +821,25 @@ def _runtime_model_bindings_path() -> Path:
     return Path(resolve_config_dir()) / "model-bindings.yaml"
 
 
-def _binding_model_id(provider_bindings: dict, binding_tier: str) -> str | None:
-    binding = provider_bindings.get(binding_tier)
-    if not isinstance(binding, dict):
-        return None
-    model_id = binding.get("id")
-    return model_id.strip() if isinstance(model_id, str) and model_id.strip() else None
-
-
 def _runtime_binding_ladder(target: str, tier: str) -> list[str]:
-    """Return the bound model for ``tier``, then the rest of its provider's ladder.
+    """Return the bound model for a dispatch ``tier``, then its provider's ladder.
 
-    A tier resolves inside the harness's default provider only, never across
-    providers. The first entry is the model bound to the requested tier; the
-    others are fallbacks from the same provider, higher tiers first, then
-    lower ones. An empty list means the requested tier has no binding.
+    See :func:`superharness.engine.model_bindings.provider_ladder`. An empty
+    list means the tier has no binding (or the file is missing or invalid).
     """
-    binding_tier = _RUNTIME_BINDING_TIERS.get(tier)
+    from superharness.engine.model_bindings import (
+        DISPATCH_TO_BINDING_TIER,
+        load_bindings,
+        provider_ladder,
+    )
+
+    binding_tier = DISPATCH_TO_BINDING_TIER.get(tier)
     if binding_tier is None:
         return []
-
-    try:
-        data = yaml.safe_load(_runtime_model_bindings_path().read_text()) or {}
-    except (OSError, yaml.YAMLError):
+    bindings = load_bindings(_runtime_model_bindings_path())
+    if bindings.status != "ok":
         return []
-    if not isinstance(data, dict) or data.get("schema") != 2:
-        return []
-    harnesses = data.get("harnesses")
-    harness = harnesses.get(target) if isinstance(harnesses, dict) else None
-    if not isinstance(harness, dict):
-        return []
-    provider = harness.get("default_provider")
-    bindings = harness.get("bindings")
-    if not isinstance(provider, str) or not provider or not isinstance(bindings, dict):
-        return []
-    provider_bindings = bindings.get(provider)
-    if not isinstance(provider_bindings, dict):
-        return []
-
-    bound = _binding_model_id(provider_bindings, binding_tier)
-    if bound is None:
-        return []
-
-    order = data.get("tiers")
-    if not isinstance(order, list) or binding_tier not in order:
-        order = list(_RUNTIME_LADDER_ORDER)
-    position = order.index(binding_tier)
-    fallback_tiers = order[position + 1 :] + list(reversed(order[:position]))
-
-    ladder = [bound]
-    for fallback_tier in fallback_tiers:
-        model_id = _binding_model_id(provider_bindings, str(fallback_tier))
-        if model_id and model_id not in ladder:
-            ladder.append(model_id)
-    return ladder
+    return provider_ladder(bindings, target, binding_tier)
 
 
 def _resolve_runtime_binding_model(target: str, tier: str) -> str | None:

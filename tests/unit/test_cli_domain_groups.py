@@ -28,6 +28,7 @@ DOMAIN_COMMANDS = {
     },
     "agent": {
         "adapters": "adapters",
+        "models": "models",
         "payload": "adapter-payload",
         "pulse": "pulse",
         "agent-pulse": "agent-pulse",

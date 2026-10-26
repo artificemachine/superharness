@@ -47,6 +47,7 @@ DOMAIN_COMMANDS: dict[str, dict[str, str]] = {
     },
     "agent": {
         "adapters": "adapters",
+        "models": "models",
         "payload": "adapter-payload",
         "pulse": "pulse",
         "agent-pulse": "agent-pulse",

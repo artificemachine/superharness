@@ -80,6 +80,34 @@ def _install_hint(dep: str) -> str:
     return hints.get(dep, "")
 
 
+def _model_bindings_line() -> str:
+    """One doctor line about superharness's model bindings file (no probing)."""
+    import datetime as _dt
+
+    from superharness.engine.model_bindings import load_bindings, stale_providers
+    from superharness.engine.model_router import _runtime_model_bindings_path
+
+    bindings = load_bindings(_runtime_model_bindings_path())
+    if bindings.status == "missing":
+        return (
+            f"INFO model-bindings:missing ({bindings.path}) — adapter defaults are used; "
+            "see 'shux models check'"
+        )
+    if bindings.status == "invalid":
+        reason = bindings.reason.splitlines()[0] if bindings.reason else "unreadable"
+        return (
+            f"WARN model-bindings:invalid ({reason}) — dispatch uses adapter defaults; "
+            "see 'shux models check'"
+        )
+    stale = stale_providers(bindings, _dt.date.today())
+    if stale:
+        return (
+            f"WARN model-bindings:stale {', '.join(stale)} — "
+            "run 'shux models check --probe'"
+        )
+    return f"PASS model-bindings:{bindings.path}"
+
+
 def _langfuse_status(probe_auth: bool = False) -> tuple[str, bool]:
     """Return one secret-free doctor line and whether it is a warning."""
     from superharness.engine import langfuse_telemetry
@@ -226,6 +254,10 @@ def main(argv: list[str] | None = None) -> None:
             print("WARN models:no discovered models (run 'shux adapters --probe')")
     except (ImportError, KeyError, TypeError, ValueError):
         print("WARN models:discovery unavailable")
+
+    # superharness's own model bindings file. Reported only: it never changes
+    # the warning count or the exit code, because adapter defaults still work.
+    print(_model_bindings_line())
 
     langfuse_line, langfuse_warn = _langfuse_status(opts.langfuse_auth)
     print(langfuse_line)
