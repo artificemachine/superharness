@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import urllib.error
 import urllib.request
 from collections.abc import Callable
@@ -141,3 +142,64 @@ def newer_in_family(
         return None
     newer = [m for m in models if m.family == bound.family and m.release_date > bound.release_date]
     return max(newer, key=lambda m: (m.release_date, m.id), default=None)
+
+
+DOCS_PAGES = {
+    "anthropic": "https://docs.anthropic.com/en/docs/about-claude/models/overview",
+    "openai": "https://platform.openai.com/docs/models",
+}
+
+
+@dataclass(frozen=True)
+class DocsCheck:
+    """Whether a provider's official models page names a model id.
+
+    status is confirmed, absent, unreachable (reason says
+    why) or not-applicable for a provider without a docs page to check.
+    """
+
+    status: str
+    reason: str = ""
+
+
+def _mentions(page: str, model_id: str) -> bool:
+    """True when model_id appears as a whole id, not inside a longer one."""
+    pattern = (
+        r"(?<![A-Za-z0-9_./-])" + re.escape(model_id) + r"(?![A-Za-z0-9_-]|\.[A-Za-z0-9])"
+    )
+    return re.search(pattern, page) is not None
+
+
+class DocsChecker:
+    """Cross-check catalog candidates against official docs pages, one fetch per page."""
+
+    def __init__(
+        self,
+        *,
+        timeout: float = DEFAULT_TIMEOUT_SECONDS,
+        max_bytes: int = DEFAULT_MAX_BYTES,
+        opener: Opener = urllib.request.urlopen,
+    ) -> None:
+        self._timeout = timeout
+        self._max_bytes = max_bytes
+        self._opener = opener
+        self._pages: dict[str, str | CatalogFailure] = {}
+
+    def _page(self, provider: str) -> str | CatalogFailure:
+        if provider not in self._pages:
+            body = _fetch_bytes(
+                DOCS_PAGES[provider], f"{provider} docs",
+                timeout=self._timeout, max_bytes=self._max_bytes, opener=self._opener,
+            )
+            self._pages[provider] = (
+                body if isinstance(body, CatalogFailure) else body.decode("utf-8", "replace")
+            )
+        return self._pages[provider]
+
+    def check(self, provider: str, model_id: str) -> DocsCheck:
+        if provider not in DOCS_PAGES:
+            return DocsCheck("not-applicable")
+        page = self._page(provider)
+        if isinstance(page, CatalogFailure):
+            return DocsCheck("unreachable", page.reason)
+        return DocsCheck("confirmed" if _mentions(page, model_id) else "absent")

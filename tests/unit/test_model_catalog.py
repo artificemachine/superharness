@@ -10,6 +10,8 @@ from typing import Self
 from superharness.engine.model_catalog import (
     CatalogFailure,
     CatalogModel,
+    DocsCheck,
+    DocsChecker,
     fetch_catalog,
     newer_in_family,
     parse_catalog,
@@ -151,3 +153,36 @@ def test_fetch_catalog_rejects_oversized_or_invalid_json():
     assert isinstance(oversized, CatalogFailure) and "larger than" in oversized.reason
     assert isinstance(invalid, CatalogFailure) and "invalid JSON" in invalid.reason
     assert isinstance(empty, CatalogFailure) and "no models" in empty.reason
+
+
+def test_docs_mentions_confirms_an_id_present_in_the_page():
+    page = b"<html><td><code>gpt-6.1-sol</code></td><td>gpt-6-sol-mini</td></html>"
+    checker = DocsChecker(opener=_opener_returning(page))
+
+    assert checker.check("openai", "gpt-6.1-sol") == DocsCheck("confirmed")
+    # gpt-6-sol only appears as part of a longer id, so it is not confirmed.
+    assert checker.check("openai", "gpt-6-sol").status == "absent"
+    # gpt-6 must not match inside gpt-6.1-sol.
+    assert checker.check("openai", "gpt-6").status == "absent"
+
+
+def test_docs_mentions_absent_and_unreachable():
+    calls: list[str] = []
+    checker = DocsChecker(opener=_opener_returning(b"<p>claude-opus-5-5</p>", calls))
+    assert checker.check("anthropic", "claude-haiku-5-5") == DocsCheck("absent")
+    assert checker.check("anthropic", "claude-opus-5-5") == DocsCheck("confirmed")
+    assert len(calls) == 1  # one fetch per page per run
+
+    down = DocsChecker(opener=_opener_raising(urllib.error.URLError("dns failure")))
+    result = down.check("anthropic", "claude-opus-5-5")
+    assert result.status == "unreachable"
+    assert "dns failure" in result.reason
+
+
+def test_docs_mentions_not_applicable_for_other_providers():
+    calls: list[str] = []
+    checker = DocsChecker(opener=_opener_returning(b"", calls))
+
+    assert checker.check("deepseek", "deepseek-flash").status == "not-applicable"
+    assert checker.check("zai-coding-plan", "glm-5.3").status == "not-applicable"
+    assert calls == []
