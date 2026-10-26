@@ -87,8 +87,10 @@ def _model_bindings_line() -> str:
     from superharness.engine.model_bindings import (
         CATALOG_REFRESH_COMMAND,
         load_bindings,
+        review_after_days,
         stale_providers,
     )
+    from superharness.engine.model_refresh import last_receipt
     from superharness.engine.model_router import _runtime_model_bindings_path
 
     bindings = load_bindings(_runtime_model_bindings_path())
@@ -105,11 +107,35 @@ def _model_bindings_line() -> str:
         )
     stale = stale_providers(bindings, _dt.date.today())
     if stale:
-        return (
+        line = (
             f"WARN model-bindings:stale {', '.join(stale)} — "
             f"run '{CATALOG_REFRESH_COMMAND}' or 'shux models check --probe'"
         )
-    return f"PASS model-bindings:{bindings.path}"
+    else:
+        line = f"PASS model-bindings:{bindings.path}"
+
+    receipt = last_receipt()
+    if receipt is None:
+        return line
+    line += f"; last refresh {receipt['outcome']} {str(receipt['at'])[:10]}"
+    if receipt["outcome"] == "failed" or _receipt_is_old(receipt, review_after_days(bindings)):
+        if line.startswith("PASS"):
+            line = "WARN" + line[len("PASS") :]
+        line += "; run 'shux models refresh' to retry"
+    return line
+
+
+def _receipt_is_old(receipt: dict, review_after_days: int) -> bool:
+    """Whether a receipt is older than twice review_after_days; an unparseable time counts as old."""
+    import datetime as _dt
+
+    try:
+        at = _dt.datetime.fromisoformat(receipt["at"])
+    except (KeyError, TypeError, ValueError):
+        return True
+    if at.tzinfo is None:
+        at = at.replace(tzinfo=_dt.UTC)
+    return _dt.datetime.now(_dt.UTC) - at > _dt.timedelta(days=2 * review_after_days)
 
 
 def _langfuse_status(probe_auth: bool = False) -> tuple[str, bool]:
