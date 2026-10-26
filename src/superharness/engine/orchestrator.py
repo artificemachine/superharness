@@ -35,14 +35,19 @@ DECOMPOSER_FALLBACK = _resolve_configured_model("claude-code", "standard")
 # Cross-agent orchestrator chain: (binary, model_id, label)
 # Tries the best model from each agent. Randomly shuffled per call so
 # different models get a chance — quality scores accumulate over time.
-_ORCHESTRATOR_CHAIN: list[tuple[str, str, str]] = [
-    ("claude", DECOMPOSER_MODEL, "Claude max"),
-    ("claude", DECOMPOSER_FALLBACK, "Claude fallback"),
-    ("codex", _resolve_configured_model("codex-cli", "max"), "Codex max"),
-    ("gemini", _resolve_configured_model("gemini-cli", "max"), "Gemini max"),
-    ("opencode", _resolve_configured_model("opencode", "max"), "OpenCode max"),
-    ("pi", _resolve_configured_model("pi", "max"), "Pi max"),
-]
+def _build_orchestrator_chain() -> list[tuple[str, str, str]]:
+    """Resolve the orchestrator chain from the current model bindings."""
+    return [
+        ("claude", _resolve_configured_model("claude-code", "max"), "Claude max"),
+        ("claude", _resolve_configured_model("claude-code", "standard"), "Claude fallback"),
+        ("codex", _resolve_configured_model("codex-cli", "max"), "Codex max"),
+        ("gemini", _resolve_configured_model("gemini-cli", "max"), "Gemini max"),
+        ("opencode", _resolve_configured_model("opencode", "max"), "OpenCode max"),
+        ("pi", _resolve_configured_model("pi", "max"), "Pi max"),
+    ]
+
+
+_ORCHESTRATOR_CHAIN: list[tuple[str, str, str]] = _build_orchestrator_chain()
 
 
 def _build_agent_argv(binary: str, model: str, prompt: str) -> list[str]:
