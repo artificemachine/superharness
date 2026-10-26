@@ -46,9 +46,13 @@ shux models init --from PATH   # import an existing schema-2 file instead
 shux models init --force       # replace the file; a .bak-<UTC timestamp> copy is kept
 shux models update             # propose replacements for unavailable bindings (writes nothing)
 shux models update --apply     # write them and refresh verified dates; comments kept, backup first
+shux models update --catalog          # propose newer same-family models from the models.dev catalog (writes nothing)
+shux models update --catalog --apply  # write the candidates that the docs check and the harness both confirm
 ```
 
-A provider is stale when its `verified` date is older than `review_after_days` (default 5). `shux doctor` prints one `model-bindings:` line about the file and never changes its exit code. `update` only proposes models from the adapter's accept chain that discovery confirms; it never invents a model, so a binding with no confirmed candidate must be edited by hand.
+A provider is stale when its `verified` date is older than `review_after_days` (default 5). `shux doctor` prints one `model-bindings:` line about the file and never changes its exit code; when a provider is stale, it and `shux models check` name `shux models update --catalog`. `update` only proposes models from the adapter's accept chain that discovery confirms; it never invents a model, so a binding with no confirmed candidate must be edited by hand.
+
+`update --catalog` needs no key. It reads `https://models.dev/api.json` (override with `SUPERHARNESS_MODELS_CATALOG_URL`) and proposes, for each binding, the newest model of the same provider and family released after it. For anthropic and openai, it also looks for the candidate on the provider's official models page. `--apply` writes a candidate only when that page names it (or the provider has no page to check) and the harness's discovery lists it. Other candidates are printed as skipped with their checks. A provider is marked verified today only when every one of its bindings is the newest of its family once applied. A catalog failure exits 1. Every catalog or docs failure is appended to `model-catalog-failures.jsonl` in the superharness state directory (`SUPERHARNESS_STATE_DIR`, else `$XDG_STATE_HOME/superharness`). A binding is never moved to another provider or family.
 
 ### `ops`
 

@@ -77,3 +77,15 @@ def test_doctor_reports_stale_bindings(config_dir: Path, content: str, expected:
     assert line.startswith(expected)
     assert "shux models check" in line
     assert warnings == baseline_warnings
+
+
+def test_doctor_stale_line_names_catalog_refresh(config_dir: Path) -> None:
+    """The stale doctor line names the catalog refresh; the warning count does not change."""
+    _, baseline_warnings = _doctor_output()
+    (config_dir / "model-bindings.yaml").write_text(_bindings(date.today() - timedelta(days=30)))
+
+    output, warnings = _doctor_output()
+
+    line = [l for l in output.splitlines() if "model-bindings:" in l][0]
+    assert "shux models update --catalog" in line
+    assert warnings == baseline_warnings

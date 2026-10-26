@@ -29,6 +29,8 @@ DISPATCH_TO_BINDING_TIER = {
 DEFAULT_LADDER_ORDER = ("bulk", "default", "escalate-1", "escalate-2", "final-review")
 
 DEFAULT_REVIEW_AFTER_DAYS = 5
+# What to run when a provider is past review_after_days (shown by check and doctor).
+CATALOG_REFRESH_COMMAND = "shux models update --catalog"
 
 
 @dataclass(frozen=True)

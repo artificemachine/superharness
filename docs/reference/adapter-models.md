@@ -27,7 +27,11 @@ Maintain the file with `shux models` (see `docs/GUIDE.md`): `check` reports it
 and `check --probe` asks discovery about each bound model; `init` creates it from
 these manifests or imports one with `--from`; `update` proposes replacements for
 unavailable bindings and `update --apply` writes them with a backup. A provider
-is stale after `review_after_days` (default 5).
+is stale after `review_after_days` (default 5). `update --catalog` proposes
+newer models of the same provider and family from the keyless models.dev
+catalog, cross-checked against the Anthropic and OpenAI models pages, and
+`update --catalog --apply` writes only the candidates that harness discovery
+also confirms.
 
 ## Tier semantics
 
