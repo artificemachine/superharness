@@ -49,6 +49,9 @@ _RUNTIME_BINDING_TIERS = {
     "standard": "default",
     "max": "escalate-1",
 }
+# Ladder order used when the bindings manifest omits its own `tiers:` list.
+_RUNTIME_LADDER_ORDER = ("bulk", "default", "escalate-1", "escalate-2", "final-review")
+_BINDING_FAILURE_PATTERN = "model-binding-unavailable"
 
 _FALLBACK_TIER = "standard"
 _FALLBACK_EFFORT = "medium"
@@ -814,43 +817,110 @@ def _apply_chatgpt_auth_override(
 
 
 def _runtime_model_bindings_path() -> Path:
-    """Return the installed schema-2 runtime bindings manifest path."""
-    config_home = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config"))
-    return config_home / "modrouter" / "model-bindings.yaml"
+    """Return superharness's own schema-2 model bindings manifest path.
+
+    superharness is standalone: it reads only its own config directory
+    (`SUPERHARNESS_CONFIG_DIR`, else `$XDG_CONFIG_HOME/superharness`), never
+    another tool's configuration.
+    """
+    from superharness.utils.paths import resolve_config_dir
+
+    return Path(resolve_config_dir()) / "model-bindings.yaml"
 
 
-def _resolve_runtime_binding_model(target: str, tier: str) -> str | None:
-    """Resolve a dispatch tier from the installed harness runtime bindings."""
+def _binding_model_id(provider_bindings: dict, binding_tier: str) -> str | None:
+    binding = provider_bindings.get(binding_tier)
+    if not isinstance(binding, dict):
+        return None
+    model_id = binding.get("id")
+    return model_id.strip() if isinstance(model_id, str) and model_id.strip() else None
+
+
+def _runtime_binding_ladder(target: str, tier: str) -> list[str]:
+    """Return the bound model for ``tier``, then the rest of its provider's ladder.
+
+    A tier resolves inside the harness's default provider only, never across
+    providers. The first entry is the model bound to the requested tier; the
+    others are fallbacks from the same provider, higher tiers first, then
+    lower ones. An empty list means the requested tier has no binding.
+    """
     binding_tier = _RUNTIME_BINDING_TIERS.get(tier)
     if binding_tier is None:
-        return None
+        return []
 
     try:
         data = yaml.safe_load(_runtime_model_bindings_path().read_text()) or {}
-        if not isinstance(data, dict) or data.get("schema") != 2:
-            return None
-        harnesses = data.get("harnesses")
-        if not isinstance(harnesses, dict):
-            return None
-        harness = harnesses.get(target)
-        if not isinstance(harness, dict):
-            return None
-        provider = harness.get("default_provider")
-        if not isinstance(provider, str) or not provider:
-            return None
-        bindings = harness.get("bindings")
-        if not isinstance(bindings, dict):
-            return None
-        provider_bindings = bindings.get(provider)
-        if not isinstance(provider_bindings, dict):
-            return None
-        binding = provider_bindings.get(binding_tier)
-        if not isinstance(binding, dict):
-            return None
-        model_id = binding.get("id")
-        return model_id.strip() if isinstance(model_id, str) and model_id.strip() else None
-    except (OSError, TypeError, yaml.YAMLError):
-        return None
+    except (OSError, yaml.YAMLError):
+        return []
+    if not isinstance(data, dict) or data.get("schema") != 2:
+        return []
+    harnesses = data.get("harnesses")
+    harness = harnesses.get(target) if isinstance(harnesses, dict) else None
+    if not isinstance(harness, dict):
+        return []
+    provider = harness.get("default_provider")
+    bindings = harness.get("bindings")
+    if not isinstance(provider, str) or not provider or not isinstance(bindings, dict):
+        return []
+    provider_bindings = bindings.get(provider)
+    if not isinstance(provider_bindings, dict):
+        return []
+
+    bound = _binding_model_id(provider_bindings, binding_tier)
+    if bound is None:
+        return []
+
+    order = data.get("tiers")
+    if not isinstance(order, list) or binding_tier not in order:
+        order = list(_RUNTIME_LADDER_ORDER)
+    position = order.index(binding_tier)
+    fallback_tiers = order[position + 1 :] + list(reversed(order[:position]))
+
+    ladder = [bound]
+    for fallback_tier in fallback_tiers:
+        model_id = _binding_model_id(provider_bindings, str(fallback_tier))
+        if model_id and model_id not in ladder:
+            ladder.append(model_id)
+    return ladder
+
+
+def _resolve_runtime_binding_model(target: str, tier: str) -> str | None:
+    """Return the model bound to a dispatch tier, or None when it is unbound."""
+    ladder = _runtime_binding_ladder(target, tier)
+    return ladder[0] if ladder else None
+
+
+def _journal_binding_failure(project_dir: str | None, target: str, message: str) -> None:
+    """Record a bound model that discovery could not confirm.
+
+    The warning always reaches the log; the durable record goes to the
+    project's failures table when a project is known. Recording never blocks
+    dispatch, but its own failure is logged rather than dropped.
+    """
+    logger.warning("model binding for %s: %s", target, message)
+    if not project_dir:
+        return
+    try:
+        import time
+
+        from superharness.engine import failures_dao
+        from superharness.engine.db import get_connection, init_db
+
+        conn = get_connection(project_dir)
+        try:
+            init_db(conn)
+            failures_dao.record(
+                conn,
+                agent=target,
+                pattern=_BINDING_FAILURE_PATTERN,
+                error_snippet=message,
+                now=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+    except Exception as exc:  # noqa: BLE001 - the journal must never block dispatch
+        logger.error("model binding for %s: could not journal failure: %s", target, exc)
 
 
 def _resolve_manifest_model(target: str, tier: str) -> str:
@@ -958,18 +1028,16 @@ def _discover_for_agent(
 def resolve_model_for_tier(
     target: str, tier: str, project_dir: str | None = None
 ) -> str:
-    """Resolve a tier to a concrete model, cache-first and auth-aware.
+    """Resolve a tier to a concrete model, auth-aware.
 
-    Iteration 5 of PLAN-dynamic-model-selection.md:
-      1. Detect the agent's auth mode (codex: chatgpt/apikey; others: unknown).
-      2. Cache hit for (project, agent, auth_mode) → return cached model.
-      3. Cache miss → run harness discovery; pick the first model that is
+    When the runtime bindings manifest binds this tier, the binding decides
+    and discovery only confirms availability (see :func:`_resolve_bound_model`).
+    Without a binding, the previous dynamic path applies:
+      1. Cache hit for (project, agent, auth_mode, tier) → return cached model.
+      2. Cache miss → run harness discovery; pick the first model that is
          in the tier's accept chain (auth_compat-aware); persist + return.
-      4. Discovery fails or yields no chain match → manifest preferred
-         (existing behaviour via resolve_model).
-
-    ``resolve_model()`` is kept as a thin wrapper around this function so
-    existing callers keep working.
+      3. Discovery fails or yields nothing → the adapter manifest's
+         auth-compatible chain.
     """
     import sqlite3
 
@@ -977,6 +1045,10 @@ def resolve_model_for_tier(
 
     auth_mode = detect_auth_mode_for_agent(target)
     db_path = _model_discovery_cache_path(project_dir)
+
+    ladder = _runtime_binding_ladder(target, tier)
+    if ladder:
+        return _resolve_bound_model(target, tier, ladder, auth_mode, project_dir, db_path)
 
     # 1. Cache hit
     if db_path:
@@ -1008,9 +1080,73 @@ def resolve_model_for_tier(
                     pass
             return chosen.id
 
-    # 3. Runtime bindings select the current model for this harness. When
-    # bindings are absent or invalid, use the adapter's auth-compatible chain.
-    return _resolve_configured_model(target, tier)
+    # 3. No binding for this tier: use the adapter's auth-compatible chain.
+    return _resolve_manifest_model(target, tier)
+
+
+def _resolve_bound_model(
+    target: str,
+    tier: str,
+    ladder: list[str],
+    auth_mode: str,
+    project_dir: str | None,
+    db_path: str | None,
+) -> str:
+    """Return the bound model after discovery confirms it is available.
+
+    ``ladder[0]`` is the model the operator bound to this tier. A cache entry
+    counts only when it names that model, so an edited binding takes effect
+    immediately. When discovery cannot answer, the binding stands. When
+    discovery answers without the bound model, the next available model of
+    the same provider's ladder is used and the failure is journaled; when
+    nothing in the ladder is available, the binding stands and the failure is
+    journaled. A model the bindings never named is never selected.
+    """
+    import sqlite3
+
+    from superharness.engine.model_discovery import ModelDiscoveryCache
+
+    bound = ladder[0]
+    cache = None
+    if db_path:
+        try:
+            cache = ModelDiscoveryCache(db_path)
+            cached = cache.get(project_dir, target, auth_mode, tier=tier)
+            if cached and cached.id == bound:
+                return bound
+        except (sqlite3.Error, OSError, ValueError) as exc:
+            logger.warning("model discovery cache unreadable for %s: %s", target, exc)
+            cache = None
+
+    discovered = _discover_for_agent(target, auth_mode, ladder)
+    if not discovered:
+        return bound
+
+    by_id = {d.id: d for d in discovered}
+    chosen = next((model_id for model_id in ladder if model_id in by_id), None)
+    if chosen is None:
+        _journal_binding_failure(
+            project_dir,
+            target,
+            f"bound model {bound!r} for tier {tier!r} was not confirmed by discovery "
+            f"and no other model of its provider ladder was; dispatching the binding",
+        )
+        return bound
+    if chosen != bound:
+        _journal_binding_failure(
+            project_dir,
+            target,
+            f"bound model {bound!r} for tier {tier!r} is unavailable; "
+            f"falling back to {chosen!r} from the same provider ladder",
+        )
+        return chosen
+
+    if cache is not None:
+        try:
+            cache.set(project_dir, target, by_id[bound], tier=tier)
+        except (sqlite3.Error, OSError, ValueError) as exc:
+            logger.warning("model discovery cache not updated for %s: %s", target, exc)
+    return bound
 
 
 def _tier_accept_chain(target: str, tier: str, auth_mode: str) -> list[str]:

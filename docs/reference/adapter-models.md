@@ -4,6 +4,25 @@ Runtime bindings are the configured model authority. Adapter manifests hold
 authentication-compatible fallback metadata and historical defaults; this
 document records those defaults and their rationale.
 
+Resolution order (`resolve_model_for_tier`, SPEC-006):
+
+1. The tier's model in superharness's own `model-bindings.yaml`
+   (`SUPERHARNESS_CONFIG_DIR`, else `$XDG_CONFIG_HOME/superharness/`), for
+   the harness's `default_provider`. No other tool's configuration is read. Discovery is asked whether it is
+   available; a discovered model the bindings never named is never used.
+2. If discovery reports the bound model unavailable, the next available model
+   of the same provider's ladder (higher tiers first, then lower), recorded as
+   a `model-binding-unavailable` failure. If none is confirmed, the binding
+   stands and the failure is still recorded.
+3. Only when the tier has no binding: discovery cache, live discovery, then
+   the adapter manifest's auth-compatible chain below.
+
+The manifest uses schema 2: `harnesses.<harness>.default_provider` and
+`harnesses.<harness>.bindings.<provider>.<tier>.id`, with tiers `bulk`
+(`mini`), `default` (`standard`) and `escalate-1` (`max`), plus optional
+`escalate-2` and `final-review` as fallbacks. Without it, resolution uses the
+adapter manifests below.
+
 ## Tier semantics
 
 All adapters expose three tiers. Semantics match the global model-selection

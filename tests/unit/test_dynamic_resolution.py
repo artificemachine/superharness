@@ -160,6 +160,171 @@ def test_resolve_model_still_works_as_wrapper(
 
 
 # ---------------------------------------------------------------------------
+# Contract — runtime bindings decide, discovery only confirms availability
+# ---------------------------------------------------------------------------
+
+
+# Captured at import, before the autouse isolation fixture replaces it.
+_REAL_BINDINGS_PATH_RESOLVER = model_router._runtime_model_bindings_path
+
+_LADDER_BINDINGS = """schema: 2
+tiers: [bulk, default, escalate-1, escalate-2, final-review]
+harnesses:
+  codex-cli:
+    default_provider: test-provider
+    bindings:
+      test-provider:
+        bulk:
+          id: ladder-bulk
+        default:
+          id: ladder-default
+        escalate-1:
+          id: ladder-escalate
+      other-provider:
+        default:
+          id: other-provider-default
+"""
+
+
+def _discovered(*ids: str) -> list[DiscoveredModel]:
+    now = datetime.now(timezone.utc)
+    return [DiscoveredModel(i, i, "native", "unknown", now) for i in ids]
+
+
+@pytest.fixture
+def ladder_bindings(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
+    path = tmp_path / "model-bindings.yaml"
+    path.write_text(_LADDER_BINDINGS)
+    monkeypatch.setattr(model_router, "_runtime_model_bindings_path", lambda: path)
+    monkeypatch.setattr(model_router, "detect_auth_mode_for_agent", lambda a: "unknown")
+    return path
+
+
+def _failure_patterns(project_dir: Path) -> list[str]:
+    from superharness.engine import failures_dao
+    from superharness.engine.db import get_connection
+
+    conn = get_connection(str(project_dir))
+    try:
+        return [r.pattern for r in failures_dao.get_recent(conn, limit=20)]
+    finally:
+        conn.close()
+
+
+def test_bindings_are_read_from_superharness_config_never_modrouter(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """superharness is standalone: its bindings live in its own config dir."""
+    xdg = tmp_path / "xdg"
+    (xdg / "modrouter").mkdir(parents=True)
+    (xdg / "modrouter" / "model-bindings.yaml").write_text(
+        _LADDER_BINDINGS.replace("ladder-default", "modrouter-model")
+    )
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(xdg))
+    monkeypatch.delenv("SUPERHARNESS_CONFIG_DIR", raising=False)
+    # Bypass the suite-wide isolation fixture to exercise the real resolver.
+    monkeypatch.setattr(
+        model_router, "_runtime_model_bindings_path", _REAL_BINDINGS_PATH_RESOLVER
+    )
+
+    assert _REAL_BINDINGS_PATH_RESOLVER() == xdg / "superharness" / "model-bindings.yaml"
+    assert model_router._resolve_runtime_binding_model("codex-cli", "standard") is None
+
+    (xdg / "superharness").mkdir()
+    (xdg / "superharness" / "model-bindings.yaml").write_text(_LADDER_BINDINGS)
+    assert model_router._resolve_runtime_binding_model("codex-cli", "standard") == "ladder-default"
+
+
+def test_binding_beats_a_discovered_model_outside_the_ladder(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, ladder_bindings: Path
+) -> None:
+    """A discovered model the bindings never named must not replace the binding."""
+    monkeypatch.setattr(model_router, "_model_discovery_cache_path", lambda p: None)
+    monkeypatch.setattr(
+        model_router, "_discover_for_agent", lambda a, m="unknown", c=None: _discovered("discovered-model")
+    )
+
+    assert resolve_model_for_tier("codex-cli", "standard", str(tmp_path)) == "ladder-default"
+
+
+def test_available_binding_is_returned_and_probed_first(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, ladder_bindings: Path
+) -> None:
+    """Discovery is asked about the bound model first, then the same provider's ladder."""
+    monkeypatch.setattr(model_router, "_model_discovery_cache_path", lambda p: None)
+    chains: list[list[str] | None] = []
+
+    def _fake_discover(agent, auth_mode="unknown", chain=None):
+        chains.append(chain)
+        return _discovered("ladder-escalate", "ladder-default")
+
+    monkeypatch.setattr(model_router, "_discover_for_agent", _fake_discover)
+
+    assert resolve_model_for_tier("codex-cli", "standard", str(tmp_path)) == "ladder-default"
+    assert chains == [["ladder-default", "ladder-escalate", "ladder-bulk"]]
+
+
+def test_unavailable_binding_falls_back_inside_its_provider_and_is_journaled(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, ladder_bindings: Path
+) -> None:
+    """A dead bound model falls back to the next tier of the same provider, never another provider."""
+    monkeypatch.setattr(model_router, "_model_discovery_cache_path", lambda p: None)
+    monkeypatch.setattr(
+        model_router,
+        "_discover_for_agent",
+        lambda a, m="unknown", c=None: _discovered("other-provider-default", "ladder-escalate"),
+    )
+
+    assert resolve_model_for_tier("codex-cli", "standard", str(tmp_path)) == "ladder-escalate"
+    assert "model-binding-unavailable" in _failure_patterns(tmp_path)
+
+
+def test_no_available_ladder_model_keeps_binding_and_is_journaled(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, ladder_bindings: Path
+) -> None:
+    """When discovery confirms nothing in the ladder, the binding stands and the failure is recorded."""
+    monkeypatch.setattr(model_router, "_model_discovery_cache_path", lambda p: None)
+    monkeypatch.setattr(
+        model_router, "_discover_for_agent", lambda a, m="unknown", c=None: _discovered("unrelated")
+    )
+
+    assert resolve_model_for_tier("codex-cli", "standard", str(tmp_path)) == "ladder-default"
+    assert "model-binding-unavailable" in _failure_patterns(tmp_path)
+
+
+def test_stale_cache_entry_does_not_override_an_edited_binding(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, ladder_bindings: Path
+) -> None:
+    """Editing the bindings takes effect at once, even with a fresh cache entry."""
+    db = tmp_path / "state.sqlite3"
+    ModelDiscoveryCache(db).set(
+        str(tmp_path), "codex-cli", _discovered("previous-model")[0], tier="standard"
+    )
+    monkeypatch.setattr(model_router, "_model_discovery_cache_path", lambda p: str(db))
+    monkeypatch.setattr(model_router, "_discover_for_agent", lambda a, m="unknown", c=None: [])
+
+    assert resolve_model_for_tier("codex-cli", "standard", str(tmp_path)) == "ladder-default"
+
+
+def test_cache_entry_matching_the_binding_skips_discovery(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, ladder_bindings: Path
+) -> None:
+    """A verified cache entry for the bound model avoids a new probe."""
+    db = tmp_path / "state.sqlite3"
+    ModelDiscoveryCache(db).set(
+        str(tmp_path), "codex-cli", _discovered("ladder-default")[0], tier="standard"
+    )
+    monkeypatch.setattr(model_router, "_model_discovery_cache_path", lambda p: str(db))
+    calls: list[str] = []
+    monkeypatch.setattr(
+        model_router, "_discover_for_agent", lambda a, m="unknown", c=None: calls.append(a) or []
+    )
+
+    assert resolve_model_for_tier("codex-cli", "standard", str(tmp_path)) == "ladder-default"
+    assert calls == []
+
+
+# ---------------------------------------------------------------------------
 # Contract — auth detection
 # ---------------------------------------------------------------------------
 
