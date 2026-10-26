@@ -2,13 +2,48 @@
 
 from __future__ import annotations
 
+import json
+import urllib.error
 from datetime import date
+from typing import Self
 
 from superharness.engine.model_catalog import (
+    CatalogFailure,
     CatalogModel,
+    fetch_catalog,
     newer_in_family,
     parse_catalog,
 )
+
+
+class _FakeResponse:
+    def __init__(self, body: bytes) -> None:
+        self.body = body
+
+    def read(self, size: int = -1) -> bytes:
+        return self.body if size < 0 else self.body[:size]
+
+    def __enter__(self) -> Self:
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        return None
+
+
+def _opener_returning(body: bytes, seen: list[str] | None = None):
+    def opener(request, timeout):
+        if seen is not None:
+            seen.append(request.full_url)
+        return _FakeResponse(body)
+
+    return opener
+
+
+def _opener_raising(exc: BaseException):
+    def opener(request, timeout):
+        raise exc
+
+    return opener
 
 SAMPLE = {
     "anthropic": {
@@ -78,3 +113,41 @@ def test_parse_catalog_rejects_malformed_input():
         }},
     })
     assert [m.id for m in catalog["anthropic"]] == ["ok"]
+
+
+def test_fetch_catalog_parses_a_served_document(monkeypatch):
+    seen: list[str] = []
+    monkeypatch.setenv("SUPERHARNESS_MODELS_CATALOG_URL", "https://mirror.example/api.json")
+
+    result = fetch_catalog(opener=_opener_returning(json.dumps(SAMPLE).encode(), seen))
+
+    assert seen == ["https://mirror.example/api.json"]
+    assert isinstance(result, dict)
+    assert {m.id for m in result["openai"]} == {"gpt-5.6-sol", "gpt-6.1-sol"}
+
+
+def test_fetch_catalog_reports_timeout_and_http_errors():
+    url = "https://models.dev/api.json"
+    failures = [
+        fetch_catalog(opener=_opener_raising(urllib.error.URLError("no route to host"))),
+        fetch_catalog(opener=_opener_raising(TimeoutError("timed out"))),
+        fetch_catalog(opener=_opener_raising(
+            urllib.error.HTTPError(url, 500, "Server Error", hdrs=None, fp=None))),
+    ]
+
+    for failure in failures:
+        assert isinstance(failure, CatalogFailure)
+        assert failure.source == "models.dev"
+    assert "no route to host" in failures[0].reason
+    assert "timed out" in failures[1].reason
+    assert "HTTP 500" in failures[2].reason
+
+
+def test_fetch_catalog_rejects_oversized_or_invalid_json():
+    oversized = fetch_catalog(opener=_opener_returning(b"x" * 11), max_bytes=10)
+    invalid = fetch_catalog(opener=_opener_returning(b"{not json"))
+    empty = fetch_catalog(opener=_opener_returning(b"{}"))
+
+    assert isinstance(oversized, CatalogFailure) and "larger than" in oversized.reason
+    assert isinstance(invalid, CatalogFailure) and "invalid JSON" in invalid.reason
+    assert isinstance(empty, CatalogFailure) and "no models" in empty.reason
