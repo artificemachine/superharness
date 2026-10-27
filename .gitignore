@@ -79,6 +79,14 @@ json
 *.pfx
 # Session working docs — handoffs, audits, plans, reports
 docs/HANDOFF-*.md
+docs/audits/
+docs/private/
+docs/reports/
+docs/**/AUDIT-*
+docs/**/audit-*
+docs/**/bulletproof-report-*
+docs/**/SECURITY-REPORT-*
+docs/**/security-report-*
 docs/audits/AUDIT-*.md
 docs/plans/PLAN-*.md
 docs/audits/bulletproof-report-*.md

@@ -23,8 +23,6 @@
 | [`ARCHITECTURE.md`](ARCHITECTURE.md) | Architecture overview and design decisions |
 | [`ARCH-superharness-design-patterns.md`](arch/ARCH-superharness-design-patterns.md) | Current architecture and the proposed hexagonal target (Mermaid); `reconcile` extraction first |
 | [`ROADMAP-phases.md`](plans/ROADMAP-phases.md) | **Master phase roadmap** (single source of truth) |
-| [`brain-multi-agent-tiers-fleet.md`](reports/brain-multi-agent-tiers-fleet.md) | Why 4 agent CLIs, what tiers mean, Ollama + vLLM fleet |
-| [`brain-scan-2026-07-12.md`](reports/brain-scan-2026-07-12.md) | Brain-level scan of superharness (2026-07-12) |
 | [`fleet-vllm-enablement.md`](guides/fleet-vllm-enablement.md) | vLLM per-tier fleet endpoints — enablement guide |
 | [`observability-spec-d2.md`](reference/observability-spec-d2.md) | Observability specification (D2) |
 | [`langfuse-observability.md`](guides/langfuse-observability.md) | Optional privacy-first Langfuse telemetry and dashboard link behavior |
@@ -50,13 +48,11 @@
 | [`SECURITY-autonomous-dispatch.md`](security/SECURITY-autonomous-dispatch.md) | Autonomous dispatch security gates |
 | [`yaml-inventory.md`](reference/yaml-inventory.md) | YAML file inventory post phase-4 cleanup |
 
-## 🔎 Audits (Runtime & Protocol)
+## 🔎 Runtime & Protocol References
 
 | Doc | What |
 |-----|------|
 | [`ADOPTION-LIST-omnigent-2026-07-19.md`](archive/ADOPTION-LIST-omnigent-2026-07-19.md) | Adoption list — omnigent → superharness (2026-07-19) |
-| [`audits/2026-09-18-docs-triage.md`](audits/2026-09-18-docs-triage.md) | docs/ merge and archive triage — what was merged, archived, and deliberately left |
-| [`audits/2026-09-10-arch-audit.md`](audits/2026-09-10-arch-audit.md) | Architecture audit — current run (0 critical, 3 high, 4 medium, 4 low) |
 
 ## 📋 Plans (Active)
 
@@ -73,13 +69,6 @@
 | [`PROPOSAL-session-injection-discussion-dispatch.md`](concepts/PROPOSAL-session-injection-discussion-dispatch.md) | Session injection for discussion dispatch |
 | **Subsystem Plans** | |
 | [`plans/workflow-autonomy.md`](plans/workflow-autonomy.md) | Workflow + per-project autonomy |
-
-## 🔍 Reviews
-
-| Doc | What |
-|-----|------|
-| [`senior-review-2026-05-20.md`](reports/senior-review-2026-05-20.md) | Senior review — 11 fixes, C4-C6 decomposition |
-| [`SKILL_GENERICITY_REVIEW.md`](reports/SKILL_GENERICITY_REVIEW.md) | Skill genericity review (2026-05-26) |
 
 ## 🐛 Bugs
 
@@ -122,12 +111,9 @@ Point-in-time claim-vs-reality audits. `docs/bulletproof-report-*.md` is gitigno
 | [`MCP-MEMORY.md`](reference/MCP-MEMORY.md) | Optional MCP memory server setup |
 | [`archive/morpheme-branch-policy.md`](archive/morpheme-branch-policy.md) | Morpheme branch policy (retired 2026-04-16; archived 2026-09-18) |
 
-## 📎 Reports & Misc
+## Local Working Documents
 
-| Doc | What |
-|-----|------|
-| [`REPO-MIGRATION-fork-situation.md`](reports/REPO-MIGRATION-fork-situation.md) | Repo migration — `celstnblacc` → `artificemachine` fork situation |
-| [`REPORT-process-leak-2026-05-28.md`](reports/REPORT-process-leak-2026-05-28.md) | Process leak incident report |
+Audit reports, incident reports, private findings and their evidence remain local under `docs/audits/` or `docs/private/`. Existing working reports under `docs/reports/` are also local and are not part of the published documentation.
 
 ---
 
@@ -137,4 +123,4 @@ Only the prior-art analyses cited from the root `README.md` and `ATTRIBUTIONS.md
 
 ---
 
-**Last updated:** 2026-09-10 | **Active docs:** 63 | **Archived:** 4
+**Last updated:** 2026-10-27
