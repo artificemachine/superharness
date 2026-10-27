@@ -51,6 +51,7 @@ def runner(monkeypatch: pytest.MonkeyPatch) -> _FakeRunner:
     fake = _FakeRunner()
     monkeypatch.setattr(schedule, "_run", fake)
     monkeypatch.setattr(schedule, "_platform", lambda: "darwin")
+    monkeypatch.setattr(schedule, "_uid", lambda: 501)
     return fake
 
 
@@ -123,14 +124,14 @@ def test_install_apply_then_uninstall_apply_leaves_nothing(
 
     assert installed.exit_code == 0, installed.output
     assert plist_path.exists()
-    assert ["launchctl", "bootstrap", f"gui/{schedule._uid()}", str(plist_path)] in runner.calls
+    assert ["launchctl", "bootstrap", "gui/501", str(plist_path)] in runner.calls
     status = CliRunner().invoke(models_main, ["schedule", "status", "--home", str(home)])
     assert "scheduler: installed and loaded" in status.output
 
     removed = CliRunner().invoke(models_main, ["schedule", "uninstall", "--home", str(home), "--apply"])
 
     assert removed.exit_code == 0, removed.output
-    assert ["launchctl", "bootout", f"gui/{schedule._uid()}/{LABEL}"] in runner.calls
+    assert ["launchctl", "bootout", f"gui/501/{LABEL}"] in runner.calls
     assert sorted(p.name for p in agents.iterdir()) == before
 
     # A launchctl failure surfaces its stderr, exits 1 and leaves no plist behind.
