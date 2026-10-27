@@ -48,11 +48,19 @@ shux models update             # propose replacements for unavailable bindings (
 shux models update --apply     # write them and refresh verified dates; comments kept, backup first
 shux models update --catalog          # propose newer same-family models from the models.dev catalog (writes nothing)
 shux models update --catalog --apply  # write the candidates that the docs check and the harness both confirm
+shux models refresh                   # unattended: skip when fresh, else update --catalog --apply; one receipt per run
+shux models schedule status           # is the daily refresh installed and loaded, and the last receipt
+shux models schedule install          # dry run: print the launchd plist or systemd units; --apply writes and loads them
+shux models schedule uninstall        # dry run; --apply unloads and deletes everything install wrote
 ```
 
 A provider is stale when its `verified` date is older than `review_after_days` (default 5). `shux doctor` prints one `model-bindings:` line about the file and never changes its exit code; when a provider is stale, it and `shux models check` name `shux models update --catalog`. `update` only proposes models from the adapter's accept chain that discovery confirms; it never invents a model, so a binding with no confirmed candidate must be edited by hand.
 
 `update --catalog` needs no key. It reads `https://models.dev/api.json` (override with `SUPERHARNESS_MODELS_CATALOG_URL`) and proposes, for each binding, the newest model of the same provider and family released after it. For anthropic and openai, it also looks for the candidate on the provider's official models page. `--apply` writes a candidate only when that page names it (or the provider has no page to check) and the harness's discovery lists it. Other candidates are printed as skipped with their checks. A provider is marked verified today only when every one of its bindings is the newest of its family once applied. A catalog failure exits 1. Every catalog or docs failure is appended to `model-catalog-failures.jsonl` in the superharness state directory (`SUPERHARNESS_STATE_DIR`, else `$XDG_STATE_HOME/superharness`). A binding is never moved to another provider or family.
+
+`shux models refresh` is the unattended form. When no provider is past `review_after_days` it does nothing and uses no network; otherwise it applies the catalog refresh with the same rules as `update --catalog --apply`. Every run appends one JSON line to `model-refresh-receipts.jsonl` in the state directory: `at`, `outcome` (`skipped`, `ok`, `partial` when a candidate was skipped, a binding is not in the catalog or a check failed, `failed`), `applied`, `skipped` and `errors`. It exits 1 when the refresh failed or the receipt could not be written. `shux doctor` adds the last receipt to its `model-bindings:` line and warns, naming `shux models refresh`, when that refresh failed or is older than twice `review_after_days`; its exit code is unchanged.
+
+`shux models schedule` runs `refresh` daily (09:17 by default, `--hour` and `--minute` to change it) from the installed `shux`: a launchd agent `com.superharness.models-refresh` on macOS (logs in `~/Library/Logs/superharness`), a systemd user service and timer `superharness-models-refresh` on Linux (output in the journal, missed runs caught up). Windows is refused with exit 2. `install` and `uninstall` change nothing without `--apply`; `uninstall --apply` removes every file `install --apply` wrote; a `shux` inside a git checkout is refused.
 
 ### `ops`
 
