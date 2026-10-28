@@ -3,6 +3,8 @@ from __future__ import annotations
 import importlib.util
 import json
 import os
+import shutil
+import subprocess
 import sys
 import threading
 import urllib.error
@@ -1664,6 +1666,44 @@ def test_monitor_action_enqueue_task(repo_root, tmp_path, monkeypatch) -> None:
     assert "--priority" in args
 
 
+@pytest.mark.parametrize("active_status", ["pending", "launched", "running", "paused"])
+def test_monitor_enqueue_rejects_task_with_active_inbox_item(
+    repo_root, tmp_path, active_status
+) -> None:
+    """The dashboard API rejects re-enqueue while an inbox item is active or paused."""
+    module = _load_monitor_module(repo_root)
+    project = _setup_project(tmp_path)
+    from superharness.engine.db import get_connection
+
+    conn = get_connection(str(project))
+    try:
+        conn.execute(
+            "UPDATE inbox SET status=? WHERE task_id=?", (active_status, "mcp-docs")
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    server, thread, base_url = _start_server(module, repo_root, project)
+    try:
+        status, payload = _request_json(
+            "POST",
+            base_url + "/api/action",
+            payload={"action": "enqueue_task:mcp-docs:codex-cli"},
+            headers={
+                "Origin": base_url,
+                "Referer": base_url + "/",
+                "Content-Type": "application/json",
+                "X-Superharness-Token": module.Handler.auth_token,
+            },
+        )
+    finally:
+        _stop_server(server, thread)
+
+    assert status == 409
+    assert "already enqueued" in payload["error"]
+
+
 def test_monitor_enqueue_with_instructions_saves_file(
     repo_root, tmp_path, monkeypatch
 ) -> None:
@@ -2189,11 +2229,108 @@ def test_html_uses_workflow_aware_enqueue_rules(repo_root) -> None:
     module = _load_monitor_module(repo_root)
     html = module.HTML
     assert "function inferredWorkflow(task)" in html
-    assert "function canEnqueueTask(task)" in html
+    assert "function canEnqueueTask(task, hasActiveInboxItem, hasPausedInboxItem)" in html
     assert "workflow === 'implementation'" in html
-    assert "['todo', 'plan_approved', 'failed', 'stopped'].includes(st)" in html
+    assert "['todo', 'plan_approved', 'failed', 'stopped', 'in_progress'].includes(st)" in html
     assert "workflow === 'quick' || workflow === 'note'" in html
-    assert "const canEnqueue = canEnqueueTask(t);" in html
+    assert "const canEnqueue = canEnqueueTask(t, isEnqueued, isPausedInbox);" in html
+
+
+def test_html_allows_unqueued_in_progress_implementation_tasks(repo_root) -> None:
+    """An in-progress implementation task can be resumed only without an active inbox item."""
+    module = _load_monitor_module(repo_root)
+    html = module.HTML
+    assert "function canEnqueueTask(task, hasActiveInboxItem, hasPausedInboxItem)" in html
+    assert "if (hasActiveInboxItem || hasPausedInboxItem) return false;" in html
+    assert "['todo', 'plan_approved', 'failed', 'stopped', 'in_progress'].includes(st)" in html
+    assert html.count("canEnqueueTask(t, isEnqueued, isPausedInbox)") == 2
+    assert "const canMarkDone = canEnqueue && !(workflow === 'implementation' && st === 'in_progress');" in html
+    assert "if (canMarkDone && isDoneInbox && !isEnqueued)" in html
+
+
+def test_html_shows_enqueue_for_in_progress_task_with_failed_inbox(repo_root) -> None:
+    """A failed historical inbox item must not hide enqueue for an in-progress task."""
+    module = _load_monitor_module(repo_root)
+    html = module.HTML
+    failed_branch = html[html.index("} else if (st !== 'done' && failedInboxTasks.has(t.id))"):]
+    failed_branch = failed_branch[:failed_branch.index("\n    } else {")]
+
+    assert "actionButtons.push(`<button onclick=\"act('retry_task:${tid}')\">Retry</button>`);" in failed_branch
+    assert "if (canEnqueue)" in failed_branch
+    assert "enqueueTask(${inlineJsArgument(t.id)}, ${inlineJsArgument(currentOwner)}, ${inlineJsArgument(btnLabel)})" in failed_branch
+
+
+def test_enqueue_eligibility_blocks_active_and_paused_inbox_items(repo_root) -> None:
+    """Execute the dashboard predicate to verify inbox states block enqueue."""
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("Node.js is required to exercise the dashboard enqueue predicate")
+
+    module = _load_monitor_module(repo_root)
+    html = module.HTML
+    start = html.index("function inferredWorkflow(")
+    end = html.index("\nfunction enqueueButtonLabel", start)
+    predicate = html[start:end]
+    script = predicate + """
+const task = {id: 't-paused', status: 'in_progress', workflow: 'implementation'};
+const results = [
+  canEnqueueTask(task, false, false),
+  canEnqueueTask(task, true, false),
+  canEnqueueTask(task, false, true),
+];
+process.stdout.write(JSON.stringify(results));
+"""
+    result = subprocess.run(
+        [node, "-e", script], capture_output=True, text=True, check=True
+    )
+
+    assert json.loads(result.stdout) == [True, False, False]
+    assert "canEnqueueTask(t, isEnqueued, isPausedInbox)" in html
+
+
+def test_enqueue_owner_argument_escapes_html_and_javascript_quotes(repo_root) -> None:
+    """The owner argument remains a valid inline JS string after HTML parsing."""
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("Node.js is required to exercise dashboard inline arguments")
+
+    module = _load_monitor_module(repo_root)
+    html = module.HTML
+    assert "function inlineJsArgument(value)" in html
+    start = html.index("function inlineJsArgument(value)")
+    end = html.index("\n}", start) + 2
+    helper = html[start:end]
+    script = helper + """
+const owner = `owner'name\"&<>`;
+const encoded = inlineJsArgument(owner);
+const decoded = encoded.replace(/&quot;/g, '\"').replace(/&lt;/g, '<')
+  .replace(/&gt;/g, '>').replace(/&amp;/g, '&');
+let actual;
+new Function('enqueueTask', `enqueueTask(${decoded})`)(value => { actual = value; });
+process.stdout.write(JSON.stringify({actual, encoded}));
+"""
+    result = subprocess.run(
+        [node, "-e", script], capture_output=True, text=True, check=True
+    )
+
+    assert json.loads(result.stdout) == {
+        "actual": "owner'name\"&<>",
+        "encoded": "&quot;owner'name\\&quot;&amp;&lt;&gt;&quot;",
+    }
+    assert "inlineJsArgument(t.id)" in html
+    assert "inlineJsArgument(currentOwner)" in html
+
+
+def test_html_collapses_discussions_panel_by_default(repo_root) -> None:
+    """The Discussions panel starts collapsed and retains its expand affordance."""
+    module = _load_monitor_module(repo_root)
+    html = module.HTML
+    panel_start = html.index('id="discussionsPanel">')
+    body_start = html.index('id="discussionsPanelBody"', panel_start)
+
+    assert 'id="discussionsPanelBody" style="display:none"' in html
+    assert "▸" in html[panel_start:body_start]
+    assert "function togglePanel(bodyId, header)" in html
 
 
 def test_html_uses_review_first_wording_for_report_ready(repo_root) -> None:

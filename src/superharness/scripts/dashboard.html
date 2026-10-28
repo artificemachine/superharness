@@ -358,10 +358,10 @@
         <div style="display:flex;align-items:center;gap:8px">
           <button onclick="event.stopPropagation();openNewDiscussionForm()" style="font-size:11px;padding:2px 8px">+ start</button>
           <button onclick="event.stopPropagation();loadDiscussions()" style="font-size:11px;padding:2px 8px">↺</button>
-          <span style="color:var(--muted);font-size:11px">▾</span>
+          <span style="color:var(--muted);font-size:11px">▸</span>
         </div>
       </div>
-      <div id="discussionsPanelBody">
+      <div id="discussionsPanelBody" style="display:none">
         <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;" id="discStatusFilter">
           <span class="pill sel" onclick="discFilterStatus('')" data-status="">all</span>
           <span class="pill" onclick="discFilterStatus('active')" data-status="active">active</span>
@@ -1999,11 +1999,12 @@ function inferredWorkflow(task) {
   return 'quick';
 }
 
-function canEnqueueTask(task) {
+function canEnqueueTask(task, hasActiveInboxItem, hasPausedInboxItem) {
   const st = task.status || 'todo';
   const workflow = inferredWorkflow(task);
-  // implementation: todo dispatches the agent to WRITE the plan; plan_approved dispatches to implement.
-  if (workflow === 'implementation') return ['todo', 'plan_approved', 'failed', 'stopped'].includes(st);
+  if (hasActiveInboxItem || hasPausedInboxItem) return false;
+  // implementation: todo dispatches for planning; plan_approved implements; in_progress resumes without an active inbox item.
+  if (workflow === 'implementation') return ['todo', 'plan_approved', 'failed', 'stopped', 'in_progress'].includes(st);
   if (workflow === 'quick' || workflow === 'note') return ['todo', 'in_progress', 'failed', 'stopped'].includes(st);
   return false;
 }
@@ -2013,6 +2014,14 @@ function enqueueButtonLabel(task) {
   const workflow = inferredWorkflow(task);
   if (workflow === 'implementation' && st === 'todo') return 'Dispatch Plan';
   return 'Enqueue';
+}
+
+function inlineJsArgument(value) {
+  return JSON.stringify(String(value))
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
 }
 
 // Fix 3: contextual next-action hint shown inline next to the status pill.
@@ -2060,6 +2069,7 @@ function renderContractTasks(tasks, activeInboxTasks, doneInboxTasks, pausedInbo
   if (!visible.length) { el.textContent = '(no tasks match current filters)'; return; }
   for (const t of visible) {
     const st = t.status || 'todo';
+    const workflow = inferredWorkflow(t);
     const [icon, label, cls] = PHASE_LABEL[st] || ['?', st, 'muted'];
     const row = document.createElement('div');
     row.className = 'task-row';
@@ -2117,8 +2127,9 @@ function renderContractTasks(tasks, activeInboxTasks, doneInboxTasks, pausedInbo
       const wtEsc = t.worktree_path.replace(/'/g, "\\'");
       actionButtons.push(`<button onclick="openWorktree('${wtEsc}')" title="Open worktree: ${t.worktree_path}" style="background:var(--ok)18;color:var(--ok);border-color:var(--ok)">🌲 Worktree</button>`);
     }
-    const canEnqueue = canEnqueueTask(t);
-    if (canEnqueue && isDoneInbox && !isEnqueued) {
+    const canEnqueue = canEnqueueTask(t, isEnqueued, isPausedInbox);
+    const canMarkDone = canEnqueue && !(workflow === 'implementation' && st === 'in_progress');
+    if (canMarkDone && isDoneInbox && !isEnqueued) {
       actionButtons.push(`<button onclick="markTaskDone('${tid}')" class="ok">Done</button>`);
     }
     if (st === 'plan_proposed') {
@@ -2143,7 +2154,7 @@ function renderContractTasks(tasks, activeInboxTasks, doneInboxTasks, pausedInbo
       actionButtons.push(`<button onclick="approveWithoutReview('${tid}')" class="ok">Approve Without Review</button>`);
     } else if (st === 'review_failed') {
       actionButtons.push(`<span class="small" style="color:var(--bad); width:140px; text-align:center">↩ review failed</span>`);
-      actionButtons.push(`<button onclick="enqueueTask('${tid}', '', 'Re-enqueue')" class="warn">Re-enqueue</button>`);
+      actionButtons.push(`<button onclick="enqueueTask(${inlineJsArgument(t.id)}, ${inlineJsArgument('')}, ${inlineJsArgument('Re-enqueue')})" class="warn">Re-enqueue</button>`);
     } else if (st === 'review_passed') {
       actionButtons.push(`<button onclick="runClose('${tid}')" class="ok">Close</button>`);
     }
@@ -2158,17 +2169,27 @@ function renderContractTasks(tasks, activeInboxTasks, doneInboxTasks, pausedInbo
     } else if (st !== 'done' && failedInboxTasks.has(t.id)) {
       actionButtons.push(`<span class="pill" style="background:var(--btn);border-color:var(--bad);color:var(--bad);cursor:default">✗ failed</span>`);
       actionButtons.push(`<button onclick="act('retry_task:${tid}')">Retry</button>`);
+      if (canEnqueue) {
+        const btnLabel = enqueueButtonLabel(t);
+        if (isBlocked) {
+          const blockHint = `Blocked by: ${blockers.join(', ')}`;
+          actionButtons.push(`<button disabled title="${blockHint}">${btnLabel} ⛔</button>`);
+        } else {
+          const currentOwner = t.owner || KNOWN_AGENTS[0] || '';
+          actionButtons.push(`<button onclick="enqueueTask(${inlineJsArgument(t.id)}, ${inlineJsArgument(currentOwner)}, ${inlineJsArgument(btnLabel)})">${btnLabel}</button>`);
+        }
+      }
     } else {
       // Logic for Enqueue button (enabled or blocked)
-      const canEnqueue = canEnqueueTask(t);
+      const canEnqueue = canEnqueueTask(t, isEnqueued, isPausedInbox);
       const btnLabel = enqueueButtonLabel(t);
       if (canEnqueue) {
         if (isBlocked) {
           const blockHint = `Blocked by: ${blockers.join(', ')}`;
           actionButtons.push(`<button disabled title="${blockHint}">${btnLabel} ⛔</button>`);
         } else {
-          const currentOwnerEsc = (t.owner || KNOWN_AGENTS[0] || '').replace(/'/g, "\\\\'");
-          actionButtons.push(`<button onclick="enqueueTask('${tid}', '${currentOwnerEsc}', '${btnLabel}')">${btnLabel}</button>`);
+          const currentOwner = t.owner || KNOWN_AGENTS[0] || '';
+          actionButtons.push(`<button onclick="enqueueTask(${inlineJsArgument(t.id)}, ${inlineJsArgument(currentOwner)}, ${inlineJsArgument(btnLabel)})">${btnLabel}</button>`);
         }
       } else if (st !== 'done' && st !== 'todo') {
         const blockHint = isBlocked ? `Blocked by: ${blockers.join(', ')}` : enqueueBlockReason(t).replace(/"/g,'&quot;');
