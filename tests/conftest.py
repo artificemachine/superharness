@@ -192,6 +192,10 @@ _GIT_ENV_VARS = (
     "GIT_COMMON_DIR",
     "GIT_CEILING_DIRECTORIES",
     "GIT_PREFIX",
+    # `git -c key=value commit` exports these to hooks; a leaked user.email would
+    # beat the repo-local config the isolation tests assert on.
+    "GIT_CONFIG_PARAMETERS",
+    "GIT_CONFIG_COUNT",
 )
 
 
