@@ -244,6 +244,11 @@ def main(argv: list[str] | None = None) -> None:
         action="store_true",
         help="Skip auto-installing Claude Code hooks into ~/.claude/settings.json",
     )
+    p.add_argument(
+        "--no-gemini",
+        action="store_true",
+        help="Do not create GEMINI.md (projects that do not delegate to Gemini CLI)",
+    )
     opts = p.parse_args(argv)
 
     project_dir = str(Path.cwd().resolve())
@@ -300,7 +305,8 @@ def main(argv: list[str] | None = None) -> None:
         print(
             "[dry-run] Would create: .superharness/{ledger.md,features.json,heartbeat.yaml,.gitignore}"
         )
-        print("[dry-run] Would create if missing: CLAUDE.md, AGENTS.md, GEMINI.md")
+        loaders = "CLAUDE.md, AGENTS.md" + ("" if opts.no_gemini else ", GEMINI.md")
+        print(f"[dry-run] Would create if missing: {loaders}")
         return
 
     harness = Path(project_dir) / ".superharness"
@@ -555,7 +561,9 @@ def main(argv: list[str] | None = None) -> None:
 
     # GEMINI.md
     gemini_dst = Path(project_dir) / "GEMINI.md"
-    if not gemini_dst.exists() or _overwrite_user_file:
+    if opts.no_gemini:
+        print("Skipped: GEMINI.md (--no-gemini)")
+    elif not gemini_dst.exists() or _overwrite_user_file:
         gemini_tmpl = template_dir / "GEMINI.md.template"
         if gemini_tmpl.is_file():
             _render_template(
