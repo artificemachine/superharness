@@ -23,7 +23,6 @@ on:
 
 permissions:
   contents: write   # needed to create the tag, the release, and read the draft
-  actions: write    # needed to dispatch publish.yml via workflow_dispatch
   checks: read      # required-check gate lookup
 
 jobs:
@@ -164,18 +163,3 @@ jobs:
             --title "superharness $TAG" \
             --notes-file "${{ steps.changelog.outputs.notes_file }}" \
             --latest
-
-      # GitHub won't trigger publish.yml from a release created by GITHUB_TOKEN,
-      # so we dispatch it explicitly via workflow_dispatch, handing over the
-      # same candidate release ID so publish uploads the exact stored files.
-      - name: Trigger publish workflow
-        if: steps.tag_check.outputs.exists == 'false'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ needs.resolve-candidate.outputs.tag }}
-          CANDIDATE_RELEASE_ID: ${{ needs.resolve-candidate.outputs.candidate_release_id }}
-        run: |
-          gh workflow run publish.yml \
-            --ref "$TAG" \
-            -f ref="$TAG" \
-            -f candidate_release_id="$CANDIDATE_RELEASE_ID"
