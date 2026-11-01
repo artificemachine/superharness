@@ -10,6 +10,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   # Gitleaks — the industry-standard secret scanner. Catches real secrets,
   # keys, and high-entropy strings that ShipGuard's rule set does not see.
@@ -31,22 +35,78 @@ jobs:
           fetch-depth: 0
 
       - name: Install gitleaks (MIT-licensed CLI)
+        env:
+          GITLEAKS_VERSION: "8.30.1"
+          GITLEAKS_SHA256: >-
+            551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
         run: |
-          curl -sSfL https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz -o /tmp/gitleaks.tar.gz
-          tar -xzf /tmp/gitleaks.tar.gz -C /usr/local/bin gitleaks
-          gitleaks version
+          set -euo pipefail
+          base="https://github.com/gitleaks/gitleaks/releases/download"
+          asset="gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          curl -sSL "${base}/v${GITLEAKS_VERSION}/${asset}" -o gitleaks.tar.gz
+          echo "${GITLEAKS_SHA256}  gitleaks.tar.gz" | sha256sum -c -
+          tar -xzf gitleaks.tar.gz gitleaks
+          sudo mv gitleaks /usr/local/bin/
+          rm -f gitleaks.tar.gz
+          installed="$(gitleaks version)"
+          if [ "$installed" != "$GITLEAKS_VERSION" ]; then
+            echo "error: expected gitleaks ${GITLEAKS_VERSION}," \
+              "got ${installed}" >&2
+            exit 1
+          fi
+          echo "gitleaks ${installed}"
 
       - name: Gitleaks secret scan
-        # Scan the PR's own commits only (base..head). A per-PR gate should
-        # catch NEW secrets, not re-litigate history — the full-history sweep
-        # flags long-standing test fixtures with fake tokens (e.g. the dummy
-        # ghp_abc/1234567890abcdef values in tests/unit/test_module_obsidian.py)
-        # on every PR. Base-sha comes from the PR event; on push-to-main the
-        # whole branch is scanned.
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_BEFORE: ${{ github.event.before }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          MERGE_GROUP_BASE_SHA: ${{ github.event.merge_group.base_sha }}
         run: |
-          set -o pipefail
-          BASE="${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.sha }}"
-          gitleaks detect --source . --log-opts="${BASE}..HEAD" --redact --exit-code 1 --verbose | tee gitleaks-report.txt
+          set -euo pipefail
+          # PR and merge-group events scan commits after their base; pushes use
+          # the event's before SHA, falling back to full history for new branches.
+          case "$EVENT_NAME" in
+            pull_request)
+              base="$PR_BASE_SHA"
+              ;;
+            merge_group)
+              base="$MERGE_GROUP_BASE_SHA"
+              ;;
+            push)
+              if [[ -z "$EVENT_BEFORE" || "$EVENT_BEFORE" =~ ^0+$ ]]; then
+                base=""
+              else
+                base="$EVENT_BEFORE"
+              fi
+              ;;
+            *)
+              echo "error: unsupported event '$EVENT_NAME' for gitleaks scan" >&2
+              exit 1
+              ;;
+          esac
+
+          if [[ "$EVENT_NAME" != push && -z "$base" ]]; then
+            echo "error: event base commit is required for '$EVENT_NAME'" >&2
+            exit 1
+          fi
+
+          if [[ -n "$base" ]]; then
+            if [[ ! "$base" =~ ^[0-9a-fA-F]{40}$ ]]; then
+              echo "error: event base is not a full commit SHA" >&2
+              exit 1
+            fi
+            if ! git cat-file -e "${base}^{commit}" 2>/dev/null; then
+              echo "error: event base commit is missing from checkout" >&2
+              exit 1
+            fi
+            log_opts=("--log-opts=${base}..HEAD")
+          else
+            log_opts=()
+          fi
+
+          gitleaks detect --source . "${log_opts[@]}" \
+            --redact --exit-code 1 --verbose | tee gitleaks-report.txt
 
       - name: Upload gitleaks report
         if: always()

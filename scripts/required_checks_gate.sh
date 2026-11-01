@@ -22,21 +22,53 @@ REPO="${GITHUB_REPOSITORY:?GITHUB_REPOSITORY must be set}"
 # Keep in sync with branch protection on main:
 #   gh api repos/${GITHUB_REPOSITORY}/branches/main/protection \
 #     --jq '.required_status_checks.contexts'
-REQUIRED=("QA Gate" "Windows-Native Release Gate" "ShipGuard Scan" "Gitleaks")
+REQUIRED=(
+  "QA Gate"
+  "Windows-Native Release Gate"
+  "ShipGuard Scan"
+  "Gitleaks"
+  "doctrine"
+  "scan"
+  "Analyze (python)"
+)
+
+CHECK_RUNS_FILE="$(mktemp)"
+trap 'rm -f "$CHECK_RUNS_FILE"' EXIT
 
 gh api "repos/${REPO}/commits/${SHA}/check-runs?per_page=100" \
-  --paginate --jq '.check_runs[] | {name, conclusion, started_at}' \
-  | jq -s '.' > /tmp/check_runs.json
+  --paginate --jq '.check_runs[] | {name, status, conclusion, started_at}' \
+  | jq -s '.' > "$CHECK_RUNS_FILE"
 
-echo "Found $(jq 'length' /tmp/check_runs.json) check run(s) on ${SHA}"
+echo "Found $(jq 'length' "$CHECK_RUNS_FILE") check run(s) on ${SHA}"
 
 FAILED=0
 for name in "${REQUIRED[@]}"; do
-  # A rerun creates a second check run with the same name — take the
-  # most recently started one, which is the authoritative result.
+  # Any noncompleted rerun blocks even if an older run succeeded.
+  active="$(jq -r --arg n "$name" \
+    '[.[] | select(.name == $n and .status != "completed")] | length' \
+    "$CHECK_RUNS_FILE")"
+  if [ "$active" -gt 0 ]; then
+    echo "  BLOCKED  ${name}: check is not completed"
+    FAILED=1
+    continue
+  fi
+
+  unranked_completed="$(jq -r --arg n "$name" \
+    '[.[] | select(.name == $n and .status == "completed" and .started_at == null)] | length' \
+    "$CHECK_RUNS_FILE")"
+  completed_count="$(jq -r --arg n "$name" \
+    '[.[] | select(.name == $n and .status == "completed")] | length' \
+    "$CHECK_RUNS_FILE")"
+  if [ "$unranked_completed" -gt 0 ] && [ "$completed_count" -gt 1 ]; then
+    echo "  BLOCKED  ${name}: completed reruns have ambiguous start times"
+    FAILED=1
+    continue
+  fi
+
+  # Among completed reruns, the most recently started run is authoritative.
   conclusion="$(jq -r --arg n "$name" \
-    '[.[] | select(.name == $n)] | sort_by(.started_at) | last | .conclusion // "MISSING"' \
-    /tmp/check_runs.json)"
+    '[.[] | select(.name == $n and .status == "completed")] | sort_by(.started_at) | last | .conclusion // "MISSING"' \
+    "$CHECK_RUNS_FILE")"
   if [ "$conclusion" = "success" ]; then
     echo "  OK       ${name}: success"
   elif [ "$conclusion" = "MISSING" ] || [ "$conclusion" = "null" ]; then
