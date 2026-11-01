@@ -8,8 +8,6 @@ name: Publish to PyPI
 # exact same unchanged files.
 
 on:
-  release:
-    types: [published]
   workflow_dispatch:
     inputs:
       ref:
@@ -38,13 +36,12 @@ jobs:
       - name: Verify required checks are green before publish
         env:
           GH_TOKEN: ${{ github.token }}
-          REF: ${{ inputs.ref || github.event.release.tag_name || github.ref_name }}
+          REF: ${{ inputs.ref || github.ref_name }}
         run: |
           set -euo pipefail
           echo "Verifying release gate for ref ${REF}"
-          # publish.yml has its own trigger surface (release:published,
-          # workflow_dispatch) independent of release.yml, so it must
-          # re-verify rather than trust the caller. Same REQUIRED list as
+          # Publication is manually dispatched, so it re-verifies the target
+          # ref rather than trusting the caller. Same REQUIRED list as
           # release.yml — asserted by the shared gate script.
           scripts/required_checks_gate.sh "$REF"
 
@@ -65,7 +62,7 @@ jobs:
         id: candidate
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          REF: ${{ inputs.ref || github.event.release.tag_name || github.ref_name }}
+          REF: ${{ inputs.ref || github.ref_name }}
           CANDIDATE_RELEASE_ID: ${{ inputs.candidate_release_id }}
         run: |
           set -euo pipefail
@@ -129,7 +126,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ inputs.ref || github.event.release.tag_name || github.ref }}
+          ref: ${{ inputs.ref || github.ref }}
 
       - uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4.1.8
         with:
@@ -166,7 +163,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ inputs.ref || github.event.release.tag_name || github.ref }}
+          ref: ${{ inputs.ref || github.ref }}
 
       - uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4.1.8
         with:

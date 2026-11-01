@@ -994,3 +994,11 @@ chore: submitted gemini-cli round 1 position for gap analysis discussion
 - 2026-10-28 (v1.86.5-rc.9): chore(release): prepare the ninth release candidate with the dashboard enqueue fixes and collapsed Discussions panel; no release or publish.
 - 2026-10-31: feat(init): add `shux init --no-gemini` to skip creating GEMINI.md for projects that do not delegate to Gemini CLI; default behavior unchanged. RED: 3 of 4 new tests failed with `unrecognized arguments: --no-gemini`; GREEN: 4 passed, plus 53 related init tests passed.
 - 2026-10-31: fix(tests): strip GIT_CONFIG_PARAMETERS and GIT_CONFIG_COUNT in the autouse git isolation fixture; a commit made with `git -c user.email=...` exported them to the pre-commit hook and failed test_git_env_isolation. RED: 2 failed with GIT_CONFIG_PARAMETERS set in the outer environment; GREEN: 12 passed with it set.
+- 2026-11-01: fix(ci): separate release creation from publication; publish now requires workflow_dispatch, release no longer dispatches publishing, and the publish workflow policy has synthetic positive and negative coverage.
+- 2026-11-01: fix(ci): scan pushed commits with Gitleaks using the event's before SHA, scan full history for new or zero before SHAs, and fail closed on missing or invalid PR/merge bases; verify the pinned scanner digest and version before use.
+- 2026-11-01: fix(ci): require doctrine, scan, and Analyze (python) to succeed before release gates proceed, alongside the existing required checks; isolate temporary check-run data per invocation.
+- 2026-11-01: fix(ci): block release while any required check run is queued or in progress, including reruns with null start times, before evaluating completed run results.
+- 2026-11-01: fix(ci): fail closed when completed reruns for a required check include an unranked start time, rather than falling back to an older success.
+- 2026-11-01: fix(ci): cancel superseded security and shell-guard runs with workflow-and-ref-scoped concurrency while leaving publication uncancelled.
+- 2026-11-01: fix(ci): cancel superseded test and Windows-native CI runs using workflow-and-ref-scoped concurrency groups.
+- 2026-11-01 (v1.86.5-rc.10): chore(release): prepare the tenth release candidate with GitHub Actions hardening: manual-only publication, verified Gitleaks scanning and required checks, and superseded CI cancellation; no release or publish.
