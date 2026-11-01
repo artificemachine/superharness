@@ -1002,3 +1002,7 @@ chore: submitted gemini-cli round 1 position for gap analysis discussion
 - 2026-11-01: fix(ci): cancel superseded security and shell-guard runs with workflow-and-ref-scoped concurrency while leaving publication uncancelled.
 - 2026-11-01: fix(ci): cancel superseded test and Windows-native CI runs using workflow-and-ref-scoped concurrency groups.
 - 2026-11-01 (v1.86.5-rc.10): chore(release): prepare the tenth release candidate with GitHub Actions hardening: manual-only publication, verified Gitleaks scanning and required checks, and superseded CI cancellation; no release or publish.
+
+## Unreleased
+
+- Fix dashboard profile rendering by defining the missing HTML escaping helper; cover populated profile and hostile HTML values with a JavaScript regression test.
