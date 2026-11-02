@@ -7,9 +7,12 @@
 
 ## Overview
 
-**Multi-agent task coordination for Claude Code, Codex CLI, Gemini CLI, OpenCode, and Pi**
+**Create discussions, manage tasks, and coordinate agents across Claude Code, Codex CLI, Gemini CLI, OpenCode, and Pi**
 
-superharness lets AI coding assistants work on the same project without stepping on each other. It provides a shared contract (SQLite-backed), queue-based delegation, lifecycle rules, and handoff/ledger state so tasks survive across sessions and auto-manage themselves.
+superharness lets AI coding assistants work on the same project through discussions and tasks. A discussion brings several owners (participating agents) together around a topic: they exchange proposals and review each other's positions over successive rounds, aiming to reach consensus within a configurable round limit. Tasks turn work into tracked assignments with an owner, a lifecycle, and handoffs so another session can pick up where the previous one stopped. A shared SQLite-backed contract, queue-based delegation, and lifecycle rules keep that work coordinated across sessions.
+
+- **Create discussions** to bring agents together, compare ideas, and reach consensus before implementation.
+- **Create tasks** to organize work, assign it to agents, and track progress across sessions.
 
 ### Example output
 
