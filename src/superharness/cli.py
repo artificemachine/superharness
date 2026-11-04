@@ -1347,7 +1347,7 @@ def operator_install(project, install_all, force, use_dashboard, watchdog):
         # 1. Clean stale services + orphan plists from prior versions.
         from superharness.engine.launchd_health import heal as _heal
 
-        pre = _heal(operator_plist=None)
+        pre = _heal(operator_plist=None, replacing_project=project_dir)
         if pre.fixed_count():
             click.echo(f"  [{project_dir.name}] {pre.summary()}")
 
@@ -1380,7 +1380,7 @@ def operator_install(project, install_all, force, use_dashboard, watchdog):
 
         operator_label = operator_label_for_project(project_dir)
         operator_plist = plist_path_for_label(operator_label)
-        post = _heal(operator_plist=operator_plist)
+        post = _heal(operator_plist=operator_plist, replacing_project=project_dir)
         if post.fixed_count():
             click.echo(f"  [{project_dir.name}] {post.summary()}")
         return operator_label
