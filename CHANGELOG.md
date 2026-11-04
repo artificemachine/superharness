@@ -1017,3 +1017,7 @@ chore: submitted gemini-cli round 1 position for gap analysis discussion
 - 2026-11-04: fix(doctor): the macOS watcher WARN now recommends shux operator install -p . (the Guardian job doctor actually checks) instead of shux watcher-worker, which could not clear it.
 
 - 2026-11-04: docs(operator): correction after review of the operator install docs: its cleanup is machine-wide (every com.superharness.inbox.* and com.superharness.watcher.* service and plist, all projects), not project-scoped; the doctor watcher hint now says so and the tests were hardened.
+
+- 2026-11-04: fix(operator): heal() and operator install no longer remove other projects' live watcher-worker inbox jobs (plists carrying SUPERHARNESS_STATE_PROJECT); only the installing project's own inbox job and legacy marker-less jobs are replaced. README, GUIDE, INSTALL-AGENT and the doctor hint corrected again.
+
+- 2026-11-04 (v1.86.5-rc.13): chore(release): prepare the thirteenth release candidate with the heal() fix that spares other projects' watcher-worker inbox jobs, the corrected operator install documentation and the doctor hint; no release or publication.

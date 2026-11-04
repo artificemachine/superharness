@@ -367,7 +367,7 @@ def main(argv: list[str] | None = None) -> None:
             print(f"WARN watcher:{label} not loaded")
             print(
                 "       The background watcher is required — install the Guardian with: shux operator install -p . "
-                "(this also removes the inbox watcher jobs of every project on this machine)"
+                "(this replaces the inbox watcher job of this project)"
             )
             print(
                 "       Or use foreground mode instead: superharness watch --foreground --project ."
