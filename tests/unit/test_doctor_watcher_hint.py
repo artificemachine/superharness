@@ -32,11 +32,21 @@ def _watcher_lines(capsys, project) -> str:
     try:
         doctor.main(["--project", str(project)])
     except SystemExit:
+        # doctor exits 1 after printing everything when any other check fails in
+        # the bare tmp project; a crash before the watcher section is caught below
+        # by the missing 'WARN watcher:' line.
         pass
-    out = capsys.readouterr().out
-    lines = out.splitlines()
-    start = next(i for i, line in enumerate(lines) if line.startswith("WARN watcher:"))
-    return "\n".join(lines[start : start + 3])
+    lines = capsys.readouterr().out.splitlines()
+    start = next(
+        (i for i, line in enumerate(lines) if line.startswith("WARN watcher:")), None
+    )
+    assert start is not None, "no 'WARN watcher:' line in doctor output"
+    block = [lines[start]]
+    for line in lines[start + 1 :]:
+        if not line.startswith(" "):  # hint lines are indented under their WARN
+            break
+        block.append(line)
+    return "\n".join(block)
 
 
 def test_hint_points_at_the_command_that_clears_the_warning(
@@ -45,6 +55,13 @@ def test_hint_points_at_the_command_that_clears_the_warning(
     block = _watcher_lines(capsys, doctor_without_guardian)
     assert "shux operator install" in block
     assert "watcher-worker" not in block
+
+
+def test_hint_warns_that_the_cleanup_is_machine_wide(
+    doctor_without_guardian, capsys
+):
+    block = _watcher_lines(capsys, doctor_without_guardian)
+    assert "every project on this machine" in block
 
 
 def test_foreground_alternative_is_kept(doctor_without_guardian, capsys):

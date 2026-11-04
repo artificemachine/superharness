@@ -279,7 +279,7 @@ superharness init --detect
 
 ## Platform notes
 
-- **macOS**: Offer launchd watcher setup (`superharness watcher-worker --project .`). If `superharness doctor` still reports `watcher:com.superharness.operator.<id> not loaded`, it is checking the Guardian job, not the inbox watcher: run `superharness operator install -p .` instead. That command removes stale `com.superharness.*` services, including the `watcher-worker` inbox job, so use one or the other for a project.
+- **macOS**: Offer launchd watcher setup (`superharness watcher-worker --project .`). `superharness doctor` checks the Guardian job (`watcher:com.superharness.operator.<8-char hash>`), not the inbox job, so it keeps warning until you run `superharness operator install -p .`. That command's cleanup is machine-wide: it removes every `com.superharness.inbox.*` and `com.superharness.watcher.*` service and plist for all projects, including inbox jobs made by `watcher-worker`. Ask the user before running it on a machine with several projects.
 - **Linux**: Mention systemd unit file in `scripts/superharness-watcher@.service`
 - **Docker/CI**: Use `--non-interactive` flag with explicit env var confirmation
 - **Windows (native)**: superharness runs natively on Windows — no WSL or bash required.

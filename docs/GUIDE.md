@@ -85,7 +85,7 @@ The established top-level paths below remain supported for scripts and existing 
 | `shux hygiene` | Validate protocol compliance (contract, handoffs, ledger) |
 | `shux operator start` | Start background watcher (Headless) |
 | `shux operator start --dashboard` | Start watcher + persistent dashboard |
-| `shux operator install -p .` | Install the Guardian as a persistent service for this project (macOS launchd); removes stale `com.superharness.*` services, including the `watcher-worker` inbox job, and adds a 5-min watchdog |
+| `shux operator install -p .` | Install the Guardian as a persistent service for this project (macOS launchd) and a 5-min watchdog. Cleanup is machine-wide: removes every `com.superharness.inbox.*` and `com.superharness.watcher.*` service and plist for all projects, including `watcher-worker` inbox jobs |
 | `shux dashboard` | Launch on-demand UI (auto-closes if idle) |
 | `shux dashboard-list` | List all running dashboard processes |
 | `shux watch` | Start continuous watcher in foreground |
