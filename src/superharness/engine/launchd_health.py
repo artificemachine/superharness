@@ -158,21 +158,62 @@ def find_zombies() -> list[LaunchdEntry]:
     ]
 
 
-def find_stale_versions() -> list[LaunchdEntry]:
+_INBOX_LABEL_PREFIX = "com.superharness.inbox."
+
+
+def _inbox_state_project(plist_path: Path) -> Path | None:
+    """Project a current `watcher-worker` inbox job serves, read from its plist.
+
+    `install-launchd-inbox-watcher.sh` writes SUPERHARNESS_STATE_PROJECT into
+    the plist; pre-1.50 legacy inbox jobs do not carry it, so they return None.
+    """
+    try:
+        with plist_path.open("rb") as plist_file:
+            env = plistlib.load(plist_file).get("EnvironmentVariables", {})
+        value = env.get("SUPERHARNESS_STATE_PROJECT")
+        return Path(str(value)).resolve() if value else None
+    except (OSError, ValueError, TypeError, AttributeError, plistlib.InvalidFileException):
+        return None
+
+
+def _is_live_inbox_job(label: str, replacing_project: str | Path | None) -> bool:
+    """True for a current `watcher-worker` inbox job that heal must leave alone.
+
+    It is spared when it serves a project other than `replacing_project`, the
+    one a Guardian is about to replace. With no `replacing_project`, every
+    current inbox job is spared.
+    """
+    if not label.startswith(_INBOX_LABEL_PREFIX):
+        return False
+    project = _inbox_state_project(plist_path_for_label(label))
+    if project is None:
+        return False
+    return replacing_project is None or project != Path(replacing_project).resolve()
+
+
+def find_stale_versions(
+    replacing_project: str | Path | None = None,
+) -> list[LaunchdEntry]:
     """Services from prior superharness layouts that the current install
-    no longer ships (e.g. com.superharness.inbox.* from pre-1.50)."""
+    no longer ships (e.g. com.superharness.inbox.* from pre-1.50).
+
+    Live `watcher-worker` inbox jobs of other projects are not stale; see
+    `_is_live_inbox_job`.
+    """
     return [
         e
         for e in list_loaded_superharness_services()
         if any(e.label.startswith(p) for p in STALE_LABEL_PATTERNS)
+        and not _is_live_inbox_job(e.label, replacing_project)
     ]
 
 
-def find_orphan_plists() -> list[Path]:
+def find_orphan_plists(replacing_project: str | Path | None = None) -> list[Path]:
     """Plist files on disk for stale-pattern labels even if not loaded.
 
     These are leftovers from prior installs that should be removed so
-    they don't get auto-loaded on next login.
+    they don't get auto-loaded on next login. Live `watcher-worker` inbox
+    plists of other projects are kept; see `_is_live_inbox_job`.
     """
     if not _is_macos():
         return []
@@ -182,7 +223,9 @@ def find_orphan_plists() -> list[Path]:
     out: list[Path] = []
     for p in sorted(dir_.glob("com.superharness.*.plist")):
         label = p.stem
-        if any(label.startswith(stale) for stale in STALE_LABEL_PATTERNS):
+        if any(
+            label.startswith(stale) for stale in STALE_LABEL_PATTERNS
+        ) and not _is_live_inbox_job(label, replacing_project):
             out.append(p)
     return out
 
@@ -313,7 +356,10 @@ class HealReport:
 
 
 def heal(
-    operator_plist: Path | None = None, *, remove_orphan_plists: bool = True
+    operator_plist: Path | None = None,
+    *,
+    remove_orphan_plists: bool = True,
+    replacing_project: str | Path | None = None,
 ) -> HealReport:
     """Run the full self-heal sequence:
 
@@ -324,6 +370,9 @@ def heal(
 
     Pass `operator_plist=None` to skip the bootstrap step (e.g. when
     called from `status --fix` and the plist hasn't been installed yet).
+
+    Live `watcher-worker` inbox jobs are spared, except the one serving
+    `replacing_project` (the project a Guardian is being installed for).
     """
     report = HealReport([], [], [], [])
     if not _is_macos():
@@ -336,13 +385,13 @@ def heal(
             report.zombies_removed.append(z.label)
 
     # 2. Stale-pattern services
-    for s in find_stale_versions():
+    for s in find_stale_versions(replacing_project):
         if bootout(s.label):
             report.stale_services_removed.append(s.label)
 
     # 3. Orphan plists on disk for stale patterns
     if remove_orphan_plists:
-        for p in find_orphan_plists():
+        for p in find_orphan_plists(replacing_project):
             try:
                 p.unlink()
                 report.orphan_plists_removed.append(p.name)

@@ -57,11 +57,11 @@ def test_hint_points_at_the_command_that_clears_the_warning(
     assert "watcher-worker" not in block
 
 
-def test_hint_warns_that_the_cleanup_is_machine_wide(
+def test_hint_says_it_replaces_this_projects_inbox_job(
     doctor_without_guardian, capsys
 ):
     block = _watcher_lines(capsys, doctor_without_guardian)
-    assert "every project on this machine" in block
+    assert "replaces the inbox watcher job of this project" in block
 
 
 def test_foreground_alternative_is_kept(doctor_without_guardian, capsys):
