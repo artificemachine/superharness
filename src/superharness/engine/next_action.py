@@ -79,8 +79,16 @@ _MAPPING: dict[str, tuple[Optional[str], list[str], str]] = {
     ),
     "in_progress": (
         None,
-        ["report_ready", "pending_user_approval", "stopped", "failed", "waiting_input"],
-        "agent is working; wait for report_ready or pending_user_approval",
+        [
+            "report_ready",
+            "pending_user_approval",
+            "stopped",
+            "failed",
+            "waiting_input",
+            "plan_proposed",
+        ],
+        "agent is working; wait for report_ready or pending_user_approval "
+        "(plan_proposed rewinds the task, refused while an agent is dispatched)",
     ),
     "pending_user_approval": (
         "in_progress",
@@ -89,8 +97,8 @@ _MAPPING: dict[str, tuple[Optional[str], list[str], str]] = {
     ),
     "report_ready": (
         "review_passed",
-        ["review_passed", "review_failed", "review_requested"],
-        "review diff and handoff, then mark passed or failed",
+        ["review_passed", "review_failed", "review_requested", "in_progress"],
+        "review diff and handoff, then mark passed or failed (or send back to in_progress for rework)",
     ),
     "review_requested": (
         "review_passed",

@@ -225,3 +225,119 @@ def test_cli_and_mcp_both_reject_done_from_todo(tmp_path):
     )
     conn2.close()
     assert mcp_result == {}, "MCP must also reject todo→done"
+
+
+# ── Backward edges: in_progress → plan_proposed, report_ready → in_progress ──
+
+
+def _enqueue_dispatch(conn: sqlite3.Connection, task_id: str, status: str) -> None:
+    """Insert an inbox row for the task in the given dispatch status."""
+    from superharness.engine import inbox_dao
+
+    inbox_dao.enqueue(
+        conn,
+        id=f"inbox-{task_id}",
+        task_id=task_id,
+        target_agent="claude-code",
+        now=_now(),
+    )
+    conn.execute("UPDATE inbox SET status=? WHERE id=?", (status, f"inbox-{task_id}"))
+    conn.commit()
+
+
+def test_cli_allows_rewind_in_progress_to_plan_proposed(tmp_path):
+    """With no live dispatch, in_progress → plan_proposed is recorded."""
+    project, conn = _setup_project(tmp_path)
+    _insert_task(conn, "t-rewind", "in_progress")
+    conn.close()
+
+    from superharness.commands.task import status_update
+    from superharness.engine.db import get_connection
+
+    rc = status_update(str(project), "t-rewind", "plan_proposed", "claude-code")
+    assert rc == 0
+
+    conn2 = get_connection(str(project))
+    try:
+        row = conn2.execute(
+            "SELECT status, plan_proposed_at FROM tasks WHERE id='t-rewind'"
+        ).fetchone()
+    finally:
+        conn2.close()
+    assert row["status"] == "plan_proposed"
+    assert row["plan_proposed_at"], "rewind must stamp plan_proposed_at"
+
+
+@pytest.mark.parametrize("dispatch_status", ["launched", "running"])
+def test_cli_rejects_rewind_while_agent_is_dispatched(tmp_path, dispatch_status):
+    """A live agent keeps writing, so the rewind must be refused (exit 2)."""
+    project, conn = _setup_project(tmp_path)
+    _insert_task(conn, "t-live", "in_progress")
+    _enqueue_dispatch(conn, "t-live", dispatch_status)
+    conn.close()
+
+    from superharness.commands.task import status_update
+
+    with pytest.raises(SystemExit) as exc_info:
+        status_update(str(project), "t-live", "plan_proposed", "claude-code")
+    assert exc_info.value.code == 2
+
+
+def test_mcp_rejects_rewind_while_agent_is_dispatched(tmp_path):
+    """The MCP path enforces the same live-dispatch guard as the CLI."""
+    _, conn = _setup_project(tmp_path)
+    _insert_task(conn, "t-live-mcp", "in_progress")
+    _enqueue_dispatch(conn, "t-live-mcp", "running")
+
+    from superharness.mcp.tools.contract import update_status
+
+    result = update_status(
+        conn, task_id="t-live-mcp", status="plan_proposed", actor="claude-code"
+    )
+    conn.close()
+    assert result == {}
+
+
+def test_mcp_allows_rewind_without_dispatch(tmp_path):
+    _, conn = _setup_project(tmp_path)
+    _insert_task(conn, "t-mcp-rewind", "in_progress")
+
+    from superharness.mcp.tools.contract import update_status
+
+    result = update_status(
+        conn, task_id="t-mcp-rewind", status="plan_proposed", actor="claude-code"
+    )
+    conn.close()
+    assert result.get("status") == "plan_proposed"
+
+
+def test_report_ready_can_return_to_in_progress(tmp_path):
+    project, conn = _setup_project(tmp_path)
+    _insert_task(conn, "t-rr", "report_ready")
+    conn.close()
+
+    from superharness.commands.task import status_update
+
+    rc = status_update(
+        str(project), "t-rr", "in_progress", "claude-code", summary="rework requested"
+    )
+    assert rc == 0
+
+
+@pytest.mark.parametrize("terminal", ["done", "archived"])
+def test_terminal_statuses_stay_terminal(terminal):
+    from superharness.engine.next_action import ALL_STATUSES, validate_status_transition
+
+    for target in ALL_STATUSES:
+        if target == terminal:
+            continue
+        with pytest.raises(ValueError, match="transition"):
+            validate_status_transition(terminal, target)
+
+
+def test_status_update_has_no_force_parameter():
+    import inspect
+
+    from superharness.commands.task import status_update
+
+    assert "force" not in inspect.signature(status_update).parameters

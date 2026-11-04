@@ -81,9 +81,16 @@ def update_status(
     try:
         current = get_task(conn, task_id)
         if current:
+            from superharness.engine import inbox_dao
             from superharness.engine.next_action import validate_status_transition
 
             validate_status_transition(str(current.get("status", "")), status)
+            if (
+                current.get("status") == "in_progress"
+                and status == "plan_proposed"
+                and inbox_dao.has_live_dispatch(conn, task_id)
+            ):
+                raise ValueError("live agent dispatch; stop it before rewinding")
     except ValueError as _e:
         logger.warning(
             "update_status rejected invalid transition for %s: %s", task_id, _e
