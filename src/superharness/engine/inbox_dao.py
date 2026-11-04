@@ -115,6 +115,15 @@ def get(conn: sqlite3.Connection, id: str) -> InboxRow | None:
     return _row_to_inbox(row) if row else None
 
 
+def has_live_dispatch(conn: sqlite3.Connection, task_id: str) -> bool:
+    """True when an agent is currently launched or running for this task."""
+    row = conn.execute(
+        "SELECT 1 FROM inbox WHERE task_id=? AND status IN ('launched', 'running') LIMIT 1",
+        (task_id,),
+    ).fetchone()
+    return row is not None
+
+
 def get_all(
     conn: sqlite3.Connection,
     *,
