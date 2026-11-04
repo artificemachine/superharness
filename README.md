@@ -88,7 +88,15 @@ shux operator start
 
 # Start with dashboard (always-on UI)
 shux operator start --dashboard
+
+# macOS: install the Guardian as a persistent launchd service (this project only)
+shux operator install -p .
 ```
+
+`shux operator install` first removes stale `com.superharness.*` launchd services and
+orphan plists, including the inbox watcher job created by `shux watcher-worker`, then
+installs the Guardian and a 5-minute watchdog. Use either `watcher-worker` or
+`operator install` for a project, not both; `shux doctor` checks for the Guardian job.
 
 ### 4. Dashboard UI
 ```bash

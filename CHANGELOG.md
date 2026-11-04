@@ -1011,3 +1011,5 @@ chore: submitted gemini-cli round 1 position for gap analysis discussion
 - 2026-11-04: fix(task): let the human 'owner' actor approve or send back a plan_proposed task owned by an agent (plan_proposed -> plan_approved/todo); every other cross-owner update stays forbidden.
 
 - 2026-11-04 (v1.86.5-rc.12): chore(release): prepare the twelfth release candidate with the status rewind edges and owner plan decisions; no release or publication.
+
+- 2026-11-04: docs(operator): document shux operator install (Guardian, watchdog, removal of stale com.superharness.* services including the watcher-worker inbox job) in README, GUIDE and INSTALL-AGENT, and note that shux doctor checks the Guardian job.
