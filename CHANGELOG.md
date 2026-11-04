@@ -1006,3 +1006,5 @@ chore: submitted gemini-cli round 1 position for gap analysis discussion
 - 2026-11-02 (v1.86.5-rc.11): docs(overview): emphasize creating discussions and tasks; explain participating owners, consensus rounds, task ownership, and cross-session handoffs. Prepare the next release candidate; no release or publication.
 
 - 2026-11-04: feat(task): allow in_progress -> plan_proposed (refused while an agent is launched or running) and report_ready -> in_progress in the status state machine, enforced on both CLI and MCP paths; no force flag, done and archived stay terminal.
+
+- 2026-11-04: docs(spec): review SPEC-004 and add REQ-404 for the in_progress rewind and the report_ready rework edge, after the doctrine guard flagged the stale review date.
