@@ -412,6 +412,10 @@ superharness task create --project . --id feat.checkout \
 # Update task status
 superharness task status --project . --id task-id --status in_progress --actor codex-cli
 
+# Only the task's owner can update it. Exception: the human `--actor owner` can
+# approve (plan_approved) or send back (todo) a plan_proposed task owned by an agent.
+superharness task status --project . --id task-id --status plan_approved --actor owner
+
 # Delete task
 superharness task delete --project . --id task-id
 ```

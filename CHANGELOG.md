@@ -1008,3 +1008,4 @@ chore: submitted gemini-cli round 1 position for gap analysis discussion
 - 2026-11-04: feat(task): allow in_progress -> plan_proposed (refused while an agent is launched or running) and report_ready -> in_progress in the status state machine, enforced on both CLI and MCP paths; no force flag, done and archived stay terminal.
 
 - 2026-11-04: docs(spec): review SPEC-004 and add REQ-404 for the in_progress rewind and the report_ready rework edge, after the doctrine guard flagged the stale review date.
+- 2026-11-04: fix(task): let the human 'owner' actor approve or send back a plan_proposed task owned by an agent (plan_proposed -> plan_approved/todo); every other cross-owner update stays forbidden.
