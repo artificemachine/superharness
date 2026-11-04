@@ -361,8 +361,8 @@ todo → plan_proposed → plan_approved → in_progress → report_ready → do
 | `todo` | operator | task created; Enqueue button visible in dashboard |
 | `plan_proposed` | agent | agent writes plan handoff, stops and waits |
 | `plan_approved` | operator | operator approves via `shux task status` (plans are typically reviewed upfront in the Enqueue modal before dispatch) |
-| `in_progress` | agent | agent begins implementation |
-| `report_ready` | agent | agent writes report handoff, stops and waits |
+| `in_progress` | agent | agent begins implementation; the operator can rewind to `plan_proposed` to re-plan, but only once no agent is dispatched (stop it first) |
+| `report_ready` | agent | agent writes report handoff, stops and waits; the operator can send it back to `in_progress` for rework |
 | `review_requested` | operator | operator requests Opus quality review |
 | `review_passed` | Opus | review approved → ready to close |
 | `review_failed` | Opus | review failed → agent loops back to `plan_proposed` |

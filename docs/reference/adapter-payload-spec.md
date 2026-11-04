@@ -434,9 +434,9 @@ Each task carries a `next_action` object that tells a consumer what to do next â
 | `todo` | `plan_proposed` | `[plan_proposed]` | author a plan handoff before dispatch |
 | `plan_proposed` | `plan_approved` | `[plan_approved, todo]` | review the plan; approve or send back to todo |
 | `plan_approved` | `in_progress` | `[in_progress, plan_proposed]` | dispatch to the agent |
-| `in_progress` | `null` | `[report_ready, pending_user_approval, stopped, failed]` | agent is working; wait for report_ready or pending_user_approval |
+| `in_progress` | `null` | `[report_ready, pending_user_approval, stopped, failed, waiting_input, plan_proposed]` | agent is working; wait for report_ready or pending_user_approval (plan_proposed rewinds the task, refused while an agent is dispatched) |
 | `pending_user_approval` | `in_progress` | `[in_progress, stopped]` | answer the agent question then resume |
-| `report_ready` | `review_passed` | `[review_passed, review_failed, review_requested]` | review diff and handoff, then mark passed or failed |
+| `report_ready` | `review_passed` | `[review_passed, review_failed, review_requested, in_progress]` | review diff and handoff, then mark passed or failed (or send back to in_progress for rework) |
 | `review_requested` | `review_passed` | `[review_passed, review_failed]` | complete the review |
 | `review_passed` | `done` | `[done, review_failed]` | close the task |
 | `review_failed` | `plan_proposed` | `[plan_proposed, todo]` | revise the plan and re-propose |

@@ -607,7 +607,7 @@ def status_update(
         _abort(f"error: --summary is required when status={status}", 2)
 
     from superharness.engine.db import get_connection, init_db
-    from superharness.engine import tasks_dao
+    from superharness.engine import inbox_dao, tasks_dao
 
     conn = get_connection(project_dir)
     try:
@@ -632,6 +632,19 @@ def status_update(
             validate_status_transition(str(task_row.status or ""), status)
         except ValueError as _e:
             _abort(f"status transition rejected: {_e}", 2)
+
+        # Rewinding to plan_proposed does not stop a running agent: refuse it
+        # while one is dispatched so it cannot keep writing to a "re-planned" task.
+        if (
+            str(task_row.status or "") == "in_progress"
+            and status == "plan_proposed"
+            and inbox_dao.has_live_dispatch(conn, task_id)
+        ):
+            _abort(
+                f"status transition rejected: task '{task_id}' has a live agent "
+                "dispatch; stop it first (shux task status --status stopped --reason ...)",
+                2,
+            )
 
         # Scope guard on plan_approved
         if status == "plan_approved":
