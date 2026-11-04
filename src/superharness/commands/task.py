@@ -620,7 +620,14 @@ def status_update(
         if not owner:
             _abort(f"task '{task_id}' has no owner set")
 
-        if actor != owner and not _recursion_guard:
+        # The human 'owner' actor may decide a plan (approve or send back to todo)
+        # on any agent's task; every other cross-owner update stays forbidden.
+        is_plan_decision = (
+            actor == "owner"
+            and str(task_row.status or "") == "plan_proposed"
+            and status in ("plan_approved", "todo")
+        )
+        if actor != owner and not is_plan_decision and not _recursion_guard:
             _abort(
                 f"forbidden: actor '{actor}' cannot update task '{task_id}' owned by '{owner}'"
             )  # shipguard:ignore PY-007
