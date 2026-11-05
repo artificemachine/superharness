@@ -182,7 +182,7 @@ shux onboard --project /path/to/project            # target a different director
 | Step | Name | What it does |
 |------|------|-------------|
 | 1 | `detect` | Heuristic stack detection (Python, Node.js, Rust, Go, Ruby, unknown) |
-| 2 | `init` | Creates `.superharness/` scaffold (`state.db`, `ledger.md`); writes `AGENTS.md` if missing |
+| 2 | `init` | Creates the `.superharness/` scaffold and resolves the SQLite store through the state-path resolver; writes `AGENTS.md` if missing |
 | 2b | `global_claude` | Appends a superharness section to `~/.claude/CLAUDE.md` (once per machine, skip if already present) |
 | 3 | `git_track` | Configures `.gitignore` for solo or team mode; writes `.superharness/.gitignore` for runtime files |
 | 4 | `doctor` | Runs `shux doctor` non-blocking — warnings shown but don't stop setup |
@@ -194,7 +194,7 @@ shux onboard --project /path/to/project            # target a different director
 
 **What gets written:**
 
-- `.superharness/state.db` — SQLite state store, empty task list (append tasks later with `shux delegate`)
+- SQLite state store — resolved by `utils/paths.py`, normally `$XDG_STATE_HOME/superharness/<project-hash>/state.db` (defaulting to `~/.local/state`); legacy projects and unconfigured temporary projects can use `.superharness/state.sqlite3`. `SUPERHARNESS_STATE_DIR` selects an explicit root and conflicting databases fail closed. See [database location](ARCHITECTURE.md#database-location).
 - `.superharness/ledger.md` — session history file
 - `AGENTS.md` — instructions for Claude Code and Codex CLI to use `shux` commands. Never overwritten if it already exists.
 - `~/.claude/CLAUDE.md` — a `## superharness` section is appended (once) so every Claude Code session on this machine knows to use `shux`. Never written if the file is missing; never duplicated if already present.
