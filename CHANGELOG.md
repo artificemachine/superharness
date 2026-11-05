@@ -1023,3 +1023,5 @@ chore: submitted gemini-cli round 1 position for gap analysis discussion
 - 2026-11-04 (v1.86.5-rc.13): chore(release): prepare the thirteenth release candidate with the heal() fix that spares other projects' watcher-worker inbox jobs, the corrected operator install documentation and the doctor hint; no release or publication.
 
 - 2026-11-04: fix(dashboard): define the missing escapeHtml helper so the behavioral profile panel renders populated profiles again (it showed "profile unavailable" since the helper was never defined); a JavaScript regression test covers populated and hostile HTML values. Replays PR 184, which had a CHANGELOG conflict.
+
+- 2026-11-04 (v1.86.5-rc.14): chore(release): prepare the fourteenth release candidate with the dashboard profile panel fix (escapeHtml helper missing from rc.12 and rc.13); no release or publication.
