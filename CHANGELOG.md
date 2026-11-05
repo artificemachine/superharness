@@ -1023,3 +1023,5 @@ chore: submitted gemini-cli round 1 position for gap analysis discussion
 - 2026-11-04 (v1.86.5-rc.13): chore(release): prepare the thirteenth release candidate with the heal() fix that spares other projects' watcher-worker inbox jobs, the corrected operator install documentation and the doctor hint; no release or publication.
 
 - 2026-11-05: docs(attribution): credit Hermes setup wizard inspiration in README.
+
+- 2026-11-05: docs: align state-path guidance and Pi adapter architecture with the implementation and repair relative documentation links.
