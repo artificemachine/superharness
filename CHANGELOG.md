@@ -1027,3 +1027,5 @@ chore: submitted gemini-cli round 1 position for gap analysis discussion
 - CI: skip full pytest layers for documentation-only PRs, merge groups and main pushes while retaining shell guards and QA Gate.
 
 - Docs: explain CI test selection for documentation-only changes.
+
+- Docs: clarify that CI workflow changes retain full test coverage.

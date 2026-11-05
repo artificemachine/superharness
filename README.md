@@ -395,7 +395,7 @@ bash tests/doctrine/doctrine-guard.sh
 
 This repository is public by design, declared by the `.public-repo` marker; the guard skips its private-by-default visibility check when that marker exists.
 
-The Tests workflow skips its full pytest layers when a pull request, merge group, or main push changes only root Markdown files or `.md`, `.rst`, and `.txt` files under `docs/`. Shell and changelog guards and QA Gate still run. Code, configuration, mixed changes, and unknown diffs retain the full test suite. Other security and platform workflows remain active.
+The Tests workflow skips its full pytest layers when a pull request, merge group, or main push changes only root Markdown files or `.md`, `.rst`, and `.txt` files under `docs/`. Shell and changelog guards and QA Gate still run. Code, configuration, mixed changes, and unknown diffs retain the full test suite. Changes to the workflow itself also run the full suite. Other security and platform workflows remain active.
 
 ---
 
