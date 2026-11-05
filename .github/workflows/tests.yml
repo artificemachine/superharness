@@ -15,6 +15,40 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  changes:
+    name: Detect documentation-only changes
+    runs-on: ubuntu-latest
+    outputs:
+      docs_only: ${{ steps.diff.outputs.docs_only }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - id: diff
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}
+        shell: python
+        run: |
+          import os
+          import subprocess
+          from pathlib import PurePosixPath
+          base = os.environ["BASE_REF"]
+          docs_only = False
+          if base and set(base) != {"0"}:
+              paths = subprocess.check_output([
+                  "git", "diff", "--name-only", "--no-renames", "-z", base, "HEAD"
+              ]).decode().split("\0")
+              paths = [path for path in paths if path]
+              docs_only = bool(paths) and all(
+                  PurePosixPath(path).suffix.lower() in {".md", ".rst", ".txt"}
+                  and (path.startswith("docs/") or (
+                      "/" not in path and PurePosixPath(path).suffix.lower() == ".md"
+                  ))
+                  for path in paths
+              )
+          with open(os.environ["GITHUB_OUTPUT"], "a") as output:
+              output.write(f"docs_only={str(docs_only).lower()}\n")
+
   shell-tests:
     name: Shell Test Suite
     runs-on: ubuntu-latest
@@ -63,6 +97,8 @@ jobs:
           PYTHONPATH=src python3 -m superharness.commands.init_project --dry-run "CI Smoke" "Bash" "active"
 
   smoke-tests:
+    needs: changes
+    if: needs.changes.outputs.docs_only != 'true'
     name: Smoke Tests (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
@@ -86,6 +122,8 @@ jobs:
           PYTHONPATH: src
 
   unit-tests:
+    needs: changes
+    if: needs.changes.outputs.docs_only != 'true'
     name: Unit Tests (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     # Three consecutive green main runs on 2026-08-24/26 established the
@@ -136,6 +174,8 @@ jobs:
           PYTHONUTF8: "1"
 
   integration-tests:
+    needs: changes
+    if: needs.changes.outputs.docs_only != 'true'
     name: Integration Tests (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
@@ -159,6 +199,8 @@ jobs:
           PYTHONPATH: src
 
   e2e-tests:
+    needs: changes
+    if: needs.changes.outputs.docs_only != 'true'
     name: E2E Tests (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
@@ -183,6 +225,8 @@ jobs:
           PYTHONUTF8: "1"
 
   other-tests:
+    needs: changes
+    if: needs.changes.outputs.docs_only != 'true'
     name: Other Tests (chaos/contract/engine/perf/smoke-dir/state-machine/root)
     # 2026-07-21 portfolio-ready audit: tests/unit, tests/integration, tests/e2e,
     # and tests/test_smoke.py were the only paths any workflow ever invoked —
@@ -214,6 +258,7 @@ jobs:
     name: QA Gate
     runs-on: ubuntu-latest
     needs:
+      - changes
       - shell-tests
       - smoke-tests
       - unit-tests
@@ -224,6 +269,8 @@ jobs:
     steps:
       - name: Verify all quality layers passed
         env:
+          CHANGES_RESULT: ${{ needs.changes.result }}
+          DOCS_ONLY: ${{ needs.changes.outputs.docs_only }}
           SHELL_TESTS: ${{ needs.shell-tests.result }}
           SMOKE_TESTS: ${{ needs.smoke-tests.result }}
           UNIT_TESTS: ${{ needs.unit-tests.result }}
@@ -231,6 +278,12 @@ jobs:
           E2E_TESTS: ${{ needs.e2e-tests.result }}
           OTHER_TESTS: ${{ needs.other-tests.result }}
         run: |
+          [ "$CHANGES_RESULT" = "success" ] || exit 1
+          if [ "$DOCS_ONLY" = "true" ]; then
+            [ "$SHELL_TESTS" = "success" ] || exit 1
+            echo "Documentation-only change: test suites skipped; shell guards passed."
+            exit 0
+          fi
           failures=0
           echo "shell-tests => $SHELL_TESTS"
           echo "smoke-tests => $SMOKE_TESTS"
