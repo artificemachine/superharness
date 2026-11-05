@@ -1023,3 +1023,5 @@ chore: submitted gemini-cli round 1 position for gap analysis discussion
 - 2026-11-04 (v1.86.5-rc.13): chore(release): prepare the thirteenth release candidate with the heal() fix that spares other projects' watcher-worker inbox jobs, the corrected operator install documentation and the doctor hint; no release or publication.
 
 - 2026-11-05: docs(attribution): credit Hermes setup wizard inspiration in README.
+
+- CI: skip full pytest layers for documentation-only PRs, merge groups and main pushes while retaining shell guards and QA Gate.
