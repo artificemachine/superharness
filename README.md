@@ -425,7 +425,7 @@ CONFIRM_NON_INTERACTIVE=yes bash src/superharness/scripts/install-systemd-inbox-
 
 superharness draws on ideas from several open agent harnesses and patterns. Each link points to the specific extraction or comparison doc.
 
-- [Nous Research / hermes-agent](https://github.com/nousresearch/hermes-agent) — agent lifecycle and tool-use shape. See [docs/archive/COMPARISON-superharness-vs-pi-hermes.md](docs/archive/COMPARISON-superharness-vs-pi-hermes.md)
+- [Nous Research / hermes-agent](https://github.com/nousresearch/hermes-agent) — inspiration for the interactive onboarding wizard, as well as agent lifecycle and tool-use shape. See [docs/archive/COMPARISON-superharness-vs-pi-hermes.md](docs/archive/COMPARISON-superharness-vs-pi-hermes.md)
 - [earendil-works/pi](https://github.com/earendil-works/pi) — multi-agent coordination patterns
 - [obra/superpowers](https://github.com/obra/superpowers) — composable `SKILL.md` files, two-stage review (spec compliance, then code quality), TDD enforcement.
 - [paperclipai/paperclip](https://github.com/paperclipai/paperclip) — adapter breadth, plugin SDK shape, dashboard control plane.
