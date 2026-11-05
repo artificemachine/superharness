@@ -1021,3 +1021,5 @@ chore: submitted gemini-cli round 1 position for gap analysis discussion
 - 2026-11-04: fix(operator): heal() and operator install no longer remove other projects' live watcher-worker inbox jobs (plists carrying SUPERHARNESS_STATE_PROJECT); only the installing project's own inbox job and legacy marker-less jobs are replaced. README, GUIDE, INSTALL-AGENT and the doctor hint corrected again.
 
 - 2026-11-04 (v1.86.5-rc.13): chore(release): prepare the thirteenth release candidate with the heal() fix that spares other projects' watcher-worker inbox jobs, the corrected operator install documentation and the doctor hint; no release or publication.
+
+- 2026-11-05: docs: align state-path guidance and Pi adapter architecture with the implementation and repair relative documentation links.
