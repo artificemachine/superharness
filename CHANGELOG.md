@@ -1025,3 +1025,5 @@ chore: submitted gemini-cli round 1 position for gap analysis discussion
 - 2026-11-05: docs(attribution): credit Hermes setup wizard inspiration in README.
 
 - CI: skip full pytest layers for documentation-only PRs, merge groups and main pushes while retaining shell guards and QA Gate.
+
+- Docs: explain CI test selection for documentation-only changes.
