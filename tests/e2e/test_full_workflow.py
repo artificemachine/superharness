@@ -24,6 +24,11 @@ def _init_project(tmp_path: Path) -> Path:
 class TestTaskLifecycleE2E:
     def test_create_and_delegate_task(self, tmp_path):
         project = _init_project(tmp_path)
+        # The default (ai_driven) auto-approves plans; this test covers the
+        # manual approval path that supervised autonomy keeps.
+        from superharness.engine.profile import write_field
+
+        write_field(project, "autonomy", "supervised")
         r = _shux(
             "task",
             "create",

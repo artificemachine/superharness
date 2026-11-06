@@ -1029,3 +1029,5 @@ chore: submitted gemini-cli round 1 position for gap analysis discussion
 - 2026-11-05: docs: align state-path guidance and Pi adapter architecture with the implementation and repair relative documentation links.
 
 - Docs: explain documentation-only CI selection and full coverage for workflow changes.
+
+- 2026-11-06 (1.86.5rc14): feat(autonomy): the default `ai_driven` autonomy now auto-approves `plan_proposed` tasks (`task.py` hook and `inbox_watch.py` peer-review dispatch) via `plan_auto_approval_enabled()`, and fails closed: a plan handoff is required, a validation error blocks, and `auto_approve_plans` must be a real boolean (a mistyped value, an explicit `null` document or a non-mapping profile is refused; a missing or empty profile keeps the default). `supervised` autonomy or `auto_approve_plans: false` keeps the operator gate. Security-relevant default change: review before merge.
