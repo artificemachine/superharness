@@ -41,6 +41,60 @@ def _worktree_path_is_safe(wt_path: str) -> bool:
     return candidate == root or candidate.startswith(root + os.sep)
 
 
+def commit_worktree_before_removal(
+    project_dir: str, task_id: str, wt_path: str, summary: str
+) -> bool:
+    """Commit a closing task's worktree locally; True means keep the worktree.
+
+    Opt-in: commits only when the profile sets ``auto_commit_tasks: true``. The
+    commit lands on its own task branch and is never pushed. Whenever the
+    worktree is not committed (auto-commit off or refused, unreadable profile,
+    refused or failed commit) and it holds unsaved work, it is kept. Unsaved
+    work is uncommitted changes or commits no local branch contains; a clean
+    worktree already referenced by a branch may still be removed. Files git
+    ignores (caches, build output) are disposable and do not count.
+    """
+    import yaml
+
+    from superharness.engine.profile import task_auto_commit_enabled
+    from superharness.engine.task_commit import (
+        commit_task_worktree,
+        has_unsaved_work,
+    )
+
+    profile: dict | None = {}
+    profile_path = os.path.join(project_dir, ".superharness", "profile.yaml")
+    if os.path.isfile(profile_path):
+        try:
+            with open(profile_path, encoding="utf-8") as fh:
+                loaded = yaml.safe_load(fh.read())
+            profile = loaded if isinstance(loaded, dict) else {}
+        except (OSError, yaml.YAMLError) as e:
+            # Log the error type only: its text can quote the profile's content.
+            logger.warning("close.py cannot read profile.yaml: %s", type(e).__name__)
+            profile = None  # unreadable: never commit, but never delete unsaved work
+    if profile is None or not task_auto_commit_enabled(profile):
+        if has_unsaved_work(wt_path):
+            print(
+                f"Warning: kept worktree {wt_path} for '{task_id}': it has unsaved "
+                "work (uncommitted changes or unreferenced commits) and auto-commit "
+                "is off or refused",
+                file=sys.stderr,
+            )
+            return True
+        return False
+
+    result = commit_task_worktree(wt_path, task_id, summary)
+    if result.outcome in ("committed", "branched"):
+        print(f"Committed task '{task_id}' locally on {result.branch} ({result.sha[:8]})")
+    if result.preserve_worktree:
+        print(
+            f"Warning: kept worktree {wt_path} for '{task_id}': {result.message}",
+            file=sys.stderr,
+        )
+    return result.preserve_worktree
+
+
 _JSON_MODE = False
 _JSON_CTX: dict = {}
 
@@ -308,6 +362,10 @@ def close_task(
                 task_id,
             )
             wt_path = None
+        if wt_path and commit_worktree_before_removal(
+            project_dir, task_id, wt_path, summary
+        ):
+            wt_path = None  # uncommitted work: keep the worktree
         if wt_path:
             import shutil
             import subprocess
