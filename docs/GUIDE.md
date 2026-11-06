@@ -588,6 +588,16 @@ With `ai_driven` (the default, also when there is no profile or it is empty), a 
 
 `auto_approve_plans` must be a real YAML boolean. A mistyped value (`"false"`, `1`, `null`, a list) and a profile whose root is not a mapping (including an explicit `null` document) are refused: auto-approval stays off.
 
+**Auto-commit key in `profile.yaml`:**
+
+```yaml
+auto_commit_tasks: true   # optional; off by default
+```
+
+With `auto_commit_tasks: true`, closing a task commits the work of its dispatch worktree locally before the worktree is removed. The commit lands on its own branch, `superharness/task/<task id>`, so a branch the worktree was attached to never moves. Nothing is pushed, and `main` and `master` are never committed to. The key must be a real YAML boolean: `"true"`, `1` or any other value leaves auto-commit off, and the autonomy mode never turns it on.
+
+Whatever the setting, closing a task never removes a dispatch worktree that holds unsaved work, meaning uncommitted changes or commits on a detached HEAD that no local branch contains. The worktree is kept and a warning names it; a clean worktree is still removed. Files that git ignores, such as caches and build output, are disposable: they are neither committed nor kept, so a worktree that holds only those is removed.
+
 ### Cost Tracking (`shux benchmark`)
 
 ```bash
