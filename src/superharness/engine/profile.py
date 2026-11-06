@@ -50,6 +50,56 @@ def normalize_autonomy(value: str | None) -> str:
     return _AUTONOMY_ALIASES.get(v, v) or "ai_driven"
 
 
+def load_profile_document(profile_path: str | os.PathLike[str]) -> object:
+    """Parse profile.yaml, telling an empty file apart from an explicit null.
+
+    Returns ``{}`` when the file has no YAML document (empty, or only comments
+    and blank lines), the parsed root otherwise (``None`` for an explicit
+    ``null`` or ``~`` document). Raises ``OSError`` or ``yaml.YAMLError`` when
+    the file cannot be read or is not exactly one valid document.
+    """
+    import yaml
+
+    with open(profile_path, encoding="utf-8") as fh:
+        text = fh.read()
+    if yaml.compose(text) is None:
+        return {}
+    return yaml.safe_load(text)
+
+
+def plan_auto_approval_enabled(profile: object) -> bool:
+    """Whether plan_proposed tasks are auto-approved under *profile*.
+
+    *profile* is the parsed profile root, ``{}`` when there is no profile file
+    or it is empty (see ``load_profile_document``). A missing
+    ``auto_approve_plans`` key keeps the autonomy default: ``ai_driven``
+    approves automatically, any other mode such as ``supervised`` keeps the
+    operator in the loop. A key that is present must hold a real boolean and
+    then wins. Anything else is malformed and refused rather than coerced: a
+    present non-boolean (``"false"``, ``1``, null, a list), or a root that is
+    not a mapping (including an explicit ``null`` document, so ``None``),
+    disables auto-approval.
+    """
+    if not isinstance(profile, dict):
+        # Name the type only: the raw content is untrusted input.
+        _log.warning(
+            "profile must be a mapping, got a %s: plan auto-approval stays off",
+            type(profile).__name__,
+        )
+        return False
+    if "auto_approve_plans" not in profile:
+        return normalize_autonomy(profile.get("autonomy")) == "ai_driven"
+    explicit = profile["auto_approve_plans"]
+    if not isinstance(explicit, bool):
+        _log.warning(
+            "profile auto_approve_plans must be true or false, got a %s: "
+            "plan auto-approval stays off",
+            type(explicit).__name__,
+        )
+        return False
+    return explicit
+
+
 def read_field(project_dir: Path, field: str) -> str:
     profile_path = project_dir / ".superharness" / "profile.yaml"
     if not profile_path.exists():

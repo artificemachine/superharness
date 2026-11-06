@@ -697,7 +697,8 @@ def status_update(
     finally:
         conn.close()
 
-    # Auto-approve hook: plan_proposed → plan_approved when auto_approve_plans=true.
+    # Auto-approve hook: plan_proposed → plan_approved under ai_driven autonomy
+    # (the default) unless the profile sets auto_approve_plans: false.
     # Only fires for the implementation workflow — quick/note/review/discussion tasks
     # have no plan cycle, and auto-approving them causes a permanent dispatch block
     # because plan_approved is not in their allowed dispatch status set.
@@ -706,39 +707,59 @@ def status_update(
         and not _recursion_guard
         and task_row.workflow == "implementation"
     ):
-        profile_path = os.path.join(project_dir, ".superharness", "profile.yaml")
-        auto_approve = False
-        if os.path.exists(profile_path):
-            try:
-                import yaml as _yaml
+        from superharness.engine.profile import (
+            load_profile_document,
+            plan_auto_approval_enabled,
+        )
 
-                with open(profile_path) as _f:
-                    profile = _yaml.safe_load(_f) or {}
-                    auto_approve = bool(profile.get("auto_approve_plans", False))
+        profile_path = os.path.join(project_dir, ".superharness", "profile.yaml")
+        # A missing or empty profile means the default autonomy (ai_driven); an
+        # unreadable or malformed one fails closed and leaves the plan to the
+        # operator. The raw root is checked: an explicit null is not an empty file.
+        auto_approve = plan_auto_approval_enabled({})
+        if os.path.exists(profile_path):
+            auto_approve = False
+            try:
+                auto_approve = plan_auto_approval_enabled(
+                    load_profile_document(profile_path)
+                )
             except Exception as e:
                 logger.warning("task.py unexpected error: %s", e, exc_info=True)
                 pass
         if auto_approve:
+            # Fail closed: only a plan that was found and validated is approved.
+            # A missing handoff, an invalid plan, or any error while validating
+            # leaves the task in plan_proposed for the operator.
             try:
                 from superharness.engine.plan_validator import validate_plan
 
                 plan_handoff = _load_latest_plan_handoff(project_dir, task_id)
-                if plan_handoff:
-                    task_dict = {
-                        "id": task_row.id,
-                        "acceptance_criteria": task_row.acceptance_criteria,
-                        "tdd": task_row.tdd,
-                        "owner": task_row.owner,
-                    }
-                    result = validate_plan(plan_handoff, task_dict)  # type: ignore[arg-type]
-                    if not result.passed:
-                        print(
-                            f"Auto-approve blocked for '{task_id}': "
-                            + "; ".join(result.failures)
-                        )
-                        return 0
+                if not plan_handoff:
+                    print(
+                        f"Auto-approve blocked for '{task_id}': "
+                        "no plan handoff to validate"
+                    )
+                    return 0
+                task_dict = {
+                    "id": task_row.id,
+                    "acceptance_criteria": task_row.acceptance_criteria,
+                    "tdd": task_row.tdd,
+                    "owner": task_row.owner,
+                }
+                result = validate_plan(plan_handoff, task_dict)  # type: ignore[arg-type]
+                if not result.passed:
+                    print(
+                        f"Auto-approve blocked for '{task_id}': "
+                        + "; ".join(result.failures)
+                    )
+                    return 0
             except Exception as e:
-                print(f"Warning: plan validation skipped: {e}", file=sys.stderr)
+                print(
+                    f"Auto-approve blocked for '{task_id}': plan validation "
+                    f"failed ({type(e).__name__})",
+                    file=sys.stderr,
+                )
+                return 0
 
             print(f"Auto-approving task '{task_id}' (auto-approved per project policy)")
             status_update(
