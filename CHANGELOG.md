@@ -1039,3 +1039,5 @@ chore: submitted gemini-cli round 1 position for gap analysis discussion
 - 2026-11-04 (v1.86.5-rc.14): chore(release): prepare the fourteenth release candidate with the dashboard profile panel fix (escapeHtml helper missing from rc.12 and rc.13); no release or publication.
 
 - 2026-11-06 (1.86.5rc16): chore(release): renumber this dashboard fix from rc14 to rc16 after rc14 (plan auto-approval) and rc15 (opt-in auto-commit) merged first; the escapeHtml fix above is unchanged; no release or publication.
+
+- 2026-11-06 (1.86.5rc17): fix(inbox-watch): `auto_close` in profile.yaml is now a strict boolean, read by the new `auto_close_enabled()` like `auto_approve_plans`. A mistyped value (`"false"`, `1`, `null`, a list) or a profile whose root is not a mapping turns the watcher auto-close off; before, any truthy value turned it on. The default is unchanged (`ai_driven` closes automatically). `docs/GUIDE.md` documents the key.
