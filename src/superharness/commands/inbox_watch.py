@@ -29,6 +29,26 @@ def _profile_autonomy(profile: dict) -> str:
     return normalize_autonomy(profile.get("autonomy", "ai_driven"))
 
 
+def _auto_close_settings(project_dir: str) -> tuple[bool, bool]:
+    """Return (auto-close enabled, auto_close set explicitly) for *project_dir*.
+
+    auto_close is a strict boolean (see auto_close_enabled). A profile
+    that cannot be read or is malformed turns auto-close off.
+    """
+    from superharness.engine.profile import auto_close_enabled, load_profile_document
+
+    profile_file = os.path.join(project_dir, ".superharness", "profile.yaml")
+    profile: object = {}
+    if os.path.isfile(profile_file):
+        try:
+            profile = load_profile_document(profile_file)
+        except Exception as e:
+            logger.warning("inbox_watch unexpected error: %s", e, exc_info=True)
+            return False, False
+    explicit = isinstance(profile, dict) and "auto_close" in profile
+    return auto_close_enabled(profile), explicit
+
+
 def _load_tasks(project_dir: str) -> list[dict]:
     """Return all contract tasks via state_reader (SQLite)."""
     try:
@@ -1100,23 +1120,11 @@ def _auto_close_review_passed(project_dir: str) -> None:
 
     Scans inbox for items with status==done and outcome containing "LGTM" or "REJECTED".
     """
-    import yaml as _yaml
     import re as _re
     from superharness.commands.close import close_task
 
-    profile_file = os.path.join(project_dir, ".superharness", "profile.yaml")
-    profile: dict = {}
-    if os.path.isfile(profile_file):
-        try:
-            with open(profile_file, encoding="utf-8") as _f:
-                profile = _yaml.safe_load(_f.read()) or {}
-        except Exception as e:
-            logger.warning("inbox_watch unexpected error: %s", e, exc_info=True)
-            return
-
     # Same opt-in rule as _auto_close_report_ready
-    auto_close = profile.get("auto_close", _profile_autonomy(profile) == "ai_driven")
-    if not auto_close:
+    if not _auto_close_settings(project_dir)[0]:
         return
 
     tasks = _load_tasks(project_dir)
@@ -1269,22 +1277,10 @@ def _auto_close_review_passed(project_dir: str) -> None:
 def _auto_close_report_ready(project_dir: str) -> None:
     """Auto-close report_ready tasks whose latest report handoff has tests_passed: true.
 
-    Only runs when auto_close: true in profile.yaml (defaults to autonomy=autonomous).
+    Only runs when auto_close: true in profile.yaml (defaults to autonomy=ai_driven).
     Calls close_task(skip_verify=True) with actor='watcher'.
     """
-    import yaml as _yaml
-
-    profile_file = os.path.join(project_dir, ".superharness", "profile.yaml")
-    profile: dict = {}
-    if os.path.isfile(profile_file):
-        try:
-            with open(profile_file, encoding="utf-8") as _f:
-                profile = _yaml.safe_load(_f.read()) or {}
-        except Exception as e:
-            logger.warning("inbox_watch unexpected error: %s", e, exc_info=True)
-            return
-
-    auto_close = profile.get("auto_close", _profile_autonomy(profile) == "ai_driven")
+    auto_close, auto_close_explicit = _auto_close_settings(project_dir)
     if not auto_close:
         return
 
@@ -1326,7 +1322,6 @@ def _auto_close_report_ready(project_dir: str) -> None:
             continue
         # Require tests_passed only when auto_close was inferred from autonomy,
         # not when explicitly set — explicit opt-in trusts the operator.
-        auto_close_explicit = "auto_close" in profile
         if not handoff.get("tests_passed") and not auto_close_explicit:
             continue
 
