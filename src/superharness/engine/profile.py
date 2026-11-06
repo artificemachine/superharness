@@ -100,6 +100,27 @@ def plan_auto_approval_enabled(profile: object) -> bool:
     return explicit
 
 
+def task_auto_commit_enabled(profile: dict | None) -> bool:
+    """Whether a closing task's worktree is committed locally under *profile*.
+
+    Opt-in only: ``auto_commit_tasks`` must be the YAML boolean ``true``.
+    A missing key leaves auto-commit off whatever the autonomy mode, and a
+    mistyped value (``"true"``, ``1``, a list) is refused rather than coerced.
+    The commit stays local: nothing is pushed.
+    """
+    if not isinstance(profile, dict):
+        return False
+    value = profile.get("auto_commit_tasks")
+    if value is not None and not isinstance(value, bool):
+        # Name the field and the type only: the raw value is untrusted input.
+        _log.warning(
+            "profile auto_commit_tasks must be true or false, got a %s: "
+            "auto-commit stays off",
+            type(value).__name__,
+        )
+    return value is True
+
+
 def read_field(project_dir: Path, field: str) -> str:
     profile_path = project_dir / ".superharness" / "profile.yaml"
     if not profile_path.exists():
