@@ -100,6 +100,34 @@ def plan_auto_approval_enabled(profile: object) -> bool:
     return explicit
 
 
+def auto_close_enabled(profile: object) -> bool:
+    """Whether the watcher closes finished tasks on its own under *profile*.
+
+    Same contract as ``plan_auto_approval_enabled``: *profile* is the parsed
+    profile root (``{}`` for a missing or empty file). A missing ``auto_close``
+    key keeps the autonomy default (``ai_driven`` closes automatically). A key
+    that is present must hold a real boolean and then wins. Anything else is
+    refused rather than coerced, because ``"false"`` is a truthy string: a
+    present non-boolean, or a root that is not a mapping, disables auto-close.
+    """
+    if not isinstance(profile, dict):
+        _log.warning(
+            "profile must be a mapping, got a %s: auto-close stays off",
+            type(profile).__name__,
+        )
+        return False
+    if "auto_close" not in profile:
+        return normalize_autonomy(profile.get("autonomy", "ai_driven")) == "ai_driven"
+    explicit = profile["auto_close"]
+    if not isinstance(explicit, bool):
+        _log.warning(
+            "profile auto_close must be true or false, got a %s: auto-close stays off",
+            type(explicit).__name__,
+        )
+        return False
+    return explicit
+
+
 def task_auto_commit_enabled(profile: dict | None) -> bool:
     """Whether a closing task's worktree is committed locally under *profile*.
 

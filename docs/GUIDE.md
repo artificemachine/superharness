@@ -588,6 +588,8 @@ With `ai_driven` (the default, also when there is no profile or it is empty), a 
 
 `auto_approve_plans` must be a real YAML boolean. A mistyped value (`"false"`, `1`, `null`, a list) and a profile whose root is not a mapping (including an explicit `null` document) are refused: auto-approval stays off.
 
+`auto_close` follows the same rule. By default `ai_driven` lets the watcher close finished tasks; `auto_close: false` turns that off and `auto_close: true` turns it on under any autonomy. It must be a real YAML boolean: `"false"`, `1`, `null`, a list, or a profile whose root is not a mapping leave auto-close off instead of being read as true.
+
 **Auto-commit key in `profile.yaml`:**
 
 ```yaml
