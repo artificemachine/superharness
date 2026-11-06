@@ -577,6 +577,17 @@ When `auto_dispatch: true`, the watcher scans the contract on each tick and enqu
 shux config set auto_dispatch true
 ```
 
+**Autonomy and plan auto-approval keys in `profile.yaml`:**
+
+```yaml
+autonomy: ai_driven       # default; `supervised` keeps the operator in the loop
+auto_approve_plans: true  # optional; overrides what the autonomy would decide
+```
+
+With `ai_driven` (the default, also when there is no profile or it is empty), a task moved to `plan_proposed` is approved automatically, but only if its plan handoff exists and passes the plan quality checks. A missing plan handoff, an invalid plan, or any error while validating leaves the task in `plan_proposed` for the operator. With `supervised`, or with `auto_approve_plans: false`, plans always wait for the operator.
+
+`auto_approve_plans` must be a real YAML boolean. A mistyped value (`"false"`, `1`, `null`, a list) and a profile whose root is not a mapping (including an explicit `null` document) are refused: auto-approval stays off.
+
 ### Cost Tracking (`shux benchmark`)
 
 ```bash
