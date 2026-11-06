@@ -1033,3 +1033,9 @@ chore: submitted gemini-cli round 1 position for gap analysis discussion
 - 2026-11-06 (1.86.5rc14): feat(autonomy): the default `ai_driven` autonomy now auto-approves `plan_proposed` tasks (`task.py` hook and `inbox_watch.py` peer-review dispatch) via `plan_auto_approval_enabled()`, and fails closed: a plan handoff is required, a validation error blocks, and `auto_approve_plans` must be a real boolean (a mistyped value, an explicit `null` document or a non-mapping profile is refused; a missing or empty profile keeps the default). `supervised` autonomy or `auto_approve_plans: false` keeps the operator gate. Security-relevant default change: review before merge.
 
 - 2026-11-06 (1.86.5rc15): feat(close): opt-in local auto-commit of a closing task's dispatch worktree. It runs only when the profile sets `auto_commit_tasks: true` (a real boolean; mistyped values are refused), commits on `superharness/task/<id>`, never pushes and never commits on `main` or `master`. `close_task` now keeps a dispatch worktree that has uncommitted changes or detached-HEAD commits no local branch contains, instead of force-removing it.
+
+- 2026-11-04: fix(dashboard): define the missing escapeHtml helper so the behavioral profile panel renders populated profiles again (it showed "profile unavailable" since the helper was never defined); a JavaScript regression test covers populated and hostile HTML values. Replays PR 184, which had a CHANGELOG conflict.
+
+- 2026-11-04 (v1.86.5-rc.14): chore(release): prepare the fourteenth release candidate with the dashboard profile panel fix (escapeHtml helper missing from rc.12 and rc.13); no release or publication.
+
+- 2026-11-06 (1.86.5rc16): chore(release): renumber this dashboard fix from rc14 to rc16 after rc14 (plan auto-approval) and rc15 (opt-in auto-commit) merged first; the escapeHtml fix above is unchanged; no release or publication.
