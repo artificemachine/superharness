@@ -168,6 +168,24 @@ inventing an unverified third model.
 - Cleanup verified: `yes`.
 - Reviewer decision: APPROVE — the separately approved Pi live decomposition at 2026-08-26T17:23:23Z used Pi CLI 0.73.1 with requested and actual deepseek/deepseek-v4-pro, exited 0 with one assistant message and one agent_end in a valid bounded stream, returned a complete valid decomposition with produced-owner set {codex-cli, pi}, ran with --no-tools in a fresh disposable worktree, left zero modifications, and completed verified cleanup; the earlier schema-invalid attempt is excluded from evidence.
 
+## hermes adapter
+
+Fallback metadata: `src/superharness/adapter_manifests/hermes.yaml`. All three
+tiers are tagged `experimental`: the IDs appear in the Hermes v0.22.5 source
+tree as provider-qualified names and mirror the Pi tiers, but none was
+authenticated or called live. The owner must confirm or replace them before
+relying on tier dispatch. Runtime model bindings override this fallback.
+
+| Tier | Provider-qualified model id | Label |
+|---|---|---|
+| `mini` | `deepseek/deepseek-v4-flash` | DeepSeek V4 Flash |
+| `standard` | `deepseek/deepseek-v4-flash` | DeepSeek V4 Flash |
+| `max` | `deepseek/deepseek-v4-pro` | DeepSeek V4 Pro |
+
+The launcher runs `hermes chat -Q --query-file -` with the prompt on stdin,
+`-m` for the model and `--reasoning` for effort. Hermes is a worker only; it is
+not in the orchestrator chain.
+
 ## How the mapping is consumed
 
 Every task and subtask in `shux adapter-payload --json` (schema v1.2+) carries:
