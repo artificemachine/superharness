@@ -277,6 +277,7 @@ class TestOrchestratorChain:
             "gemini": "gemini-cli",
             "opencode": "opencode",
             "pi": "pi",
+            "hermes": "hermes",
         }
 
         for binary, model_id, label in _ORCHESTRATOR_CHAIN:

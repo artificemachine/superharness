@@ -44,6 +44,7 @@ def _build_orchestrator_chain() -> list[tuple[str, str, str]]:
         ("gemini", _resolve_configured_model("gemini-cli", "max"), "Gemini max"),
         ("opencode", _resolve_configured_model("opencode", "max"), "OpenCode max"),
         ("pi", _resolve_configured_model("pi", "max"), "Pi max"),
+        ("hermes", _resolve_configured_model("hermes", "max"), "Hermes max"),
     ]
 
 
@@ -72,6 +73,13 @@ def _build_agent_argv(binary: str, model: str, prompt: str) -> list[str]:
             pi_binary=binary,
             no_tools=True,
         )
+    if binary == "hermes":
+        # The `safe` toolset has no terminal or file tools, so a decomposition
+        # call cannot modify the project it runs in (Pi's --no-tools role).
+        return [
+            binary, "chat", "-Q", "--oneshot", "--ignore-rules",
+            "-t", "safe", "-m", model, "-q", prompt,
+        ]
     # claude (and any unknown binary): Claude-style flags
     return [binary, "--model", model, "-p", prompt]
 
@@ -86,38 +94,53 @@ def _normalize_orchestrator_stdout(binary: str, stdout: str) -> str:
             raise ValueError("Pi terminal text was not valid JSON") from exc
         if not isinstance(decomposition, dict):
             raise ValueError("Pi terminal JSON was not an object")
-        _validate_pi_orchestrator_payload(decomposition)
+        _validate_routing_payload(decomposition)
         return terminal_text
+    if binary == "hermes":
+        # Hermes -Q may print banner lines (e.g. a model-normalization
+        # warning) before the reply, so take the outermost JSON object.
+        start, end = stdout.find("{"), stdout.rfind("}")
+        if start == -1 or end < start:
+            raise ValueError("Hermes reply contained no JSON object")
+        payload_text = stdout[start : end + 1]
+        try:
+            decomposition = json.loads(payload_text)
+        except json.JSONDecodeError as exc:
+            raise ValueError("Hermes reply was not valid JSON") from exc
+        if not isinstance(decomposition, dict):
+            raise ValueError("Hermes reply JSON was not an object")
+        _validate_routing_payload(decomposition)
+        return payload_text
     return stdout.strip()
 
 
-def _validate_pi_orchestrator_payload(payload: dict[str, Any]) -> None:
-    """Fail closed unless Pi returned the routing schema requested by the prompt."""
-    owners = {"claude-code", "codex-cli", "gemini-cli", "opencode", "pi"}
+def _validate_routing_payload(payload: dict[str, Any]) -> None:
+    """Fail closed unless a runtime returned the routing schema requested by the prompt."""
+    owners = {"claude-code", "codex-cli", "gemini-cli", "opencode", "pi", "hermes"}
     tiers = {"mini", "standard", "max"}
     efforts = {"low", "medium", "high", "xhigh"}
     required = {"owner", "tier", "effort", "decompose", "rationale", "subtasks"}
     if not required.issubset(payload):
-        raise ValueError("Pi routing payload omitted required fields")
+        raise ValueError("Routing payload omitted required fields")
     if not isinstance(payload["owner"], str) or payload["owner"] not in owners:
-        raise ValueError("Pi routing payload had an invalid owner")
+        raise ValueError("Routing payload had an invalid owner")
     if not isinstance(payload["tier"], str) or payload["tier"] not in tiers:
-        raise ValueError("Pi routing payload had an invalid tier")
+        raise ValueError("Routing payload had an invalid tier")
     if not isinstance(payload["effort"], str) or payload["effort"] not in efforts:
-        raise ValueError("Pi routing payload had an invalid effort")
+        raise ValueError("Routing payload had an invalid effort")
     if not isinstance(payload["decompose"], bool):
-        raise ValueError("Pi routing payload decompose was not boolean")
+        raise ValueError("Routing payload decompose was not boolean")
     if not isinstance(payload["rationale"], str):
-        raise ValueError("Pi routing payload rationale was not text")
+        raise ValueError("Routing payload rationale was not text")
     subtasks = payload["subtasks"]
     if not isinstance(subtasks, list):
-        raise ValueError("Pi routing payload subtasks was not a list")
+        raise ValueError("Routing payload subtasks was not a list")
     if not payload["decompose"]:
         if subtasks:
-            raise ValueError("Pi non-decomposition payload contained subtasks")
+            raise ValueError("Non-decomposition payload contained subtasks")
         return
     if not subtasks:
-        raise ValueError("Pi decomposition payload contained no subtasks")
+        raise ValueError("Decomposition payload contained no subtasks")
 
     subtask_required = {
         "id",
@@ -130,42 +153,47 @@ def _validate_pi_orchestrator_payload(payload: dict[str, Any]) -> None:
     }
     for subtask in subtasks:
         if not isinstance(subtask, dict) or not subtask_required.issubset(subtask):
-            raise ValueError("Pi decomposition contained an invalid subtask")
+            raise ValueError("Decomposition contained an invalid subtask")
         if not isinstance(subtask["id"], str) or not subtask["id"]:
-            raise ValueError("Pi decomposition subtask had an invalid id")
+            raise ValueError("Decomposition subtask had an invalid id")
         if not isinstance(subtask["title"], str) or not subtask["title"]:
-            raise ValueError("Pi decomposition subtask had an invalid title")
+            raise ValueError("Decomposition subtask had an invalid title")
         if (
             not isinstance(subtask["owner"], str)
             or subtask["owner"] not in owners
         ):
-            raise ValueError("Pi decomposition subtask had an invalid owner")
+            raise ValueError("Decomposition subtask had an invalid owner")
         if not isinstance(subtask["tier"], str) or subtask["tier"] not in tiers:
-            raise ValueError("Pi decomposition subtask had an invalid tier")
+            raise ValueError("Decomposition subtask had an invalid tier")
         if (
             not isinstance(subtask["effort"], str)
             or subtask["effort"] not in efforts
         ):
-            raise ValueError("Pi decomposition subtask had an invalid effort")
+            raise ValueError("Decomposition subtask had an invalid effort")
         blocked_by = subtask["blocked_by"]
         if blocked_by is not None and (
             not isinstance(blocked_by, str) or not blocked_by
         ):
-            raise ValueError("Pi decomposition subtask had invalid blocked_by")
+            raise ValueError("Decomposition subtask had invalid blocked_by")
         estimated_tokens = subtask["estimated_tokens"]
         if (
             isinstance(estimated_tokens, bool)
             or not isinstance(estimated_tokens, int)
             or estimated_tokens < 0
         ):
-            raise ValueError("Pi decomposition subtask had invalid estimated_tokens")
+            raise ValueError("Decomposition subtask had invalid estimated_tokens")
+
+
+def _agent_is_explicitly_requested(task: dict[str, Any], agent: str) -> bool:
+    """Return whether a task includes the exact `agent:<agent>` opt-in tag."""
+    from superharness.engine.smart_dispatch import _task_keywords
+
+    return f"agent:{agent}" in _task_keywords(task)
 
 
 def _pi_is_explicitly_requested(task: dict[str, Any]) -> bool:
     """Return whether a task includes the exact opt-in tag for Pi execution."""
-    from superharness.engine.smart_dispatch import _task_keywords
-
-    return "agent:pi" in _task_keywords(task)
+    return _agent_is_explicitly_requested(task, "pi")
 
 
 # Quality scores per runtime/model pair.
@@ -288,12 +316,19 @@ Available executors:
     mini:     deepseek/deepseek-v4-flash       — approved cost-optimised worker
     effort:   low | medium | high | xhigh      (thinking level)
 
+  hermes:
+    max:      deepseek/deepseek-v4-pro         — Hermes Agent best-effort worker
+    standard: deepseek/deepseek-v4-flash       — Hermes Agent balanced worker
+    mini:     deepseek/deepseek-v4-flash       — Hermes Agent cost-optimised worker
+    effort:   low | medium | high | xhigh      (reasoning level)
+
 Owner selection rules:
   - Architecture, system design, safety, security   → claude-code
   - Heavy implementation, code generation           → codex-cli
   - Fast turnaround, large-context processing       → gemini-cli
   - Budget-constrained, non-critical                → opencode
   - Explicit Pi-specialized worker task             → pi
+  - Task tagged agent:hermes                        → hermes
   - Cross-cutting concerns                          → claude-code (orchestrates), codex-cli (builds)
 
 Tier selection rules:
@@ -303,7 +338,7 @@ Tier selection rules:
   - Discussion topic (design/architecture)          → max (needs deep reasoning)
   - Previously failed task                          → escalate one tier up
 
-Effort selection rules (only for claude-code, codex-cli, and pi):
+Effort selection rules (only for claude-code, codex-cli, pi, and hermes):
   - Safety, security, complex architecture          → high
   - Feature implementation, test writing            → medium
   - Chore, refactor, doc update                     → low
@@ -328,7 +363,7 @@ Task:
 
 Reply with JSON only (no markdown fences):
 {{
-  "owner": "claude-code | codex-cli | gemini-cli | opencode | pi",
+  "owner": "claude-code | codex-cli | gemini-cli | opencode | pi | hermes",
   "tier": "mini | standard | max",
   "effort": "low | medium | high | xhigh",
   "decompose": true,
@@ -337,7 +372,7 @@ Reply with JSON only (no markdown fences):
     {{
       "id": "<parent_id>.st<N>",
       "title": "...",
-      "owner": "claude-code | codex-cli | gemini-cli | opencode | pi",
+      "owner": "claude-code | codex-cli | gemini-cli | opencode | pi | hermes",
       "tier": "mini | standard | max",
       "effort": "low | medium | high | xhigh",
       "blocked_by": "<parent_id>.st<N-1>" | null,
@@ -477,22 +512,26 @@ class Orchestrator:
         decompose = bool(data.get("decompose", False))
         rationale = str(data.get("rationale") or "")
         raw_subtasks = data.get("subtasks") or []
-        pi_requested = _pi_is_explicitly_requested(task)
+        # Opt-in-only owners: chosen only when the task carries agent:<name>.
+        opt_in_owners = {"pi": "Pi", "hermes": "Hermes"}
+        requested = {
+            name for name in opt_in_owners if _agent_is_explicitly_requested(task, name)
+        }
         fallback_owner = str(task.get("owner") or "claude-code")
 
-        if owner == "pi" and not pi_requested:
-            owner = fallback_owner
+        if owner in opt_in_owners and owner not in requested:
             rationale = (
-                f"{rationale} Pi routing ignored because the task lacks the exact "
-                "agent:pi opt-in."
+                f"{rationale} {opt_in_owners[owner]} routing ignored because the task "
+                f"lacks the exact agent:{owner} opt-in."
             ).strip()
+            owner = fallback_owner
 
         subtasks: list[dict[str, Any]] = []
         if decompose and isinstance(raw_subtasks, list):
             for st in raw_subtasks:
                 if isinstance(st, dict):
                     st_owner = st.get("owner", owner)
-                    if st_owner == "pi" and not pi_requested:
+                    if st_owner in opt_in_owners and st_owner not in requested:
                         st_owner = owner
                     st_tier = st.get("tier", tier)
                     st_effort = st.get("effort", effort)
@@ -594,6 +633,13 @@ class Orchestrator:
                         timeout_seconds=_ORCHESTRATOR_TIMEOUT,
                     )
                 else:
+                    extra: dict[str, Any] = {}
+                    if binary == "hermes":
+                        # The worker launcher reads the provider key from the
+                        # Keychain; a direct call has to do the same.
+                        from superharness.harnesses import hermes as hermes_harness
+
+                        extra["env"] = hermes_harness.keychain_env()
                     result = subprocess.run(
                         command,
                         cwd=self.project_dir,
@@ -601,6 +647,7 @@ class Orchestrator:
                         text=True,
                         timeout=_ORCHESTRATOR_TIMEOUT,
                         check=False,
+                        **extra,
                     )
                 normalized = ""
                 if result.returncode == 0 and result.stdout.strip():

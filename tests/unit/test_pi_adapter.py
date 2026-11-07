@@ -594,7 +594,7 @@ def test_decomposition_prompt_allows_pi_worker_and_all_owner_examples(
         {"id": "fixture", "title": "Fixture decomposition"}
     )
     owner_example = (
-        '"owner": "claude-code | codex-cli | gemini-cli | opencode | pi"'
+        '"owner": "claude-code | codex-cli | gemini-cli | opencode | pi | hermes"'
     )
 
     assert "  pi:" in prompt
