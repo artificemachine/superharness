@@ -170,11 +170,9 @@ inventing an unverified third model.
 
 ## hermes adapter
 
-Fallback metadata: `src/superharness/adapter_manifests/hermes.yaml`. All three
-tiers are tagged `experimental`: the IDs appear in the Hermes v0.22.5 source
-tree as provider-qualified names and mirror the Pi tiers, but none was
-authenticated or called live. The owner must confirm or replace them before
-relying on tier dispatch. Runtime model bindings override this fallback.
+Fallback metadata: `src/superharness/adapter_manifests/hermes.yaml`. The IDs
+are in Hermes v0.22.5's model catalog and mirror the Pi tiers. Runtime model
+bindings override this fallback.
 
 | Tier | Provider-qualified model id | Label |
 |---|---|---|
@@ -183,8 +181,28 @@ relying on tier dispatch. Runtime model bindings override this fallback.
 | `max` | `deepseek/deepseek-v4-pro` | DeepSeek V4 Pro |
 
 The launcher runs `hermes chat -Q --query-file -` with the prompt on stdin,
-`-m` for the model and `--reasoning` for effort. Hermes is a worker only; it is
-not in the orchestrator chain.
+`-m` for the model and `--reasoning` for effort.
+
+Hermes is also in the orchestrator chain. A decomposition call runs
+`hermes chat -Q --oneshot --ignore-rules -t safe -m <max model> -q <prompt>`:
+the `safe` toolset has no terminal or file tools, so the call cannot change
+the project. The reply must match the routing schema or the chain moves on.
+The provider key comes from the Keychain, as for worker runs. The orchestrator
+keeps `hermes` as an owner only when the task carries the exact
+`agent:hermes` tag, as `pi` needs `agent:pi`.
+
+### Activation evidence — 2026-11-07
+
+- Hermes Agent v0.22.5, launched through `delegate-to-hermes.sh` with the key
+  read from the macOS Keychain.
+- `deepseek/deepseek-v4-flash`: two hermes-owned tasks were delegated through
+  the installed CLI; Hermes wrote the requested file and closed each task.
+- `deepseek/deepseek-v4-pro`: one direct `-m` call answered `pong`.
+- Orchestrator: a Hermes-only chain routed a task tagged `agent:hermes` to
+  owner `hermes`, tier `mini`, effort `low`, no decomposition, and changed no
+  file in the project.
+- Approval gate: `rm -rf` was blocked without `--yolo` (Hermes log
+  `BLOCKED: Command flagged`) and was not blocked with `--yolo`.
 
 ## How the mapping is consumed
 

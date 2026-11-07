@@ -186,7 +186,7 @@ A task's `owner` and `shux delegate --to <agent>` accept any of these agents:
 | `gemini-cli` | `gemini` | |
 | `opencode` | `opencode` | |
 | `pi` | `pi` | |
-| `hermes` | `hermes` | Worker only; tier models are experimental fallbacks |
+| `hermes` | `hermes` | Also an orchestrator runtime; picked as owner only with the `agent:hermes` tag |
 
 **Hermes.** Install [Hermes Agent](https://github.com/nousresearch/hermes-agent), then:
 
