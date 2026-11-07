@@ -256,6 +256,7 @@ def test_all_known_harnesses_resolve():
         "gemini-cli",
         "opencode",
         "pi",
+        "hermes",
     }
     for name in KNOWN_HARNESSES:
         invocation = get_harness(name).build_invocation(

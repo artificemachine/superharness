@@ -14,7 +14,7 @@ loopback-only view of the same local state.
 | Local-first | Runtime state is SQLite, not a network service. The project works offline after installation. |
 | One authoritative state | Tasks, inbox rows, handoffs, decisions, failures, and agent heartbeats are stored in one database. |
 | Explicit state transitions | `engine/next_action.py` owns legal lifecycle transitions and recommended next actions. |
-| Agent-neutral adapters | Claude Code, Codex CLI, Gemini CLI, OpenCode, and Pi integrations share manifests and a common task model. |
+| Agent-neutral adapters | Claude Code, Codex CLI, Gemini CLI, OpenCode, Pi, and Hermes integrations share manifests and a common task model. |
 | Least surprise for operators | Background services are opt-in; the dashboard defaults to loopback binding and per-project authentication. |
 | Compatibility without split brain | Legacy YAML can be imported or exported, but production reads use SQLite and conflicting state roots fail closed. |
 
@@ -27,7 +27,7 @@ flowchart LR
     Commands --> Engine[engine/]
     Engine --> DB[(SQLite state.db)]
     Commands --> Adapters[Agent adapters]
-    Adapters --> Agents[Claude / Codex / Gemini / OpenCode / Pi]
+    Adapters --> Agents[Claude / Codex / Gemini / OpenCode / Pi / Hermes]
     Operator[Operator service] --> Watcher[Watcher and dispatcher]
     Watcher --> Engine
     Dashboard[Loopback dashboard] --> Engine

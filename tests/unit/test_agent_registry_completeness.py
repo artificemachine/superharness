@@ -28,6 +28,7 @@ CANONICAL_AGENTS: frozenset[str] = frozenset(
         "gemini-cli",
         "opencode",
         "pi",
+        "hermes",
     }
 )
 

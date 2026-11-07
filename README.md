@@ -7,7 +7,7 @@
 
 ## Overview
 
-**Create discussions, manage tasks, and coordinate agents across Claude Code, Codex CLI, Gemini CLI, OpenCode, and Pi**
+**Create discussions, manage tasks, and coordinate agents across Claude Code, Codex CLI, Gemini CLI, OpenCode, Pi, and Hermes**
 
 superharness lets AI coding assistants work on the same project through discussions and tasks. A discussion brings several owners (participating agents) together around a topic: they exchange proposals and review each other's positions over successive rounds, aiming to reach consensus within a configurable round limit. Tasks turn work into tracked assignments with an owner, a lifecycle, and handoffs so another session can pick up where the previous one stopped. A shared SQLite-backed contract, queue-based delegation, and lifecycle rules keep that work coordinated across sessions.
 
@@ -50,22 +50,23 @@ Gives you `/shux` (raw CLI passthrough), `/shux-contract`, `/shux-status`, `/shu
 
 ## Recent Highlights
 
+- **Hermes Agent adapter** (v1.86.5-rc.18): delegate tasks to [Hermes Agent](https://github.com/nousresearch/hermes-agent) with `shux delegate --to hermes`, or assign a task to the `hermes` owner. See [Supported agents](#supported-agents)
 - **Watcher state protection** (v1.86.5-rc.1): the watcher worker refuses a worker directory that equals, contains or sits inside the project tree, and only deletes a stale worker `.superharness` under the dedicated worker root, so a misplaced worker can no longer destroy the project's real state
 - **Runtime bindings are authoritative**: dispatch, fallback, subtask and orchestrator model selection resolve through runtime bindings, with a manifest compatibility fallback
 - **Doctrine guard and invariants**: `INVARIANTS.md` binds each invariant to a test, `docs/specs/` holds the specifications, and `tests/doctrine/doctrine-guard.sh` checks them before commits (see [Contributing](#contributing-and-doctrine))
-- **Harness adapter registry**: claude/codex/gemini/opencode/pi dispatch routed through a single `Harness` protocol, with golden-parity tests proving byte-identical invocations
+- **Harness adapter registry**: claude/codex/gemini/opencode/pi/hermes dispatch routed through a single `Harness` protocol, with golden-parity tests proving byte-identical invocations
 - **Transcript tailing + dual watchdog**: byte-offset live dispatch progress with persisted cursors, backed by idle-timeout + absolute-ceiling deadline enforcement from the event stream
 - **Typed telemetry events**: dedicated events table (migration v31) with a background emitter and DB-heartbeat liveness (`is_fresh`)
 - **Dependency hygiene**: CVE floors on `starlette`/`python-multipart`, a previously-undeclared `requests` dependency now declared, and `.github/dependabot.yml` for ongoing drift
 - **Dashboard/CLI DB-path fix**: `dashboard-ui.py` now resolves `state.db` through the same XDG-aware `get_connection` as the CLI, closing a silent divergence bug between the two
-- **5,800+ tests** preventing regressions across lifecycle, dispatch, and protocol state
+- **6,200+ tests** preventing regressions across lifecycle, dispatch, and protocol state
 
 ---
 
 ## ⚡ 1-Minute Quickstart
 
 **Why use superharness?** 
-*   **Prevent Overlaps**: Different agents (Claude, Codex, Gemini, OpenCode, Pi) won't edit the same files at the same time.
+*   **Prevent Overlaps**: Different agents (Claude, Codex, Gemini, OpenCode, Pi, Hermes) won't edit the same files at the same time.
 *   **Persistent State**: If an agent crashes or hits a limit, the next one knows exactly where to pick up.
 *   **Auto-Mode**: Lifecycle rules auto-archive stale tasks, auto-fail deadlines, auto-close consensus discussions, and auto-clean orphans.
 *   **Full Visibility**: `shux status` gives a complete health dashboard in one command.
@@ -171,6 +172,30 @@ For advanced work, use `shux state --help`, `shux agent --help`, `shux ops --hel
 - Keyboard shortcuts — `r` refresh, `g` graph, `l` list, `b` board, `?` help
 
 **That's it.** Steps 1 and 2 are one-time. From then on, `shux contract` starts every session.
+
+---
+
+### Supported agents
+
+A task's `owner` and `shux delegate --to <agent>` accept any of these agents:
+
+| Agent id | Binary on `PATH` | Notes |
+|---|---|---|
+| `claude-code` | `claude` | |
+| `codex-cli` | `codex` | |
+| `gemini-cli` | `gemini` | |
+| `opencode` | `opencode` | |
+| `pi` | `pi` | |
+| `hermes` | `hermes` | Worker only; tier models are experimental fallbacks |
+
+**Hermes.** Install [Hermes Agent](https://github.com/nousresearch/hermes-agent), then:
+
+```bash
+shux task create --id my-task --title "..." --owner hermes --criteria "..."
+shux delegate --to hermes --task my-task --non-interactive
+```
+
+The launcher runs one `hermes chat -Q` turn with the prompt on stdin, so quotes and `$(...)` in a prompt are never interpreted by the shell. Effort maps to `--reasoning`. On macOS, if `DEEPSEEK_API_KEY` is not already exported, the launcher reads it from the Keychain (a generic password with service `env:DEEPSEEK_API_KEY`) and passes it to Hermes through the environment only. Hermes loads `~/.hermes/.env` over the environment, so remove a stale `DEEPSEEK_API_KEY` line there. Model IDs per tier are listed in [docs/reference/adapter-models.md](docs/reference/adapter-models.md).
 
 ---
 
@@ -441,7 +466,7 @@ See [ATTRIBUTIONS.md](ATTRIBUTIONS.md) for the full extract list — what each s
 
 ## Current Version
 
-Current version: see the [PyPI badge](https://pypi.org/project/superharness/) above — 5,800+ tests, harness adapter registry, transcript tailing, dual watchdog, typed telemetry events.
+Current version: see the [PyPI badge](https://pypi.org/project/superharness/) above — 6,200+ tests, Hermes adapter, harness adapter registry, transcript tailing, dual watchdog, typed telemetry events.
 
 See [CHANGELOG.md](CHANGELOG.md) for the full iteration log.
 

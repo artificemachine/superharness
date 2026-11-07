@@ -1,7 +1,7 @@
 # SPEC-006: Model resolution
 
 Status: draft
-Last reviewed: 2026-10-26
+Last reviewed: 2026-11-07
 Affected paths: src/superharness/engine/model_router.py, src/superharness/engine/model_fallback.py, src/superharness/engine/model_bindings.py, src/superharness/commands/models.py, src/superharness/engine/model_catalog.py, src/superharness/engine/model_catalog_journal.py, docs/reference/adapter-models.md
 
 Model resolution turns a harness and a tier into a concrete model id.

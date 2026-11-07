@@ -36,6 +36,7 @@ def _register_builtins() -> None:
     from superharness.harnesses.claude import ClaudeHarness
     from superharness.harnesses.codex import CodexHarness
     from superharness.harnesses.gemini import GeminiHarness
+    from superharness.harnesses.hermes import HermesHarness
     from superharness.harnesses.opencode import OpencodeHarness
     from superharness.harnesses.pi import PiHarness
 
@@ -44,6 +45,7 @@ def _register_builtins() -> None:
     register("gemini-cli", GeminiHarness())
     register("opencode", OpencodeHarness())
     register("pi", PiHarness())
+    register("hermes", HermesHarness())
 
 
 _register_builtins()
