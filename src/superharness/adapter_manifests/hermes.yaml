@@ -1,0 +1,43 @@
+name: hermes
+version: "1"
+schema_version: 2
+description: >-
+  Hermes Agent (Nous Research) one-shot worker via `hermes chat -Q`. The tier
+  model IDs below are a fallback only and are tagged experimental: Hermes
+  resolves its provider and default model from its own config, and runtime
+  model bindings decide dispatch models when they bind this agent.
+type: external
+launcher_script: delegate-to-hermes.sh
+capabilities:
+  - code_generation
+  - file_editing
+supports_effort: true  # maps to `hermes chat --reasoning`
+# Provenance: both IDs appear in the Hermes v0.22.5 source tree as
+# provider-qualified model names and mirror the Pi adapter's tiers. None was
+# authenticated or called live; the owner must confirm them before relying on
+# tier dispatch (see docs/reference/adapter-models.md).
+model_tiers:
+  mini:
+    preferred: deepseek/deepseek-v4-flash
+    accept: [deepseek/deepseek-v4-flash]
+    auth_compat:
+      apikey: [deepseek/deepseek-v4-flash]
+    capability_tags: [experimental, cost_optimised]
+  standard:
+    preferred: deepseek/deepseek-v4-flash
+    accept: [deepseek/deepseek-v4-flash]
+    auth_compat:
+      apikey: [deepseek/deepseek-v4-flash]
+    capability_tags: [experimental, balanced]
+  max:
+    preferred: deepseek/deepseek-v4-pro
+    accept: [deepseek/deepseek-v4-pro]
+    auth_compat:
+      apikey: [deepseek/deepseek-v4-pro]
+    capability_tags: [experimental, best_effort]
+requires:
+  bin: hermes
+  env: []
+validation:
+  check_bin: false # Don't block if not installed yet
+  check_env: false

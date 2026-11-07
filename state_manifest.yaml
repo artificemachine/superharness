@@ -126,6 +126,9 @@ files:
   - path: src/superharness/adapter_manifests/pi.yaml
     type: config
     reason: Pi adapter manifest
+  - path: src/superharness/adapter_manifests/hermes.yaml
+    type: config
+    reason: Hermes Agent adapter manifest
   - path: src/superharness/module_templates/auto-schedule.yaml
     type: template
     reason: module template — auto-schedule cron

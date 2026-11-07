@@ -400,6 +400,7 @@ _AGENT_LABELS = {
     "gemini-cli": "Gemini CLI (Google)",
     "opencode": "opencode (open-source)",
     "pi": "Pi (experimental)",
+    "hermes": "Hermes Agent (Nous Research)",
 }
 
 
