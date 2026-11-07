@@ -2,3 +2,6 @@
 # The values are placeholders, not secrets, and the lines were remediated in f5450ac8.
 7c51b541f73f28ec9faad863afc81e2aa7805341:tests/unit/test_module_obsidian.py:generic-api-key:211
 dd0f365e42f1a9354991a1efc540fc0a8e186a66:tests/unit/test_module_obsidian.py:generic-api-key:211
+# Same fixture, re-pointed on 2026-11-07: the history rewrite gave these two commits new SHAs.
+d3a371c32178a90155dab977c6e14233e5ae0bef:tests/unit/test_module_obsidian.py:generic-api-key:211
+156a41835e4fb28eb88ada9eb893dd45962f6807:tests/unit/test_module_obsidian.py:generic-api-key:211
