@@ -11,7 +11,6 @@
 
 from __future__ import annotations
 
-import os
 import subprocess
 
 import pytest
@@ -141,9 +140,10 @@ def test_dry_run_does_not_consume_the_alert(project, env):
     assert len(backend.messages) == 1
 
 
-def test_desktop_notification_passes_message_as_argument(tmp_path, monkeypatch):
-    project = tmp_path / 'we"ird" & proj'
-    (project / ".superharness").mkdir(parents=True)
+def test_desktop_notification_passes_message_as_argument(project, monkeypatch):
+    # The quote rides in the outage detail, not the path: Windows forbids
+    # '"' in directory names, and the message carries both the same way.
+    hostile = 'down "x" & do shell script "true"'
     calls: list[list[str]] = []
 
     def fake_run(argv, **_kwargs):
@@ -157,7 +157,7 @@ def test_desktop_notification_passes_message_as_argument(tmp_path, monkeypatch):
         lambda name: "/usr/bin/osascript" if name == "osascript" else None,
     )
     monkeypatch.setattr(notify, "_retry_high_ids", lambda *_a: [])
-    monkeypatch.setattr(notify, "_watcher_health", lambda *_a: (False, "down"))
+    monkeypatch.setattr(notify, "_watcher_health", lambda *_a: (False, hostile))
     monkeypatch.setattr(relay_client, "dispatch_notification", lambda _t: (False, ""))
     monkeypatch.setattr(notify.subprocess, "run", fake_run)
 
@@ -166,6 +166,5 @@ def test_desktop_notification_passes_message_as_argument(tmp_path, monkeypatch):
     osascript = [c for c in calls if c[0] == "osascript"]
     assert len(osascript) == 1
     scripts = [osascript[0][i + 1] for i, a in enumerate(osascript[0]) if a == "-e"]
-    real = os.path.realpath(project)
-    assert not any(real in s for s in scripts)
-    assert real in osascript[0][-1]
+    assert not any(hostile in s for s in scripts)
+    assert hostile in osascript[0][-1]
