@@ -497,7 +497,16 @@ class TestDispatchSqlitePrimary:
         harness_dir = proj / ".superharness"
         inbox_yaml = harness_dir / "inbox.yaml"
         assert not inbox_yaml.exists(), "No inbox.yaml — pure sqlite_only"
-        entries_before = {path.name for path in harness_dir.iterdir()}
+        def entries() -> set[str]:
+            # A reader of a WAL-mode database creates SQLite's -wal/-shm
+            # sidecars even with mode=ro; they hold no superharness state.
+            return {
+                path.name
+                for path in harness_dir.iterdir()
+                if not path.name.endswith(("-wal", "-shm"))
+            }
+
+        entries_before = entries()
         assert not (harness_dir / "inbox.yaml.lock.d").exists()
         assert not (proj / ".superharness" / "launcher-logs").exists()
 
@@ -508,7 +517,7 @@ class TestDispatchSqlitePrimary:
         rc = dispatch(str(proj), target_filter="claude-code", print_only=True)
         assert rc == 0
         assert "[print-only] would launch:" in capsys.readouterr().out
-        assert {path.name for path in harness_dir.iterdir()} == entries_before
+        assert entries() == entries_before
 
         c2 = get_connection(str(proj))
         try:
