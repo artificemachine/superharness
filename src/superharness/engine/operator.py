@@ -647,16 +647,36 @@ class Operator:
             op_file.unlink()
 
     def check_watcher_health(self, stale_threshold_sec: int = 120) -> HealthStatus:
-        """Check if the background watcher is alive."""
-        # SQLite primary — source of truth
+        """Check if the background watcher is alive.
+
+        Judges the freshest of every heartbeat source. Taking the first source
+        that exists let a months-old legacy YAML shadow a fresh text heartbeat
+        whenever SQLite had no row, reporting a live watcher as down.
+        """
+        candidates = self._heartbeat_candidates()
+        if not candidates:
+            return HealthStatus(False, "watcher", "Heartbeat missing")
+        parsed: list[tuple[float, str, str]] = []
+        for ts_str, label in candidates:
+            ts = self._parse_heartbeat_ts(ts_str, label)
+            if ts is not None:
+                parsed.append((ts, ts_str, label))
+        if not parsed:
+            return HealthStatus(
+                False, "watcher", "Error: no heartbeat source holds a valid timestamp"
+            )
+        _ts, ts_str, label = max(parsed)
+        return self._check_ts_age(ts_str, label, stale_threshold_sec)
+
+    def _heartbeat_candidates(self) -> list[tuple[str, str]]:
+        """Every readable watcher heartbeat as (timestamp, source label)."""
+        candidates: list[tuple[str, str]] = []
         try:
             from superharness.engine.heartbeat_contract import read_heartbeat_db
 
             hb = read_heartbeat_db(str(self.project_dir), "watcher")
             if hb is not None and hb.written_at:
-                return self._check_ts_age(
-                    hb.written_at, "watcher (sqlite)", stale_threshold_sec
-                )
+                candidates.append((hb.written_at, "watcher (sqlite)"))
         except Exception as e:
             logger.warning(
                 "operator.py: failed to read watcher heartbeat from SQLite: %s",
@@ -664,39 +684,48 @@ class Operator:
                 exc_info=True,
             )
 
-        # YAML fallback (legacy projects)
         hb_yaml = self.harness_dir / "watcher.heartbeat.yaml"
-        hb_txt = self.harness_dir / "watcher.heartbeat"
         if hb_yaml.exists():
             try:
                 import yaml
 
-                data = yaml.safe_load(hb_yaml.read_text())  # shipguard:ignore state-read: YAML fallback when SQLite is empty for legacy projects
-                ts_str = data.get("written_at")
+                data = yaml.safe_load(hb_yaml.read_text())  # shipguard:ignore state-read: legacy YAML heartbeat, compared with the other sources by freshness
+                ts_str = data.get("written_at") if isinstance(data, dict) else None
                 if ts_str:
-                    return self._check_ts_age(
-                        ts_str, "watcher (yaml)", stale_threshold_sec
-                    )
+                    candidates.append((str(ts_str), "watcher (yaml)"))
             except Exception as e:
                 logger.warning(
                     "operator.py: failed to read watcher yaml heartbeat: %s",
                     e,
                     exc_info=True,
                 )
+
+        hb_txt = self.harness_dir / "watcher.heartbeat"
         if hb_txt.exists():
             try:
                 ts_str = hb_txt.read_text().strip()
                 if ts_str:
-                    return self._check_ts_age(
-                        ts_str, "watcher (txt)", stale_threshold_sec
-                    )
+                    candidates.append((ts_str, "watcher (txt)"))
             except Exception as e:
                 logger.warning(
                     "operator.py: failed to read watcher txt heartbeat: %s",
                     e,
                     exc_info=True,
                 )
-        return HealthStatus(False, "watcher", "Heartbeat missing")
+        return candidates
+
+    @staticmethod
+    def _parse_heartbeat_ts(ts_str: str, label: str) -> float | None:
+        from datetime import datetime
+
+        try:
+            # Python 3.11+ parses a trailing "Z" as UTC.
+            return datetime.fromisoformat(ts_str).timestamp()
+        except (TypeError, ValueError) as e:
+            logger.warning(
+                "operator.py: ignoring unparsable %s heartbeat %r: %s", label, ts_str, e
+            )
+            return None
 
     def _check_ts_age(self, ts_str: str, label: str, threshold: int) -> HealthStatus:
         """Helper to parse ISO timestamp and check age."""

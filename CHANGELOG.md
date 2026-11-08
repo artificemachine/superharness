@@ -1061,3 +1061,5 @@ chore: submitted gemini-cli round 1 position for gap analysis discussion
 - 2026-11-08 (1.86.5rc20): test(notify): the AppleScript-injection test carries its quotes in the outage detail instead of the project directory name, which Windows rejects (`WinError 123`); the check that the message never enters the `-e` script text is unchanged.
 
 - 2026-11-08 (1.86.5rc20): test(doctor): the watchdog-receipt test parametrizes on receipt ages and builds the timestamps when the test runs; timestamps computed at collection were already older than the 15-minute threshold when the Windows runner executed them about 20 minutes later.
+
+- 2026-11-08 (1.86.5rc21): fix(operator): `check_watcher_health` judges the freshest of the SQLite, legacy YAML and text heartbeats instead of the first one that exists. When SQLite had no row, a months-old `watcher.heartbeat.yaml` shadowed a fresh `watcher.heartbeat`, so a live watcher read as down and the watchdog would have sent a false outage alert. An unparsable source is skipped with a warning instead of hiding a valid one.
