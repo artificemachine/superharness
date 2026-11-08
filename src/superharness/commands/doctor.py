@@ -68,6 +68,69 @@ def _operator_running_for_project(project_dir: str) -> bool:
     return False
 
 
+def _automation_health_lines(project_dir: str, sys_platform: str) -> list[str]:
+    """Automation, watchdog and alert lines, from the classification the
+    watchdog and `shux notify` use, so the three never disagree."""
+    import calendar
+    import time
+
+    from superharness.commands import notify
+    from superharness.engine import launchd_health
+    from superharness.engine.profile import read_field
+
+    lines: list[str] = []
+    autonomy = read_field(pathlib.Path(project_dir), "autonomy")
+    ok, detail = notify._watcher_health(project_dir, sys_platform)
+    if detail == notify._DISABLED_DETAIL:
+        lines.append(f"INFO automation: operator {detail}; no automatic recovery")
+    elif ok:
+        lines.append(f"PASS automation: {autonomy} configured and watcher healthy")
+    else:
+        lines.append(
+            f"WARN automation: {autonomy} configured but automation is unavailable ({detail})"
+        )
+
+    if sys_platform == "Darwin":
+        receipt = launchd_health.read_watchdog_last_run()
+        if receipt is None:
+            lines.append(
+                "WARN watchdog: no last-run receipt; reinstall it with: "
+                "shux operator install --watchdog -p ."
+            )
+        else:
+            finished = str(receipt.get("finished_at", ""))
+            try:
+                age = time.time() - calendar.timegm(
+                    time.strptime(finished, "%Y-%m-%dT%H:%M:%SZ")
+                )
+            except ValueError:
+                age = float("inf")
+            failures = receipt.get("failures") or []
+            if age > launchd_health.WATCHDOG_RECEIPT_MAX_AGE_SECONDS:
+                lines.append(
+                    f"WARN watchdog: last run {finished or 'unknown'} is stale; "
+                    "the watchdog may be unloaded or crashing"
+                )
+            elif failures:
+                lines.append(
+                    f"WARN watchdog: {len(failures)} project(s) failed alert evaluation "
+                    f"at {finished}"
+                )
+            else:
+                lines.append(
+                    f"PASS watchdog: last run {finished} across "
+                    f"{receipt.get('projects', 0)} project(s)"
+                )
+
+    state_file = os.path.join(project_dir, ".superharness", "notify.state")
+    state = notify._read_state(state_file)
+    if state.last_sent_epoch:
+        sent = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(state.last_sent_epoch))
+        status = "outage alert open" if state.watcher_alert_active else "no open outage"
+        lines.append(f"INFO alerts: last delivered {sent}; {status}")
+    return lines
+
+
 def _install_hint(dep: str) -> str:
     is_mac = platform.system() == "Darwin"
     hints = {
@@ -380,6 +443,15 @@ def main(argv: list[str] | None = None) -> None:
         print(
             f"INFO watcher:platform {sys_platform} — use foreground mode: superharness watch --foreground --project ."
         )
+
+    try:
+        health_lines = _automation_health_lines(project_dir, sys_platform)
+    except Exception as e:
+        health_lines = [f"WARN automation: health check failed ({e})"]
+    for line in health_lines:
+        print(line)
+        if line.startswith("WARN"):
+            warns += 1
 
     # Optional: MCP memory server check (informational only)
     mcp_config = pathlib.Path.home() / ".claude" / "settings.json"

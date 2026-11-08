@@ -424,6 +424,11 @@ def watchdog_plist_path() -> Path:
     return _launch_agents_dir() / f"{watchdog_label()}.plist"
 
 
+# Three missed runs at the default 300 s interval before diagnostics call
+# the watchdog dead; one late run is normal launchd jitter.
+WATCHDOG_RECEIPT_MAX_AGE_SECONDS = 900
+
+
 def watchdog_last_run_path() -> Path:
     """Receipt written by every `heal --notify` run.
 

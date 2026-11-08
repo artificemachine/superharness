@@ -159,3 +159,17 @@ def test_probe_treats_owner_disabled_service_as_not_an_outage(
 
     assert ok is True
     assert "disabled" in detail
+
+
+def test_probe_survives_missing_launchctl(
+    launch_agents, project, monkeypatch, not_disabled
+):
+    def missing(*_a, **_kw):
+        raise FileNotFoundError("launchctl")
+
+    monkeypatch.setattr(notify.subprocess, "run", missing)
+
+    ok, detail = notify._watcher_ok_darwin(str(project))
+
+    assert ok is False
+    assert "launchctl unavailable" in detail

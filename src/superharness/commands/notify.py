@@ -82,12 +82,16 @@ def _watcher_health(project_dir: str, sys_platform: str) -> tuple[bool, str]:
 
 
 def _service_ok(uid: int, label: str) -> tuple[bool, str]:
-    r = subprocess.run(
-        ["launchctl", "print", f"gui/{uid}/{label}"],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
+    try:
+        r = subprocess.run(
+            ["launchctl", "print", f"gui/{uid}/{label}"],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=10,
+        )
+    except (OSError, subprocess.TimeoutExpired) as e:
+        return False, f"{label}: launchctl unavailable ({e})"
     if r.returncode != 0:
         return False, f"{label} not loaded"
     out = r.stdout

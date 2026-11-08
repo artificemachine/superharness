@@ -86,6 +86,8 @@ The established top-level paths below remain supported for scripts and existing 
 | `shux operator start` | Start background watcher (Headless) |
 | `shux operator start --dashboard` | Start watcher + persistent dashboard |
 | `shux operator install -p .` | Install the Guardian as a persistent service for this project (macOS launchd) and a 5-min watchdog. Replaces this project's own `watcher-worker` inbox job and removes legacy marker-less `com.superharness.inbox.*` / `com.superharness.watcher.*` jobs; other projects' `watcher-worker` inbox jobs are kept |
+| `shux operator heal --auto-discover --notify` | What the watchdog runs every 5 min: re-bootstrap unloaded operators, alert the owner on watcher outage and recovery, write the watchdog last-run receipt (see [UNATTENDED.md](guides/UNATTENDED.md#owner-alerts-when-the-watcher-stops)) |
+| `shux notify -p .` | Evaluate and send this project's outage, recovery and retry alerts once; exit 0 none, 10 sent, 11 suppressed, 12 not delivered |
 | `shux dashboard` | Launch on-demand UI (auto-closes if idle) |
 | `shux dashboard-list` | List all running dashboard processes |
 | `shux watch` | Start continuous watcher in foreground |

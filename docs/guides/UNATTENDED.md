@@ -111,6 +111,19 @@ When an agent fails:
 --recover-action stale   # mark stale and skip
 ```
 
+## Owner Alerts When the Watcher Stops
+
+A stopped watcher cannot report its own death, so the alert comes from the macOS watchdog that `shux operator install` installs next to the Guardian. Every 5 minutes it runs `shux operator heal --auto-discover --quiet --notify`, which re-bootstraps an unloaded operator and evaluates each project's alerts:
+
+- **Outage:** the operator service is unloaded or failed, or its heartbeat is missing or stale. One alert is sent after 3 consecutive bad runs, then at most one per 30 minutes while the outage lasts.
+- **Recovery:** one `watcher_recovered` notification once the watcher is healthy again.
+- **Intentional stop:** an operator you disabled with `shux operator stop` neither alerts nor gets restarted.
+- **Delivery:** the alert goes to the configured backend (relay, Telegram or ntfy) and to the desktop. It counts as delivered only when one of them confirms; otherwise it is retried on the next run.
+
+Check the result with `shux doctor`: the `automation:` line tells whether `ai_driven` is configured *and* the watcher is actually healthy, `watchdog:` shows the watchdog's last run (stale after 15 minutes means the watchdog itself is down), and `alerts:` shows the last delivered alert. A watchdog installed before this feature keeps its old arguments until you run `shux operator install --watchdog -p .` again.
+
+On Linux there is no watchdog service; run `shux notify -p .` from your own scheduler. It uses the heartbeat as the only outage signal and exits 0 (no alert), 10 (sent), 11 (suppressed by cooldown) or 12 (no channel confirmed delivery).
+
 ## Configuration Options
 
 | Flag | Default | Description |
