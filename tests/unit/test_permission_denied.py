@@ -117,7 +117,7 @@ def test_dispatch_fails_on_readonly_harness_dir(repo_root, tmp_path) -> None:
     result = run_bash(
         script,
         cwd=repo_root,
-        args=["--project", str(project), "--to", "codex-cli", "--print-only"],
+        args=["--project", str(project), "--to", "codex-cli"],
         env={"PATH": f"{bin_dir}:/usr/bin:/bin"},
     )
 
