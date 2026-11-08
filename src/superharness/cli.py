@@ -1459,6 +1459,41 @@ def operator_install(project, install_all, force, use_dashboard, watchdog):
             )
 
 
+def _watchdog_notify(reports, quiet: bool) -> None:
+    """Evaluate owner alerts for every healed project, in-process.
+
+    Alert outcomes (sent, suppressed, delivery failed) are not process
+    failures: the watchdog plist restarts on any non-zero exit, so they
+    must never reach the exit code. One project's error is recorded in the
+    last-run receipt and does not stop the others.
+    """
+    import contextlib
+    import io
+
+    from superharness.commands import notify
+    from superharness.engine import launchd_health
+
+    failures: list[dict[str, str]] = []
+    for report in reports:
+        if not report.project:
+            continue
+        out = io.StringIO()
+        try:
+            with contextlib.redirect_stdout(out):
+                code = notify.evaluate_alerts(report.project)
+        except Exception as e:
+            click.echo(
+                f"[watchdog] alert evaluation failed for {report.project}: {e}",
+                err=True,
+            )
+            failures.append({"project": report.project, "error": str(e)})
+            continue
+        # 10 = sent, 12 = delivery failed: worth a log line even when quiet.
+        if out.getvalue() and (code in (10, 12) or not quiet):
+            click.echo(out.getvalue(), nl=False)
+    launchd_health.write_watchdog_last_run(len(reports), failures)
+
+
 @operator.command(name="heal")
 @click.option("--project", "-p", default=".", help="Project directory")
 @click.option(
@@ -1473,7 +1508,15 @@ def operator_install(project, install_all, force, use_dashboard, watchdog):
     default=False,
     help="Suppress 'nothing to do' output (for watchdog use)",
 )
-def operator_heal(project, auto_discover, quiet):
+@click.option(
+    "--notify",
+    "notify_owner",
+    is_flag=True,
+    default=False,
+    help="With --auto-discover, also evaluate owner alerts for each project "
+    "and write the watchdog last-run receipt",
+)
+def operator_heal(project, auto_discover, quiet, notify_owner):
     """Repair launchd state: bootout zombies, remove stale prior-version
     services and plists, and bootstrap the operator if its plist is on
     disk but not loaded.
@@ -1498,6 +1541,8 @@ def operator_heal(project, auto_discover, quiet):
 
     if auto_discover:
         reports = _heal_all()
+        if notify_owner:
+            _watchdog_notify(reports, quiet)
         total_fixes = sum(r.fixed_count() for r in reports)
         if total_fixes == 0 and quiet:
             return

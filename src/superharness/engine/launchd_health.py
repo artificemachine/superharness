@@ -17,6 +17,7 @@ platforms (return empty results / False).
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 import platform
@@ -24,6 +25,7 @@ import plistlib
 import re
 import subprocess
 import sys
+import time
 import hashlib
 from dataclasses import dataclass
 from pathlib import Path
@@ -422,6 +424,48 @@ def watchdog_plist_path() -> Path:
     return _launch_agents_dir() / f"{watchdog_label()}.plist"
 
 
+# Three missed runs at the default 300 s interval before diagnostics call
+# the watchdog dead; one late run is normal launchd jitter.
+WATCHDOG_RECEIPT_MAX_AGE_SECONDS = 900
+
+
+def watchdog_last_run_path() -> Path:
+    """Receipt written by every `heal --notify` run.
+
+    The watchdog cannot report its own death; a stale receipt is how
+    diagnostics detect it.
+    """
+    from superharness.utils.paths import resolve_state_dir
+
+    return Path(resolve_state_dir()) / "watchdog-last-run.json"
+
+
+def write_watchdog_last_run(projects: int, failures: list[dict[str, str]]) -> Path:
+    path = watchdog_last_run_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    receipt = {
+        "finished_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "projects": projects,
+        "failures": failures,
+    }
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(json.dumps(receipt, indent=2) + "\n")
+    tmp.replace(path)
+    return path
+
+
+def read_watchdog_last_run() -> dict | None:
+    """Return the last receipt, or None when absent or unreadable."""
+    path = watchdog_last_run_path()
+    try:
+        return json.loads(path.read_text())
+    except FileNotFoundError:
+        return None
+    except (OSError, ValueError) as e:
+        _log.warning("launchd_health: unreadable watchdog receipt %s: %s", path, e)
+        return None
+
+
 def write_watchdog_plist(
     python_bin: str | None = None, interval_seconds: int = 300
 ) -> Path:
@@ -464,6 +508,7 @@ def _render_watchdog_plist(
         <string>heal</string>
         <string>--auto-discover</string>
         <string>--quiet</string>
+        <string>--notify</string>
     </array>
     <key>WorkingDirectory</key>
     <string>{Path.home()}</string>
