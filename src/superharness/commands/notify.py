@@ -311,31 +311,61 @@ def main(argv: list[str] | None = None) -> None:
     if not os.path.isdir(harness_dir):
         sys.exit(f"Missing .superharness in project: {project_dir}")
 
+    sys.exit(
+        evaluate_alerts(
+            project_dir,
+            retry_threshold=opts.retry_threshold,
+            watcher_down_streak=opts.watcher_down_streak,
+            cooldown_minutes=opts.cooldown_minutes,
+            webhook_url=opts.webhook_url,
+            state_file=opts.state_file,
+            dry_run=opts.dry_run,
+        )
+    )
+
+
+def evaluate_alerts(
+    project_dir: str,
+    *,
+    retry_threshold: int = 3,
+    watcher_down_streak: int = 3,
+    cooldown_minutes: int = 30,
+    webhook_url: str = "",
+    state_file: str = "",
+    dry_run: bool = False,
+) -> int:
+    """Evaluate and deliver the alerts for one project; return the exit code.
+
+    Shared by `shux notify` and the launchd watchdog (`operator heal
+    --notify`), which must call it in-process: the codes below are alert
+    outcomes, not process failures.
+    """
+    harness_dir = os.path.join(project_dir, ".superharness")
     inbox_file = os.path.join(harness_dir, "inbox.yaml")
-    state_file = opts.state_file or os.path.join(harness_dir, "notify.state")
+    state_file = state_file or os.path.join(harness_dir, "notify.state")
 
     # Platform watcher check
     sys_platform = platform.system()
     watcher_ok, watcher_detail = _watcher_health(project_dir, sys_platform)
 
     # Inbox retry check
-    retry_ids = _retry_high_ids(inbox_file, opts.retry_threshold)
+    retry_ids = _retry_high_ids(inbox_file, retry_threshold)
 
     prev = _read_state(state_file)
     watcher_streak = 0 if watcher_ok else prev.watcher_streak + 1
-    watcher_alerting = not watcher_ok and watcher_streak >= opts.watcher_down_streak
+    watcher_alerting = not watcher_ok and watcher_streak >= watcher_down_streak
 
     alerts: list[str] = []
     if watcher_alerting:
         alerts.append(f"watcher_down:{watcher_streak} ({watcher_detail})")
     if retry_ids:
         alerts.append(
-            f"retry_threshold:{len(retry_ids)} item(s) >= {opts.retry_threshold} [{','.join(retry_ids[:10]) or 'none'}]"
+            f"retry_threshold:{len(retry_ids)} item(s) >= {retry_threshold} [{','.join(retry_ids[:10]) or 'none'}]"
         )
     recovery = watcher_ok and prev.watcher_alert_active
 
     now_epoch = int(time.time())
-    cooldown_seconds = opts.cooldown_minutes * 60
+    cooldown_seconds = cooldown_minutes * 60
     # The fingerprint names the outage kind, never the streak count: a
     # counter that grows every run would defeat the cooldown.
     fingerprint = f"watcher={int(watcher_alerting)}|retry={len(retry_ids)}:{','.join(retry_ids[:10])}"
@@ -357,7 +387,7 @@ def main(argv: list[str] | None = None) -> None:
         print(
             f"notify: no alerts (watcher_ok={int(watcher_ok)} retry_high={len(retry_ids)})"
         )
-        sys.exit(0)
+        return 0
 
     parts = list(alerts) if should_send else []
     if recovery:
@@ -365,18 +395,18 @@ def main(argv: list[str] | None = None) -> None:
     if not parts:
         print("notify: alert suppressed by cooldown/fingerprint")
         print(f"superharness alert for {project_dir}: {'; '.join(alerts)}")
-        sys.exit(11)
+        return 11
     message = f"superharness alert for {project_dir}: {'; '.join(parts)}"
     print(message)
 
-    if opts.dry_run:
+    if dry_run:
         # A dry run never consumes the alert: the sent state stays as it was.
         print("notify: dry-run")
-        sys.exit(10)
+        return 10
 
-    if not _deliver(message, project_dir, sys_platform, opts.webhook_url):
+    if not _deliver(message, project_dir, sys_platform, webhook_url):
         print("notify: failed to deliver via any channel; will retry", file=sys.stderr)
-        sys.exit(12)
+        return 12
 
     state.last_sent_epoch = now_epoch
     if should_send:
@@ -386,7 +416,7 @@ def main(argv: list[str] | None = None) -> None:
     elif recovery:
         state.watcher_alert_active = False
     _write_state(state_file, state)
-    sys.exit(10)
+    return 10
 
 
 if __name__ == "__main__":
