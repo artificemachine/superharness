@@ -475,10 +475,10 @@ class TestDispatchSqlitePrimary:
         assert row is not None
         assert row.status == "launched"
 
-    def test_dispatch_sqlite_primary_flag_skips_yaml_read(
-        self, conn: sqlite3.Connection, proj: Path, monkeypatch
+    def test_dispatch_print_only_is_read_only_without_inbox_yaml(
+        self, conn: sqlite3.Connection, proj: Path, monkeypatch, capsys
     ):
-        """With sqlite_primary=True, _do_dispatch must not require inbox.yaml."""
+        """Print-only previews must not claim or mutate SQLite inbox state."""
         monkeypatch.setenv("STATE_BACKEND", "sqlite_only")
         _make_task(conn, "feat-z")
         conn.commit()
@@ -494,15 +494,32 @@ class TestDispatchSqlitePrimary:
         conn.commit()
         conn.close()
 
-        inbox_yaml = proj / ".superharness" / "inbox.yaml"
+        harness_dir = proj / ".superharness"
+        inbox_yaml = harness_dir / "inbox.yaml"
         assert not inbox_yaml.exists(), "No inbox.yaml — pure sqlite_only"
+        entries_before = {path.name for path in harness_dir.iterdir()}
+        assert not (harness_dir / "inbox.yaml.lock.d").exists()
+        assert not (proj / ".superharness" / "launcher-logs").exists()
 
         from superharness.commands.inbox_dispatch import dispatch
 
-        # In sqlite_only mode, dispatch should succeed without inbox.yaml
-        # (print_only so we don't actually launch an agent)
+        # In sqlite_only mode, dispatch should preview without inbox.yaml or
+        # claiming the inbox item.
         rc = dispatch(str(proj), target_filter="claude-code", print_only=True)
         assert rc == 0
+        assert "[print-only] would launch:" in capsys.readouterr().out
+        assert {path.name for path in harness_dir.iterdir()} == entries_before
+
+        c2 = get_connection(str(proj))
+        try:
+            row = inbox_dao.get(c2, "disp-3")
+            assert row is not None
+            assert row.status == "pending"
+            assert row.retry_count == 0
+            assert row.pid is None
+            assert row.launched_at is None
+        finally:
+            c2.close()
 
 
 # ---------------------------------------------------------------------------

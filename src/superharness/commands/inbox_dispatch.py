@@ -9,6 +9,7 @@ import importlib.resources as _importlib_resources
 import logging
 import os
 import signal
+import sqlite3
 import subprocess
 import sys
 import time
@@ -16,6 +17,11 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
 from superharness.engine.process import pid_alive, signal_process_group
+from superharness.engine.state_errors import StateError
+from superharness.utils.paths import (
+    StateDatabaseConflictError,
+    resolve_active_state_db_path,
+)
 
 _log = logging.getLogger(__name__)
 
@@ -810,6 +816,21 @@ def dispatch(
         _importlib_resources.files("superharness").joinpath("scripts")
     )
 
+    if print_only:
+        ctx = DispatchContext(
+            project_dir=project_dir,
+            inbox_file=inbox_file,
+            contract_file=contract_file,
+            target_filter=target_filter,
+            print_only=True,
+            non_interactive=non_interactive,
+            codex_bypass=codex_bypass,
+            launcher_timeout=launcher_timeout,
+            script_dir=script_dir,
+            sqlite_primary=_sqlite_primary,
+        )
+        return _preview_dispatch(ctx)
+
     # Lock
     lock = _MkdirLock(inbox_file + ".lock.d")
     if not lock.acquire():
@@ -945,6 +966,93 @@ def _sync_claimed_worker_copy(ctx: DispatchContext) -> None:
     from superharness.engine.platform_runtime import sync_worker_copy
 
     sync_worker_copy(source_project, worker_project)
+
+
+def _preview_dispatch(ctx: DispatchContext) -> int:
+    """Show the next dispatch decision without creating or mutating state."""
+    if not ctx.sqlite_primary:
+        print(
+            "inbox_dispatch: SQLite required but not active. "
+            "Run 'shux init' to initialise state.sqlite3, or set STATE_BACKEND=sqlite_only.",
+            file=sys.stderr,
+        )
+        return 1
+    if not ctx.target_filter:
+        print(
+            "sqlite_only mode requires --to <agent>; no YAML fallback available.",
+            file=sys.stderr,
+        )
+        return 1
+
+    try:
+        from urllib.parse import quote
+
+        from superharness.engine import inbox_dao, tasks_dao
+
+        db_path = resolve_active_state_db_path(ctx.project_dir)
+        if not os.path.isfile(db_path):
+            print(f"State database not found: {db_path}", file=sys.stderr)
+            return 1
+        db_uri = f"file:{quote(db_path, safe='/')}?mode=ro"
+        conn = sqlite3.connect(db_uri, uri=True)
+        conn.row_factory = sqlite3.Row
+        try:
+            rows = inbox_dao.get_all(
+                conn, status="pending", target_agent=ctx.target_filter, limit=1
+            )
+            if not rows:
+                return 0
+            row = rows[0]
+            task = tasks_dao.get(conn, row.task_id)
+        finally:
+            conn.close()
+    except (
+        OSError,
+        sqlite3.Error,
+        StateDatabaseConflictError,
+        StateError,
+        ValueError,
+    ) as exc:
+        _log.error("Print-only dispatch preview failed", exc_info=True)
+        print(f"Print-only dispatch preview failed: {exc}", file=sys.stderr)
+        return 1
+
+    item_project = row.project_path or ctx.project_dir
+    exec_project = item_project
+    project_harness = os.path.realpath(os.path.join(ctx.project_dir, ".superharness"))
+    item_harness = os.path.realpath(os.path.join(item_project, ".superharness"))
+    if (
+        project_harness == item_harness
+        and ctx.project_dir != item_project
+        and os.path.isdir(project_harness)
+    ):
+        exec_project = ctx.project_dir
+
+    launch_args = [
+        _get_python(),
+        "-m",
+        "superharness.commands.delegate",
+        "--to",
+        row.target_agent,
+        "--project",
+        exec_project,
+        "--task",
+        row.task_id,
+    ]
+    if task is not None and task.status == "review_requested":
+        launch_args.append("--for-review")
+    if row.plan_only:
+        launch_args.append("--plan-only")
+    elif ctx.non_interactive:
+        launch_args.append("--yolo")
+    launch_args.append("--print-only")
+    if ctx.non_interactive:
+        launch_args.append("--non-interactive")
+    if ctx.codex_bypass:
+        launch_args.append("--codex-bypass")
+
+    print(f"[print-only] would launch: {' '.join(launch_args)}")
+    return 0
 
 
 def _claim_next_item(ctx: DispatchContext) -> int | None:
