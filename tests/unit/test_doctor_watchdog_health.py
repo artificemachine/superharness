@@ -95,31 +95,31 @@ def test_owner_disabled_operator_is_reported_as_intentional(
     assert "disabled by user" in line
 
 
+# Receipt ages, not timestamps: a timestamp computed at collection time is
+# already stale when a slow runner executes the test many minutes later.
 @pytest.mark.parametrize(
-    ("receipt", "expected"),
+    ("age_seconds", "failures", "expected"),
     [
-        (None, "WARN watchdog: no last-run receipt"),
+        (None, [], "WARN watchdog: no last-run receipt"),
+        (7200, [], "WARN watchdog: last run"),
         (
-            {"finished_at": _iso(time.time() - 7200), "projects": 1, "failures": []},
-            "WARN watchdog: last run",
-        ),
-        (
-            {
-                "finished_at": _iso(time.time() - 60),
-                "projects": 2,
-                "failures": [{"project": "/p", "error": "boom"}],
-            },
+            60,
+            [{"project": "/p", "error": "boom"}],
             "WARN watchdog: 1 project(s) failed",
         ),
-        (
-            {"finished_at": _iso(time.time() - 60), "projects": 2, "failures": []},
-            "PASS watchdog: last run",
-        ),
+        (60, [], "PASS watchdog: last run"),
     ],
 )
 def test_watchdog_receipt_is_checked_on_macos(
-    project, darwin, monkeypatch, capsys, receipt, expected
+    project, darwin, monkeypatch, capsys, age_seconds, failures, expected
 ):
+    receipt = None
+    if age_seconds is not None:
+        receipt = {
+            "finished_at": _iso(time.time() - age_seconds),
+            "projects": 2,
+            "failures": failures,
+        }
     monkeypatch.setattr(notify, "_watcher_health", lambda *_a: (True, "healthy"))
     monkeypatch.setattr(launchd_health, "read_watchdog_last_run", lambda: receipt)
 

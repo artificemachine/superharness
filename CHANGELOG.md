@@ -1059,3 +1059,5 @@ chore: submitted gemini-cli round 1 position for gap analysis discussion
 - 2026-11-08 (1.86.5rc20): chore(release): version 1.86.5rc20 carries the three 2026-11-08 entries above (notify probe and alert delivery, watchdog owner alerts, doctor automation health); no tag or release is cut by this bump.
 
 - 2026-11-08 (1.86.5rc20): test(notify): the AppleScript-injection test carries its quotes in the outage detail instead of the project directory name, which Windows rejects (`WinError 123`); the check that the message never enters the `-e` script text is unchanged.
+
+- 2026-11-08 (1.86.5rc20): test(doctor): the watchdog-receipt test parametrizes on receipt ages and builds the timestamps when the test runs; timestamps computed at collection were already older than the 15-minute threshold when the Windows runner executed them about 20 minutes later.
