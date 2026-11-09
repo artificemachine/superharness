@@ -464,6 +464,10 @@ def _check_deadlines(project_dir: str, profile: dict) -> int:
             status = str(task.get("status", ""))
             if status not in _DEADLINE_ELIGIBLE_STATES:
                 continue
+            # A verified report only waits for its owner to close it; failing it
+            # here would make the recorded PASS impossible to close.
+            if bool(task.get("verified", False)):
+                continue
 
             task_id = str(task.get("id", ""))
 
