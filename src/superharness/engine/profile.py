@@ -100,6 +100,45 @@ def plan_auto_approval_enabled(profile: object) -> bool:
     return explicit
 
 
+def plan_auto_approval_decision(
+    project_dir: str | os.PathLike[str],
+) -> tuple[bool, str]:
+    """Return ``(enabled, source)`` for plan auto-approval in *project_dir*.
+
+    *source* names the policy that decided, for the audit row and for
+    ``shux workflow --show``: ``profile=absent`` (no profile.yaml: the
+    plan waits for the operator), ``profile=explicit`` (an ``auto_approve_plans``
+    key), ``profile=file`` (a profile without the key, autonomy decides),
+    ``profile=malformed`` (root is not a mapping) or ``profile=unreadable``.
+    An unreadable or malformed profile fails closed.
+    """
+    import yaml
+
+    profile_path = os.path.join(project_dir, ".superharness", "profile.yaml")
+    if not os.path.exists(profile_path):
+        # No profile.yaml means nobody chose a policy: the operator approves.
+        # An existing empty file keeps the ai_driven default (enabled below).
+        return False, "profile=absent default=operator-approval"
+    try:
+        document = load_profile_document(profile_path)
+    except (OSError, ValueError, yaml.YAMLError) as e:
+        # Name the type only: the file content is untrusted input.
+        _log.warning(
+            "profile.yaml unreadable (%s): plan auto-approval stays off",
+            type(e).__name__,
+        )
+        return False, "profile=unreadable"
+    enabled = plan_auto_approval_enabled(document)
+    if not isinstance(document, dict):
+        return enabled, "profile=malformed"
+    if "auto_approve_plans" in document:
+        return enabled, "profile=explicit key=auto_approve_plans"
+    return (
+        enabled,
+        f"profile=file autonomy={normalize_autonomy(document.get('autonomy'))}",
+    )
+
+
 def auto_close_enabled(profile: object) -> bool:
     """Whether the watcher closes finished tasks on its own under *profile*.
 

@@ -49,10 +49,18 @@ def _load_profile(project: str) -> dict:
     if not p.exists():
         return {}
     try:
-        return yaml.safe_load(p.read_text()) or {}
+        document = yaml.safe_load(p.read_text()) or {}
     except Exception as e:
         logger.warning("workflow_cmd.py unexpected error: %s", e, exc_info=True)
         return {}
+    if not isinstance(document, dict):
+        # A root that is not a mapping would crash every .get() below.
+        logger.warning(
+            "workflow_cmd.py profile root is a %s, not a mapping: ignored",
+            type(document).__name__,
+        )
+        return {}
+    return document
 
 
 def _save_profile(project: str, doc: dict) -> None:
@@ -80,6 +88,10 @@ def _print_settings(effective: dict) -> None:
     print(f"autonomy        : {effective['autonomy']}")
     print(f"default_preset  : {wf['default_preset']}")
     print(f"require_tdd     : {wf['require_tdd']}")
+    approval = effective.get("plan_auto_approval")
+    if approval is not None:
+        state = "on" if approval["enabled"] else "off"
+        print(f"plan_auto_approve: {state} ({approval['source']})")
 
 
 def _abort(msg: str, code: int = 1) -> None:
@@ -213,8 +225,12 @@ def cmd_workflow(argv: list[str] | None = None) -> None:
 
     # --show (with optional --json)
     if opts.show:
+        from superharness.engine.profile import plan_auto_approval_decision
+
         profile = _load_profile(project)
         eff = _effective(profile)
+        enabled, source = plan_auto_approval_decision(project)
+        eff["plan_auto_approval"] = {"enabled": enabled, "source": source}
         if opts.json:
             print(json.dumps(eff))
         else:

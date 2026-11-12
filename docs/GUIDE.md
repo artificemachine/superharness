@@ -586,9 +586,11 @@ autonomy: ai_driven       # default; `supervised` keeps the operator in the loop
 auto_approve_plans: true  # optional; overrides what the autonomy would decide
 ```
 
-With `ai_driven` (the default, also when there is no profile or it is empty), a task moved to `plan_proposed` is approved automatically, but only if its plan handoff exists and passes the plan quality checks. A missing plan handoff, an invalid plan, or any error while validating leaves the task in `plan_proposed` for the operator. With `supervised`, or with `auto_approve_plans: false`, plans always wait for the operator.
+With `ai_driven` (the default of an existing `profile.yaml`, also when that file is empty), a task moved to `plan_proposed` is approved automatically, but only if its plan handoff exists and passes the plan quality checks. A missing plan handoff, an invalid plan, or any error while validating leaves the task in `plan_proposed` for the operator. With `supervised`, or with `auto_approve_plans: false`, plans always wait for the operator. **When there is no `profile.yaml` at all, plans also wait for the operator**: nobody chose a policy. To opt in, create the file with `autonomy: ai_driven` or `auto_approve_plans: true`.
 
 `auto_approve_plans` must be a real YAML boolean. A mistyped value (`"false"`, `1`, `null`, a list) and a profile whose root is not a mapping (including an explicit `null` document) are refused: auto-approval stays off.
+
+Every automatic approval is recorded in the ledger as action `plan_auto_approved`, with agent `ai-autonomy` and a `policy_source` in its details (`profile=explicit key=auto_approve_plans` or `profile=file autonomy=<mode>`; `shux workflow --show` reports `profile=absent default=operator-approval` when there is no file, and then nothing is approved); the approval message prints the same source. The row is written in the same transaction as the status change, so a plan is never approved without its audit row. `shux workflow --show` reports the current state as `plan_auto_approval: {enabled, source}`, so an operator can see before proposing a plan whether it would be approved on its own.
 
 `auto_close` follows the same rule. By default `ai_driven` lets the watcher close finished tasks; `auto_close: false` turns that off and `auto_close: true` turns it on under any autonomy. It must be a real YAML boolean: `"false"`, `1`, `null`, a list, or a profile whose root is not a mapping leave auto-close off instead of being read as true.
 

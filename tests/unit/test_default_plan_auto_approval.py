@@ -136,12 +136,11 @@ def _status_after_proposing(project: Path, monkeypatch) -> str:
         conn.close()
 
 
-def test_valid_plan_is_auto_approved_without_a_profile(
-    tmp_path: Path, monkeypatch
-) -> None:
+def test_absent_profile_does_not_auto_approve(tmp_path: Path, monkeypatch) -> None:
+    """No profile.yaml means nobody chose a policy: the operator approves."""
     project = _make_project(tmp_path, None)
     _add_plan_handoff(project)
-    assert _status_after_proposing(project, monkeypatch) == "plan_approved"
+    assert _status_after_proposing(project, monkeypatch) == "plan_proposed"
 
 
 def test_valid_plan_is_auto_approved_for_ai_driven_profile(
