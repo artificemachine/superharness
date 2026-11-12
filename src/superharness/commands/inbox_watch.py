@@ -824,18 +824,18 @@ def _auto_peer_approve_plans(project_dir: str) -> int:
 
     from superharness.engine.profile import plan_auto_approval_enabled
 
-    # A missing profile means the default autonomy (ai_driven); an unreadable
-    # one disables the dispatch.
+    # A missing or unreadable profile disables the dispatch, like plan
+    # auto-approval itself: with no profile.yaml the operator decides.
     profile_file = os.path.join(project_dir, ".superharness", "profile.yaml")
-    raw_profile: object = {}  # no profile file: the default applies
-    if os.path.exists(profile_file):
-        try:
-            from superharness.engine.profile import load_profile_document
+    if not os.path.exists(profile_file):
+        return 0
+    try:
+        from superharness.engine.profile import load_profile_document
 
-            raw_profile = load_profile_document(profile_file)
-        except Exception as e:
-            logger.warning("inbox_watch unexpected error: %s", e, exc_info=True)
-            return 0
+        raw_profile: object = load_profile_document(profile_file)
+    except Exception as e:
+        logger.warning("inbox_watch unexpected error: %s", e, exc_info=True)
+        return 0
 
     # Only run when auto-approve is enabled (now means "use peer review").
     # The raw root is checked: an explicit null or a falsy non-mapping must

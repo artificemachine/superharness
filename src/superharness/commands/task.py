@@ -591,6 +591,7 @@ def status_update(
     reason: str = "",
     summary: str = "",
     _recursion_guard: bool = False,
+    _audit_details: dict[str, object] | None = None,
 ) -> int:
     _validate_token("task id", task_id)
 
@@ -693,12 +694,26 @@ def status_update(
             changes["stopped_at"] = None
 
         tasks_dao.update(conn, task_id, task_row.version, changes)
+        if _audit_details is not None:
+            # Same transaction as the status change: if the audit row cannot be
+            # written the error propagates and the approval is not committed.
+            from superharness.engine import ledger_dao
+
+            ledger_dao.record(
+                conn,
+                task_id=task_id,
+                agent=actor,
+                action="plan_auto_approved",
+                details=_audit_details,
+                now=now,
+            )
         conn.commit()
     finally:
         conn.close()
 
-    # Auto-approve hook: plan_proposed → plan_approved under ai_driven autonomy
-    # (the default) unless the profile sets auto_approve_plans: false.
+    # Auto-approve hook: plan_proposed → plan_approved when a profile.yaml exists
+    # and its policy allows it (ai_driven autonomy unless auto_approve_plans is
+    # false). With no profile.yaml the operator approves.
     # Only fires for the implementation workflow — quick/note/review/discussion tasks
     # have no plan cycle, and auto-approving them causes a permanent dispatch block
     # because plan_approved is not in their allowed dispatch status set.
@@ -707,25 +722,12 @@ def status_update(
         and not _recursion_guard
         and task_row.workflow == "implementation"
     ):
-        from superharness.engine.profile import (
-            load_profile_document,
-            plan_auto_approval_enabled,
-        )
+        from superharness.engine.profile import plan_auto_approval_decision
 
-        profile_path = os.path.join(project_dir, ".superharness", "profile.yaml")
-        # A missing or empty profile means the default autonomy (ai_driven); an
-        # unreadable or malformed one fails closed and leaves the plan to the
-        # operator. The raw root is checked: an explicit null is not an empty file.
-        auto_approve = plan_auto_approval_enabled({})
-        if os.path.exists(profile_path):
-            auto_approve = False
-            try:
-                auto_approve = plan_auto_approval_enabled(
-                    load_profile_document(profile_path)
-                )
-            except Exception as e:
-                logger.warning("task.py unexpected error: %s", e, exc_info=True)
-                pass
+        # A missing, unreadable or malformed profile leaves the plan to the
+        # operator; an empty one keeps the default autonomy (ai_driven). The
+        # decision also names the policy source for the audit row.
+        auto_approve, policy_source = plan_auto_approval_decision(project_dir)
         if auto_approve:
             # Fail closed: only a plan that was found and validated is approved.
             # A missing handoff, an invalid plan, or any error while validating
@@ -761,7 +763,10 @@ def status_update(
                 )
                 return 0
 
-            print(f"Auto-approving task '{task_id}' (auto-approved per project policy)")
+            print(
+                f"Auto-approving task '{task_id}' "
+                f"(auto-approved per project policy; {policy_source})"
+            )
             status_update(
                 project_dir,
                 task_id,
@@ -769,6 +774,10 @@ def status_update(
                 actor="ai-autonomy",
                 summary="auto-approved per project policy",
                 _recursion_guard=True,
+                _audit_details={
+                    "policy_source": policy_source,
+                    "summary": "auto-approved per project policy",
+                },
             )
 
             try:
