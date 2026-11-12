@@ -1076,3 +1076,5 @@ chore: submitted gemini-cli round 1 position for gap analysis discussion
 - 2026-11-12: fix(inbox-watch): the plan peer-review dispatch (`_auto_peer_approve_plans`) now also does nothing when the project has no `profile.yaml`, matching plan auto-approval; an existing profile is unchanged.
 
 - 2026-11-12 (1.86.5rc23): chore(release): bump to 1.86.5rc23 for the plan auto-approval audit trail, the operator-approval default without `profile.yaml` and the watcher alignment.
+
+- 2026-11-12: chore(ci): pin shipguard to 0.6.4 in `security.yml` and `ci.yml` (was 0.5.2), the version the local scan already uses; the full repository scan reports 0 findings with it.
