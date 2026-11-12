@@ -266,7 +266,8 @@ def test_supervised_autonomy_keeps_plan_waiting_for_the_operator(
 @pytest.mark.parametrize(
     ("profile_text", "reaches_task_scan"),
     [
-        (None, True),
+        # No profile.yaml: the operator decides, nothing is dispatched.
+        (None, False),
         ("autonomy: ai_driven\n", True),
         ("autonomy: ai_driven\nauto_approve_plans: false\n", False),
         ("autonomy: supervised\n", False),
