@@ -44,7 +44,7 @@ jobs:
           python-version: "3.11"
       # Pinned to an exact version: bump deliberately, not on every release.
       - name: Install shipguard
-        run: pip install shipguard==0.5.2
+        run: pip install shipguard==0.6.4
       # medium, not high: PII-004 (email address) is MEDIUM severity and is
       # the most common real-world leak; --severity high would silently skip it.
       # Runs: shipguard scan . --severity medium (see scripts/ci/run-gate.sh)
