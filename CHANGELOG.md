@@ -1074,3 +1074,5 @@ chore: submitted gemini-cli round 1 position for gap analysis discussion
 - 2026-11-12: fix(profile): a project with no `profile.yaml` no longer auto-approves plans; they wait for the operator (reported as `profile=absent default=operator-approval`). An existing `profile.yaml`, even an empty one, keeps the `ai_driven` default, and `autonomy: ai_driven` or `auto_approve_plans: true` opts in. Behavior change for every project that relied on the implicit default, this repository's own flows included. The watcher peer-review dispatch in `inbox_watch.py` is unchanged. Docs: `docs/GUIDE.md`.
 
 - 2026-11-12: fix(inbox-watch): the plan peer-review dispatch (`_auto_peer_approve_plans`) now also does nothing when the project has no `profile.yaml`, matching plan auto-approval; an existing profile is unchanged.
+
+- 2026-11-12 (1.86.5rc23): chore(release): bump to 1.86.5rc23 for the plan auto-approval audit trail, the operator-approval default without `profile.yaml` and the watcher alignment.
