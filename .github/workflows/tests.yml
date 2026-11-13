@@ -18,8 +18,12 @@ jobs:
   changes:
     name: Detect documentation-only changes
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
     outputs:
       docs_only: ${{ steps.diff.outputs.docs_only }}
+      reuse: ${{ steps.reuse.outputs.reuse }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -48,6 +52,11 @@ jobs:
               )
           with open(os.environ["GITHUB_OUTPUT"], "a") as output:
               output.write(f"docs_only={str(docs_only).lower()}\n")
+      - name: Verify previous merge-group test evidence
+        id: reuse
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 src/superharness/ci_merge_group_reuse.py
 
   shell-tests:
     name: Shell Test Suite
@@ -98,7 +107,7 @@ jobs:
 
   smoke-tests:
     needs: changes
-    if: needs.changes.outputs.docs_only != 'true'
+    if: needs.changes.outputs.docs_only != 'true' && needs.changes.outputs.reuse != 'true'
     name: Smoke Tests (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
@@ -123,7 +132,7 @@ jobs:
 
   unit-tests:
     needs: changes
-    if: needs.changes.outputs.docs_only != 'true'
+    if: needs.changes.outputs.docs_only != 'true' && needs.changes.outputs.reuse != 'true'
     name: Unit Tests (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     # Three consecutive green main runs on 2026-08-24/26 established the
@@ -175,7 +184,7 @@ jobs:
 
   integration-tests:
     needs: changes
-    if: needs.changes.outputs.docs_only != 'true'
+    if: needs.changes.outputs.docs_only != 'true' && needs.changes.outputs.reuse != 'true'
     name: Integration Tests (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
@@ -200,7 +209,7 @@ jobs:
 
   e2e-tests:
     needs: changes
-    if: needs.changes.outputs.docs_only != 'true'
+    if: needs.changes.outputs.docs_only != 'true' && needs.changes.outputs.reuse != 'true'
     name: E2E Tests (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
@@ -226,7 +235,7 @@ jobs:
 
   other-tests:
     needs: changes
-    if: needs.changes.outputs.docs_only != 'true'
+    if: needs.changes.outputs.docs_only != 'true' && needs.changes.outputs.reuse != 'true'
     name: Other Tests (chaos/contract/engine/perf/smoke-dir/state-machine/root)
     # 2026-07-21 portfolio-ready audit: tests/unit, tests/integration, tests/e2e,
     # and tests/test_smoke.py were the only paths any workflow ever invoked —
@@ -271,6 +280,7 @@ jobs:
         env:
           CHANGES_RESULT: ${{ needs.changes.result }}
           DOCS_ONLY: ${{ needs.changes.outputs.docs_only }}
+          REUSE: ${{ needs.changes.outputs.reuse }}
           SHELL_TESTS: ${{ needs.shell-tests.result }}
           SMOKE_TESTS: ${{ needs.smoke-tests.result }}
           UNIT_TESTS: ${{ needs.unit-tests.result }}
@@ -279,6 +289,16 @@ jobs:
           OTHER_TESTS: ${{ needs.other-tests.result }}
         run: |
           [ "$CHANGES_RESULT" = "success" ] || exit 1
+          if [ "$REUSE" = "true" ]; then
+            [ "$SHELL_TESTS" = "success" ] || exit 1
+            [ "$SMOKE_TESTS" = "skipped" ] || exit 1
+            [ "$UNIT_TESTS" = "skipped" ] || exit 1
+            [ "$INTEGRATION_TESTS" = "skipped" ] || exit 1
+            [ "$E2E_TESTS" = "skipped" ] || exit 1
+            [ "$OTHER_TESTS" = "skipped" ] || exit 1
+            echo "Full test evidence verified on the same merge-group commit."
+            exit 0
+          fi
           if [ "$DOCS_ONLY" = "true" ]; then
             [ "$SHELL_TESTS" = "success" ] || exit 1
             echo "Documentation-only change: test suites skipped; shell guards passed."

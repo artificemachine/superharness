@@ -1082,3 +1082,5 @@ chore: submitted gemini-cli round 1 position for gap analysis discussion
 - 2026-11-12 (1.86.5): chore(release): final 1.86.5, no code change from 1.86.5rc23. `release.yml` only accepts canonical `vX.Y.Z` tags, so the rc cannot be promoted.
 
 - 2026-11-13: fix(publish): grant the candidate retrieval job the repository permission needed to access draft release assets.
+
+- 2026-11-13: perf(ci): reuse complete successful merge-queue test evidence for the identical commit on main; rerun tests when evidence is absent, ambiguous, incomplete, or unavailable.
