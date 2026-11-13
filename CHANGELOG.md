@@ -1086,3 +1086,5 @@ chore: submitted gemini-cli round 1 position for gap analysis discussion
 - 2026-11-13: perf(ci): reuse complete successful merge-queue test evidence for the identical commit on main; rerun tests when evidence is absent, ambiguous, incomplete, or unavailable.
 
 - 2026-11-13 (1.86.6): chore(release): prepare patch release with candidate retrieval permission and CI test reuse.
+
+- 2026-11-13: fix(publish): upload only the wheel and sdist to TestPyPI and PyPI; the candidate evidence files (SHA256SUMS, manifest, SBOM) made twine reject the upload.
