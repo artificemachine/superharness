@@ -49,6 +49,8 @@ jobs:
     name: Fetch checksumed candidate from draft release
     needs: verify-ci
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     outputs:
       version: ${{ steps.candidate.outputs.version }}
     steps:

@@ -1080,3 +1080,5 @@ chore: submitted gemini-cli round 1 position for gap analysis discussion
 - 2026-11-12: chore(ci): pin shipguard to 0.6.4 in `security.yml` and `ci.yml` (was 0.5.2), the version the local scan already uses; the full repository scan reports 0 findings with it.
 
 - 2026-11-12 (1.86.5): chore(release): final 1.86.5, no code change from 1.86.5rc23. `release.yml` only accepts canonical `vX.Y.Z` tags, so the rc cannot be promoted.
+
+- 2026-11-13: fix(publish): grant the candidate retrieval job the repository permission needed to access draft release assets.
