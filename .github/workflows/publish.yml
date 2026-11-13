@@ -140,9 +140,18 @@ jobs:
           python3 src/superharness/release_candidate.py verify \
             --dist dist --manifest dist/candidate-manifest.json
 
+      # dist/ also holds SHA256SUMS, the manifest and the SBOM; twine rejects
+      # any non-distribution file, so upload only the wheel and the sdist.
+      - name: Stage the wheel and sdist for upload
+        run: |
+          mkdir -p upload
+          cp dist/*.whl dist/*.tar.gz upload/
+          ls -la upload/
+
       - uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # release/v1
         with:
           repository-url: https://test.pypi.org/legacy/
+          packages-dir: upload/
 
       - name: Smoke-install the published wheel from TestPyPI
         env:
@@ -177,4 +186,13 @@ jobs:
           python3 src/superharness/release_candidate.py verify \
             --dist dist --manifest dist/candidate-manifest.json
 
+      # Same upload set as TestPyPI: the wheel and the sdist only.
+      - name: Stage the wheel and sdist for upload
+        run: |
+          mkdir -p upload
+          cp dist/*.whl dist/*.tar.gz upload/
+          ls -la upload/
+
       - uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # release/v1
+        with:
+          packages-dir: upload/
