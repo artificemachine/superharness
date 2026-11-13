@@ -1084,3 +1084,5 @@ chore: submitted gemini-cli round 1 position for gap analysis discussion
 - 2026-11-13: fix(publish): grant the candidate retrieval job the repository permission needed to access draft release assets.
 
 - 2026-11-13: perf(ci): reuse complete successful merge-queue test evidence for the identical commit on main; rerun tests when evidence is absent, ambiguous, incomplete, or unavailable.
+
+- 2026-11-13 (1.86.6): chore(release): prepare patch release with candidate retrieval permission and CI test reuse.
