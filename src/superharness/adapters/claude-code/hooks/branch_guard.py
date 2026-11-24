@@ -158,7 +158,7 @@ def main() -> None:
                 f"protected branch. Use a feature branch and PR.",
             )
 
-    if re.search(r"git\s+(reset\s+--hard|clean\s+-f|checkout\s+--\s+\.)", command):
+    if re.search(r"git\s+(reset\s+--hard|clean\s+-f|checkout\s+--\s+\./?(?=\s|[;&|]|$))", command):
         emit(
             "ask",
             "superharness: WARNING — destructive git operation detected. "

@@ -20,6 +20,12 @@ pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="requires bash")
         ("git clean -f", "ask"),
         ("rm -rf /tmp/demo", "ask"),
         ("git status", "allow"),
+        # `checkout -- .` discards every change in the tree; a single path that starts with a dot does not.
+        ("git checkout -- .", "ask"),
+        ("git checkout -- ./", "ask"),
+        ("cd repo && git checkout -- . && git status", "ask"),
+        ("git checkout -- .gitleaks.toml", "allow"),
+        ("cd repo && git checkout -- .gitignore && git diff", "allow"),
     ],
 )
 def test_branch_guard_decisions(

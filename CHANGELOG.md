@@ -1088,3 +1088,4 @@ chore: submitted gemini-cli round 1 position for gap analysis discussion
 - 2026-11-13 (1.86.6): chore(release): prepare patch release with candidate retrieval permission and CI test reuse.
 
 - 2026-11-13: fix(publish): upload only the wheel and sdist to TestPyPI and PyPI; the candidate evidence files (SHA256SUMS, manifest, SBOM) made twine reject the upload.
+- 2026-11-24: fix(branch-guard): `git checkout -- .` still asks for confirmation, but a single path that starts with a dot (`git checkout -- .gitleaks.toml`) no longer does; the dot must be a whole path token. A false "destructive git operation" prompt interrupted the owner on 2026-11-24.
