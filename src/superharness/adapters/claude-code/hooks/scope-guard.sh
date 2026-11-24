@@ -1,8 +1,8 @@
 #!/bin/bash
 # PreToolUse hook: Scope Guard
 # Fires before every Write/Edit. Checks that the file being modified
-# is within scope of the active contract. Warns (does not block) if
-# the file seems outside scope.
+# is within scope of the active contract. Refuses (never asks) when
+# the file is a secret or sits in a system folder.
 #
 # Input: JSON on stdin with tool_input.file_path
 # Output: JSON with decision (allow/warn/block) and optional message
@@ -10,14 +10,30 @@
 PROJECT_DIR="$(pwd)"
 CONTRACT="$PROJECT_DIR/.superharness/state.sqlite3"
 
+# Refuse with the reason (default), or ask when SUPERHARNESS_CONFIRM_MODE=ask (an interactive human session).
+# An agent session has nobody at the terminal: a confirmation prompt only stalls it. The reason is passed to
+# python as an argument so a path with quotes cannot break the JSON.
+refuse_or_ask() {
+  python3 -c '
+import json, os, sys
+reason = sys.argv[1]
+if os.environ.get("SUPERHARNESS_CONFIRM_MODE", "deny") == "ask":
+    decision = "ask"
+else:
+    decision = "deny"
+    reason += " Write inside the project or the session scratchpad instead, or ask the owner in the conversation; this hook never prompts."
+print(json.dumps({"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": decision,
+                                         "permissionDecisionReason": reason}}))' "$1"
+  exit 0
+}
+
 # Read tool input from stdin
 INPUT=$(cat)
 FILE_PATH=$(printf '%s' "$INPUT" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('tool_input',{}).get('file_path',''))" 2>/dev/null)
 
-# Fail-closed: if JSON parsing failed, warn rather than silently allowing
+# Fail-closed: if JSON parsing failed, refuse rather than silently allowing
 if [ -z "$FILE_PATH" ] && [ -n "$INPUT" ]; then
-  echo '{"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "ask", "permissionDecisionReason": "superharness: scope-guard could not parse tool input. Proceeding with caution."}}'
-  exit 0
+  refuse_or_ask "superharness: scope-guard could not parse the tool input."
 fi
 
 # Block writes to sensitive files — ALWAYS, regardless of contract.
@@ -53,19 +69,10 @@ case "$FILE_PATH" in
     ;;
 esac
 
-# Warn if modifying files outside the project
+# Refuse writes to system folders, outside the project
 case "$FILE_PATH" in
   /etc/*|/usr/*|/var/*|/tmp/*)
-    cat <<EOF
-{
-  "hookSpecificOutput": {
-    "hookEventName": "PreToolUse",
-    "permissionDecision": "ask",
-    "permissionDecisionReason": "superharness: WARNING — modifying system file ($FILE_PATH). Is this in the contract scope?"
-  }
-}
-EOF
-    exit 0
+    refuse_or_ask "superharness: BLOCKED — writing to a system folder ($FILE_PATH), outside the project."
     ;;
 esac
 

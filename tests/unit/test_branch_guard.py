@@ -16,16 +16,33 @@ pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="requires bash")
         ("git push origin main", "deny"),
         ("git push origin master", "deny"),
         ("git push --force origin feature", "deny"),
-        ("git reset --hard HEAD~1", "ask"),
-        ("git clean -f", "ask"),
-        ("rm -rf /tmp/demo", "ask"),
+        # A destructive operation is refused with its reason, never asked: an agent session has nobody at the
+        # terminal, so a confirmation prompt only stalls it (SUPERHARNESS_CONFIRM_MODE, default "deny").
+        ("git reset --hard HEAD~1", "deny"),
+        ("git clean -f", "deny"),
+        ("git clean -xdf", "deny"),
         ("git status", "allow"),
         # `checkout -- .` discards every change in the tree; a single path that starts with a dot does not.
-        ("git checkout -- .", "ask"),
-        ("git checkout -- ./", "ask"),
-        ("cd repo && git checkout -- . && git status", "ask"),
+        ("git checkout -- .", "deny"),
+        ("git checkout -- ./", "deny"),
+        ("cd repo && git checkout -- . && git status", "deny"),
         ("git checkout -- .gitleaks.toml", "allow"),
         ("cd repo && git checkout -- .gitignore && git diff", "allow"),
+        # Text is data, not a command: quoted words are never judged as an operation.
+        ('echo "undo with git reset --hard"', "allow"),
+        ("git commit -m 'note: git checkout -- . discards everything'", "allow"),
+        ("printf '%s\\n' 'rm -rf /' > notes.txt", "allow"),
+        # rm -rf is refused on the filesystem root, a home or a top-level folder, not on any absolute path.
+        ("rm -rf /", "deny"),
+        ("rm -rf /*", "deny"),
+        ("rm -rf ~", "deny"),
+        ("rm -rf $HOME", "deny"),
+        ("rm -fr /usr", "deny"),
+        ("rm -r -f ..", "deny"),
+        ("rm -rf /tmp/demo", "allow"),
+        ("rm -rf build/", "allow"),
+        # A command that does not parse and names a destructive operation is refused, not guessed.
+        ("git reset --hard 'unbalanced", "deny"),
     ],
 )
 def test_branch_guard_decisions(
@@ -34,12 +51,30 @@ def test_branch_guard_decisions(
     script = repo_root / "adapters/claude-code/hooks/branch-guard.sh"
     payload = json.dumps({"tool_input": {"command": command}})
 
-    result = run_bash(script, cwd=tmp_path, stdin=payload)
+    result = run_bash(script, cwd=tmp_path, stdin=payload, env={"SUPERHARNESS_CONFIRM_MODE": None})
 
     assert result.returncode == 0, result.stderr
     output = parse_json_output(result.stdout)
     # New Claude Code PreToolUse schema: hookSpecificOutput.permissionDecision
     assert output["hookSpecificOutput"]["permissionDecision"] == decision
+
+
+def test_a_refusal_tells_the_agent_what_to_do_instead(repo_root, tmp_path) -> None:
+    script = repo_root / "adapters/claude-code/hooks/branch-guard.sh"
+    payload = json.dumps({"tool_input": {"command": "git reset --hard HEAD~1"}})
+    out = parse_json_output(run_bash(script, cwd=tmp_path, stdin=payload,
+                                     env={"SUPERHARNESS_CONFIRM_MODE": None}).stdout)["hookSpecificOutput"]
+    assert out["permissionDecision"] == "deny"
+    assert "reset --hard" in out["permissionDecisionReason"]
+    assert "another way" in out["permissionDecisionReason"]
+
+
+@pytest.mark.parametrize("command", ["git reset --hard HEAD~1", "rm -rf /", "git checkout -- ."])
+def test_the_legacy_mode_still_asks(repo_root, tmp_path, command: str) -> None:
+    script = repo_root / "adapters/claude-code/hooks/branch-guard.sh"
+    payload = json.dumps({"tool_input": {"command": command}})
+    out = run_bash(script, cwd=tmp_path, stdin=payload, env={"SUPERHARNESS_CONFIRM_MODE": "ask"})
+    assert parse_json_output(out.stdout)["hookSpecificOutput"]["permissionDecision"] == "ask"
 
 
 def _decide(repo_root, cwd, command: str) -> str:
