@@ -42,8 +42,8 @@ def _get_decision(output: dict) -> str:
         ("prod.tfvars", "deny"),
         ("prod.tfvars.json", "deny"),
         # warn cases
-        ("/etc/hosts", "ask"),
-        ("/tmp/build.log", "ask"),
+        ("/etc/hosts", "deny"),
+        ("/tmp/build.log", "deny"),
         # Claude Code's own managed workspace temp is a sanctioned agent work
         # area (not a user "system file") — allowed so create/edit never prompts.
         ("/tmp/claude-1000/proj/uuid/scratchpad/notes.txt", "allow"),
@@ -60,11 +60,24 @@ def test_scope_guard_policies(
     script = repo_root / "adapters/claude-code/hooks/scope-guard.sh"
     payload = json.dumps({"tool_input": {"file_path": file_path}})
 
-    result = run_bash(script, cwd=tmp_path, stdin=payload)
+    result = run_bash(script, cwd=tmp_path, stdin=payload, env={"SUPERHARNESS_CONFIRM_MODE": None})
 
     assert result.returncode == 0, result.stderr
     output = parse_json_output(result.stdout)
     assert _get_decision(output) == decision
+
+
+def test_the_legacy_mode_still_asks_for_a_system_file(repo_root, tmp_path) -> None:
+    script = repo_root / "adapters/claude-code/hooks/scope-guard.sh"
+    payload = json.dumps({"tool_input": {"file_path": "/etc/hosts"}})
+    result = run_bash(script, cwd=tmp_path, stdin=payload, env={"SUPERHARNESS_CONFIRM_MODE": "ask"})
+    assert _get_decision(parse_json_output(result.stdout)) == "ask"
+
+
+def test_unparseable_input_is_refused_not_asked(repo_root, tmp_path) -> None:
+    script = repo_root / "adapters/claude-code/hooks/scope-guard.sh"
+    result = run_bash(script, cwd=tmp_path, stdin="not json", env={"SUPERHARNESS_CONFIRM_MODE": None})
+    assert _get_decision(parse_json_output(result.stdout)) == "deny"
 
 
 def test_scope_guard_allows_with_contract(repo_root, tmp_path) -> None:

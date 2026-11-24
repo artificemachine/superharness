@@ -114,9 +114,9 @@ def test_policy_enforcement_block_and_warn(repo_root, tmp_path) -> None:
     assert block["hookSpecificOutput"]["permissionDecision"] == "deny"
 
     warn_payload = json.dumps({"tool_input": {"file_path": "/etc/passwd"}})
-    warn_res = run_bash(scope_guard, cwd=tmp_path, stdin=warn_payload)
+    warn_res = run_bash(scope_guard, cwd=tmp_path, stdin=warn_payload, env={"SUPERHARNESS_CONFIRM_MODE": None})
     warn = parse_json_output(warn_res.stdout)
-    assert warn["hookSpecificOutput"]["permissionDecision"] == "ask"
+    assert warn["hookSpecificOutput"]["permissionDecision"] == "deny"
 
 
 def test_bootstrap_discuss_start_enqueues_round_one_for_both_agents(
