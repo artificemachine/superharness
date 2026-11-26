@@ -1088,3 +1088,5 @@ chore: submitted gemini-cli round 1 position for gap analysis discussion
 - 2026-11-13 (1.86.6): chore(release): prepare patch release with candidate retrieval permission and CI test reuse.
 
 - 2026-11-13: fix(publish): upload only the wheel and sdist to TestPyPI and PyPI; the candidate evidence files (SHA256SUMS, manifest, SBOM) made twine reject the upload.
+
+- 2026-11-26: chore(hooks): drop the session hooks' pkill lines for token-diet-mcp and tilth, both removed from the stack.
