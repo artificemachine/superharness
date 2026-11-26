@@ -208,8 +208,6 @@ pkill -TERM -f "serena start-mcp-server" 2>/dev/null || true
 pkill -TERM -f "KotlinLanguageServer" 2>/dev/null || true
 pkill -TERM -f "kotlin_language_server" 2>/dev/null || true
 pkill -TERM -f "voice-toolkit" 2>/dev/null || true
-pkill -TERM -f "token-diet-mcp" 2>/dev/null || true
-pkill -TERM -f "tilth mcp" 2>/dev/null || true
 pkill -TERM -f "nemoclaw-mcp-server" 2>/dev/null || true
 
 exit 0
